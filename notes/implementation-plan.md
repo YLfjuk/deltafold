@@ -127,6 +127,10 @@ Layout and conventions:
   the pinned version on Windows. Upgrading pnpm, or running `npx pnpm@12.18.0`,
   works around it.
 - Publishing must go through pnpm, which applies `publishConfig.exports`.
+- In CI, pnpm 12 fails the install when a dependency's build script was not
+  approved. Locally it only warns. Removing a package can leave its optional
+  peers (for example `tsx`, which pulls in `esbuild`) resolved in the lockfile, so
+  check the lockfile diff after removing dependencies.
 
 ### Verification
 
