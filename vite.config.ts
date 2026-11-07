@@ -72,6 +72,8 @@ export default defineConfig({
 			suspicious: "error",
 		},
 		rules: {
+			// Effect data types use `_tag` as their discriminant.
+			"no-underscore-dangle": ["error", { allow: ["_tag"] }],
 			// @effect/vitest adds Effect-aware test blocks.
 			"vitest/no-standalone-expect": [
 				"error",

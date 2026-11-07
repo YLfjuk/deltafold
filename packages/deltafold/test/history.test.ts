@@ -1,0 +1,835 @@
+import { describe, expect, it } from "@effect/vitest";
+import { Result } from "effect";
+
+import { Action, History, Migration, Plan, Rule, Shortcut, Version } from "deltafold";
+import {
+	AddKey,
+	RenameKey,
+	addRetryLimit,
+	renameTimeout,
+	restoreTimeout,
+	retriesAdded,
+	securityFixed,
+	timeoutRenamed,
+	timeoutRestored,
+} from "./fixtures/config.ts";
+
+const success = <A, E>(result: Result.Result<A, E>): A => {
+	if (Result.isFailure(result))
+		throw new Error(`Expected success, got ${String(result.failure)}`);
+
+	return result.success;
+};
+
+const failure = <A, E>(result: Result.Result<A, E>): E => {
+	if (Result.isSuccess(result)) throw new Error("Expected failure");
+
+	return result.failure;
+};
+
+const actionIds = (plan: Plan.Any) => plan.occurrences.map((occurrence) => occurrence.action.id);
+
+const rename = (from: string, to: string) =>
+	RenameKey.make(`rename-${from}-${to}`, { target: "config", from, to });
+
+const addingMigration = (id: string, from: Version.Version, to: Version.Version) =>
+	Migration.make(id, { from, to })`${AddKey.make(`add-${id}`, { target: "config", key: id })}`;
+
+const v0 = Version.make("0.0.0", { changes: [] });
+const v100 = Version.make("1.0.0", { previous: v0, changes: [] });
+const v152 = Version.make("1.5.2", { previous: v100, changes: [] });
+const v200 = Version.make("2.0.0", { previous: v152, changes: [timeoutRenamed] });
+const v153 = Version.make("1.5.3", { previous: v152, changes: [securityFixed] });
+
+describe("scenario 1: baseline and explicit empty transitions", () => {
+	const initial = Migration.noop("0.0.0-to-1.0.0", { from: v0, to: v100 });
+	const patch = Migration.noop("1.0.0-to-1.5.2", { from: v100, to: v152 });
+	const major = Migration.make("1.5.2-to-2.0.0", {
+		from: v152,
+		to: v200,
+		addresses: [timeoutRenamed],
+	})`
+		Update the configuration:
+
+		${renameTimeout}
+	`;
+	const history = History.make({
+		versions: [v0, v100, v152, v200],
+		migrations: [initial, patch, major],
+	});
+
+	it("composes noops and executable migrations from 0.0.0 to the latest version", () => {
+		const plan = success(History.resolve(history, { from: "0.0.0", to: "2.0.0" }));
+
+		expect(plan.route.id).toBe("0.0.0>1.0.0>1.5.2>2.0.0");
+		expect(actionIds(plan)).toEqual(["rename-timeout"]);
+		expect(plan.changes.map((change) => change.id)).toEqual([timeoutRenamed.id]);
+		expect(plan.steps.map((step) => step.omitted)).toEqual([true, true, false]);
+	});
+
+	it("returns a valid empty plan for a route made only of noops", () => {
+		const plan = success(History.resolve(history, { from: v0, to: v152 }));
+
+		expect(Plan.isEmpty(plan)).toBe(true);
+		expect(plan.route.id).toBe("0.0.0>1.0.0>1.5.2");
+		expect(plan.explanations).toEqual([
+			{ _tag: "OmittedStep", migration: initial, direction: "forward", reason: "noop" },
+			{ _tag: "OmittedStep", migration: patch, direction: "forward", reason: "noop" },
+		]);
+	});
+
+	it("distinguishes an absent route from an empty plan", () => {
+		const error = failure(History.resolve(history, { from: "2.0.0", to: "0.0.0" }));
+
+		expect(error._tag).toBe("UnsupportedRoute");
+	});
+
+	it("resolves a version to itself as an empty plan", () => {
+		const plan = success(History.resolve(history, { from: "1.5.2", to: "1.5.2" }));
+
+		expect(plan.direction).toBe("none");
+		expect(plan.steps).toEqual([]);
+	});
+
+	it("fails for unknown versions", () => {
+		const error = failure(History.resolve(history, { from: "9.9.9", to: "2.0.0" }));
+
+		expect(error).toMatchObject({ _tag: "UnknownVersion", version: "9.9.9" });
+	});
+});
+
+describe("scenario 2: branching ancestry", () => {
+	const migrate152To200 = Migration.make("1.5.2-to-2.0.0", {
+		from: v152,
+		to: v200,
+		addresses: [timeoutRenamed],
+	})`${renameTimeout}`;
+	const patch = Migration.noop("1.5.2-to-1.5.3", {
+		from: v152,
+		to: v153,
+		addresses: [securityFixed],
+	});
+
+	it("does not route a backport through its shared ancestor", () => {
+		const history = History.make({
+			versions: [v0, v100, v152, v200, v153],
+			migrations: [migrate152To200, Migration.withRevert(patch)``],
+		});
+		const error = failure(History.resolve(history, { from: "1.5.3", to: "2.0.0" }));
+
+		expect(error).toMatchObject({
+			_tag: "UnsupportedRoute",
+			direction: "cross-branch",
+			reachable: ["1.5.2"],
+			closest: ["1.5.2"],
+			blockers: [
+				{
+					from: "1.5.3",
+					to: "2.0.0",
+					reason: 'A route through "1.5.2" would combine a downgrade with an upgrade. Declare a migration from "1.5.3" to "2.0.0".',
+				},
+			],
+		});
+	});
+
+	it("migrates the backport only through declared support", () => {
+		const migrate153To200 = Migration.make("1.5.3-to-2.0.0", {
+			from: v153,
+			to: v200,
+			addresses: [timeoutRenamed],
+		})`${renameTimeout}`;
+		const history = History.make({
+			versions: [v0, v100, v152, v200, v153],
+			migrations: [migrate152To200, patch, migrate153To200],
+		});
+		const plan = success(History.resolve(history, { from: "1.5.3", to: "2.0.0" }));
+
+		expect(plan.direction).toBe("cross-branch");
+		expect(plan.route.id).toBe("1.5.3>2.0.0");
+		expect(v153.previous).toBe(v152);
+		expect(plan.occurrences.map((occurrence) => occurrence.id)).toEqual([
+			"1.5.3-to-2.0.0/rename-timeout",
+		]);
+	});
+});
+
+describe("scenario 3: complementary migrations and alternative routes", () => {
+	const v1 = Version.make("1.0.0", { changes: [] });
+	const v2 = Version.make("2.0.0", { previous: v1, changes: [timeoutRenamed] });
+	const v3 = Version.make("3.0.0", { previous: v2, changes: [retriesAdded] });
+	const renameJson = RenameKey.make("rename-json", { target: "config.json", from: "a", to: "b" });
+	const renameYaml = RenameKey.make("rename-yaml", { target: "config.yaml", from: "a", to: "b" });
+	const json = Migration.make("json-1-to-2", { from: v1, to: v2 })`${renameJson}`;
+	const yaml = Migration.make("yaml-1-to-2", { from: v1, to: v2 })`${renameYaml}`;
+	const retries = Migration.make("2-to-3", { from: v2, to: v3 })`${addRetryLimit}`;
+	const addJsonRetries = AddKey.make("direct-json", { target: "config.json", key: "retries" });
+	const direct = Migration.make("1-to-3", { from: v1, to: v3, cost: 1 })`
+		${renameJson}
+		${renameYaml}
+		${addJsonRetries}
+	`;
+
+	it("keeps complementary migrations with identical endpoints together", () => {
+		const history = History.make({ versions: [v1, v2, v3], migrations: [json, yaml, retries] });
+		const plan = success(History.resolve(history, { from: "1.0.0", to: "3.0.0" }));
+
+		expect(plan.route.id).toBe("1.0.0>2.0.0>3.0.0");
+		expect(plan.steps.map((step) => step.migration.id)).toEqual([
+			"json-1-to-2",
+			"yaml-1-to-2",
+			"2-to-3",
+		]);
+	});
+
+	const history = History.make({
+		versions: [v1, v2, v3],
+		migrations: [json, yaml, retries, direct],
+	});
+
+	it("reports alternative routes as ambiguous with selectable identifiers", () => {
+		const error = failure(History.resolve(history, { from: "1.0.0", to: "3.0.0" }));
+
+		expect(error._tag).toBe("AmbiguousRoute");
+		if (error._tag !== "AmbiguousRoute") return;
+		expect(
+			error.candidates.map((candidate) => [candidate.id, candidate.actions, candidate.cost]),
+		).toEqual([
+			["1.0.0>2.0.0>3.0.0", 3, 3],
+			["1.0.0>3.0.0", 3, 1],
+		]);
+		expect(error.message).toContain("`route` option");
+	});
+
+	it("selects a route explicitly", () => {
+		const plan = success(
+			History.resolve(history, { from: "1.0.0", to: "3.0.0", route: "1.0.0>3.0.0" }),
+		);
+
+		expect(plan.steps.map((step) => step.migration.id)).toEqual(["1-to-3"]);
+	});
+
+	it("rejects an unknown route identifier and lists the candidates", () => {
+		const error = failure(
+			History.resolve(history, { from: "1.0.0", to: "3.0.0", route: "1.0.0>9.0.0" }),
+		);
+
+		expect(error).toMatchObject({ _tag: "UnknownRoute", route: "1.0.0>9.0.0" });
+	});
+
+	it("applies opt-in route policies and keeps ties ambiguous", () => {
+		const fewestMigrations = success(
+			History.resolve(history, { from: "1.0.0", to: "3.0.0", policy: "fewest-migrations" }),
+		);
+		const lowestCost = success(
+			History.resolve(history, { from: "1.0.0", to: "3.0.0", policy: "lowest-cost" }),
+		);
+		const tie = failure(
+			History.resolve(history, { from: "1.0.0", to: "3.0.0", policy: "fewest-actions" }),
+		);
+
+		expect(fewestMigrations.route.id).toBe("1.0.0>3.0.0");
+		expect(lowestCost.route.id).toBe("1.0.0>3.0.0");
+		expect(tie).toMatchObject({ _tag: "AmbiguousRoute", policy: "fewest-actions" });
+	});
+});
+
+describe("scenario 4: cancellation across versions", () => {
+	const v1 = Version.make("1.0.0", { changes: [] });
+	const v2 = Version.make("2.0.0", { previous: v1, changes: [timeoutRenamed] });
+	const v3 = Version.make("3.0.0", { previous: v2, changes: [timeoutRestored] });
+	const cancelRoundTrip = Rule.replace("cancel-timeout-round-trip", {
+		match: [renameTimeout, restoreTimeout],
+		replacement: [],
+	});
+	const forward = Migration.make("1-to-2", { from: v1, to: v2, addresses: [timeoutRenamed] })`
+		${Migration.instruction(renameTimeout)`Rename the timeout option, keeping its value.`}
+	`;
+	const backward = Migration.make("2-to-3", { from: v2, to: v3, addresses: [timeoutRestored] })`
+		${Migration.instruction(restoreTimeout)`Restore the timeout option.`}
+	`;
+	const history = History.make({
+		versions: [v1, v2, v3],
+		migrations: [forward, backward],
+		rules: [cancelRoundTrip],
+	});
+
+	it("cancels inverse actions and explains the omission", () => {
+		const plan = success(History.resolve(history, { from: "1.0.0", to: "3.0.0" }));
+
+		expect(Plan.isEmpty(plan)).toBe(true);
+		expect(plan.steps.every((step) => step.omitted)).toBe(true);
+		const [rewrite] = plan.explanations;
+		expect(rewrite).toMatchObject({ _tag: "Rewrite", rule: cancelRoundTrip, produced: [] });
+		expect(
+			rewrite?._tag === "Rewrite" && rewrite.removed.map((occurrence) => occurrence.id),
+		).toEqual(["1-to-2/rename-timeout", "2-to-3/restore-timeout"]);
+	});
+
+	it("keeps the reverse instruction when starting between the versions", () => {
+		const plan = success(History.resolve(history, { from: "2.0.0", to: "3.0.0" }));
+
+		expect(actionIds(plan)).toEqual(["restore-timeout"]);
+	});
+
+	it("does not cancel around an intervening action", () => {
+		const touch = AddKey.make("touch-timeout", { target: "config", key: "requestTimeout" });
+		const intervening = Migration.make("1-to-2", { from: v1, to: v2 })`
+			${renameTimeout}
+			${touch}
+		`;
+		const blocked = History.make({
+			versions: [v1, v2, v3],
+			migrations: [intervening, backward],
+			rules: [cancelRoundTrip],
+		});
+		const plan = success(History.resolve(blocked, { from: "1.0.0", to: "3.0.0" }));
+
+		expect(actionIds(plan)).toEqual(["rename-timeout", "touch-timeout", "restore-timeout"]);
+	});
+
+	it("does not cancel around a text-only migration", () => {
+		const v4 = Version.make("4.0.0", { previous: v3, changes: [] });
+		const manual = Migration.make("2-to-3", {
+			from: v2,
+			to: v3,
+		})`Rotate your API keys by hand.`;
+		const later = Migration.make("3-to-4", { from: v3, to: v4 })`${restoreTimeout}`;
+		const blocked = History.make({
+			versions: [v1, v2, v3, v4],
+			migrations: [forward, manual, later],
+			rules: [cancelRoundTrip],
+		});
+		const plan = success(History.resolve(blocked, { from: "1.0.0", to: "4.0.0" }));
+
+		expect(actionIds(plan)).toEqual(["rename-timeout", "restore-timeout"]);
+		expect(plan.steps[1]?.guide).toEqual([
+			{ _tag: "Text", text: "Rotate your API keys by hand." },
+		]);
+	});
+});
+
+describe("scenario 5: chained replacements", () => {
+	const v1 = Version.make("1.0.0", { changes: [] });
+	const v2 = Version.make("2.0.0", { previous: v1, changes: [] });
+	const v3 = Version.make("3.0.0", { previous: v2, changes: [] });
+	const v4 = Version.make("4.0.0", { previous: v3, changes: [] });
+	const aToB = rename("a", "b");
+	const bToC = rename("b", "c");
+	const cToD = rename("c", "d");
+	const aToC = rename("a", "c");
+	const aToD = rename("a", "d");
+	const migrations = [
+		Migration.make("1-to-2", { from: v1, to: v2 })`${aToB}`,
+		Migration.make("2-to-3", { from: v2, to: v3 })`${bToC}`,
+		Migration.make("3-to-4", { from: v3, to: v4 })`${cToD}`,
+	] as const;
+	const combineAC = Rule.replace("combine-a-c", { match: [aToB, bToC], replacement: [aToC] });
+	const combineAD = Rule.replace("combine-a-d", {
+		match: [aToC, cToD],
+		replacement: [Migration.instruction(aToD)`Rename a to d directly.`],
+	});
+
+	it("feeds a replacement into another rule and preserves ordered provenance", () => {
+		const history = History.make({
+			versions: [v1, v2, v3, v4],
+			migrations,
+			rules: [combineAD, combineAC],
+		});
+		const plan = success(History.resolve(history, { from: "1.0.0", to: "4.0.0" }));
+
+		expect(actionIds(plan)).toEqual(["rename-a-d"]);
+		const [occurrence] = plan.occurrences;
+		expect(occurrence?.id).toBe(
+			"combine-a-d(combine-a-c(1-to-2/rename-a-b+2-to-3/rename-b-c)/rename-a-c+3-to-4/rename-c-d)/rename-a-d",
+		);
+		expect(occurrence?.origin._tag === "Replacement" && occurrence.origin.rule.id).toBe(
+			"combine-a-d",
+		);
+		const first =
+			occurrence?.origin._tag === "Replacement" ? occurrence.origin.replaces[0] : undefined;
+		expect(
+			first?.origin._tag === "Replacement" &&
+				first.origin.replaces.map((replaced) => replaced.id),
+		).toEqual(["1-to-2/rename-a-b", "2-to-3/rename-b-c"]);
+		expect(plan.steps[0]?.guide).toEqual([{ _tag: "Occurrence", occurrence }]);
+		expect(plan.steps.map((step) => step.omitted)).toEqual([false, true, true]);
+	});
+
+	it("reports rewrite cycles without hanging", () => {
+		const forth = Rule.replace("forth", { match: [aToB], replacement: [aToC] });
+		const back = Rule.replace("back", { match: [aToC], replacement: [aToB] });
+		const history = History.make({
+			versions: [v1, v2],
+			migrations: [migrations[0]],
+			rules: [forth, back],
+		});
+
+		expect(failure(History.resolve(history, { from: "1.0.0", to: "2.0.0" }))).toMatchObject({
+			_tag: "RewriteCycle",
+			rules: ["forth", "back"],
+		});
+	});
+
+	it("reports a rule that keeps growing the sequence", () => {
+		const grow = Rule.replace("grow", { match: [aToB], replacement: [bToC, aToB] });
+		const history = History.make({
+			versions: [v1, v2],
+			migrations: [migrations[0]],
+			rules: [grow],
+		});
+
+		expect(failure(History.resolve(history, { from: "1.0.0", to: "2.0.0" }))._tag).toBe(
+			"RewriteLimitExceeded",
+		);
+	});
+
+	it("reports conflicting outcomes regardless of registration order", () => {
+		const left = Rule.replace("left", { match: [aToB, bToC], replacement: [aToC] });
+		const right = Rule.replace("right", {
+			match: [bToC, cToD],
+			replacement: [rename("b", "d")],
+		});
+		for (const rules of [
+			[left, right],
+			[right, left],
+		]) {
+			const history = History.make({ versions: [v1, v2, v3, v4], migrations, rules });
+			const error = failure(History.resolve(history, { from: "1.0.0", to: "4.0.0" }));
+
+			expect(error._tag).toBe("ConflictingRewrites");
+			expect(
+				error._tag === "ConflictingRewrites" &&
+					error.outcomes.map((outcome) => outcome.actions),
+			).toEqual(['"rename-a-c","rename-c-d"', '"rename-a-b","rename-b-d"']);
+		}
+	});
+
+	it("accepts different rule paths that reach the same result", () => {
+		const left = Rule.replace("left", { match: [aToB, bToC], replacement: [aToC] });
+		const combineBD = Rule.replace("combine-b-d", {
+			match: [bToC, cToD],
+			replacement: [rename("b", "d")],
+		});
+		const leftThenD = Rule.replace("left-then-d", { match: [aToC, cToD], replacement: [aToD] });
+		const rightThenD = Rule.replace("right-then-d", {
+			match: [aToB, rename("b", "d")],
+			replacement: [aToD],
+		});
+		const history = History.make({
+			versions: [v1, v2, v3, v4],
+			migrations,
+			rules: [left, combineBD, leftThenD, rightThenD],
+		});
+
+		expect(
+			actionIds(success(History.resolve(history, { from: "1.0.0", to: "4.0.0" }))),
+		).toEqual(["rename-a-d"]);
+	});
+});
+
+describe("scenario 6: shortcuts", () => {
+	const v1 = Version.make("2.0.1", { changes: [] });
+	const v2 = Version.make("2.0.2", { previous: v1, changes: [] });
+	const v3 = Version.make("2.0.3", { previous: v2, changes: [] });
+	const m2 = addingMigration("2.0.2", v1, v2);
+	const m3 = addingMigration("2.0.3", v2, v3);
+	const direct = Migration.make("direct-2.0.3", { from: v1, to: v3 })`${AddKey.make("add-both", {
+		target: "config",
+		key: "both",
+	})}`;
+	const fast = Shortcut.make("fast-upgrade", {
+		from: v1,
+		to: v3,
+		replaces: [m2, m3],
+		migrations: [direct],
+	});
+	const history = History.make({
+		versions: [v1, v2, v3],
+		migrations: [m2, m3],
+		shortcuts: [fast],
+	});
+
+	it("offers the shortcut as a named candidate", () => {
+		const error = failure(History.resolve(history, { from: "2.0.1", to: "2.0.3" }));
+
+		expect(
+			error._tag === "AmbiguousRoute" && error.candidates.map((candidate) => candidate.id),
+		).toEqual(["2.0.1>2.0.2>2.0.3", "2.0.1>[fast-upgrade]>2.0.3"]);
+	});
+
+	it("prefers a shortcut over the canonical route it replaces only when asked", () => {
+		const plan = success(
+			History.resolve(history, { from: "2.0.1", to: "2.0.3", policy: "prefer-shortcuts" }),
+		);
+
+		expect(plan.route.hops.map((hop) => hop._tag)).toEqual(["Shortcut"]);
+		expect(actionIds(plan)).toEqual(["add-both"]);
+	});
+
+	it("keeps unrelated routes ambiguous under prefer-shortcuts", () => {
+		const other = Migration.make("other-2.0.3", { from: v1, to: v3 })`${addRetryLimit}`;
+		const withOther = History.make({
+			versions: [v1, v2, v3],
+			migrations: [m2, m3, other],
+			shortcuts: [fast],
+		});
+		const error = failure(
+			History.resolve(withOther, { from: "2.0.1", to: "2.0.3", policy: "prefer-shortcuts" }),
+		);
+
+		expect(
+			error._tag === "AmbiguousRoute" && error.candidates.map((candidate) => candidate.id),
+		).toEqual(["2.0.1>2.0.3", "2.0.1>[fast-upgrade]>2.0.3"]);
+	});
+
+	it("validates shortcut endpoints and replaced route membership", () => {
+		const unrelated = Shortcut.make("unrelated", {
+			from: v1,
+			to: v3,
+			replaces: [m3],
+			migrations: [direct],
+		});
+		const unregistered = Shortcut.make("unregistered", {
+			from: v1,
+			to: v3,
+			replaces: [addingMigration("2.0.2", v1, v2), m3],
+			migrations: [direct],
+		});
+		const invalid = History.make({
+			versions: [v1, v2, v3],
+			migrations: [m2, m3],
+			shortcuts: [unrelated, unregistered],
+		});
+
+		expect(History.validate(invalid).map((issue) => [issue._tag, issue.subject])).toEqual([
+			["InvalidShortcut", "unregistered"],
+			["InvalidShortcut", "unrelated"],
+		]);
+		expect(failure(History.resolve(invalid, { from: "2.0.1", to: "2.0.3" }))._tag).toBe(
+			"InvalidHistory",
+		);
+	});
+});
+
+describe("scenario 7: downgrades", () => {
+	const v1 = Version.make("1.0.0", { changes: [] });
+	const v2 = Version.make("2.0.0", { previous: v1, changes: [timeoutRenamed] });
+	const v3 = Version.make("3.0.0", { previous: v2, changes: [retriesAdded] });
+	const up12 = Migration.withRevert(
+		Migration.make("1-to-2", {
+			from: v1,
+			to: v2,
+			addresses: [timeoutRenamed],
+		})`${renameTimeout}`,
+	)`${restoreTimeout}`;
+	const up23 = Migration.make("2-to-3", {
+		from: v2,
+		to: v3,
+		addresses: [retriesAdded],
+	})`${addRetryLimit}`;
+	const history = History.make({ versions: [v1, v2, v3], migrations: [up12, up23] });
+
+	it("plans a declared reverse migration", () => {
+		const plan = success(History.resolve(history, { from: "2.0.0", to: "1.0.0" }));
+
+		expect(plan.direction).toBe("downgrade");
+		expect(plan.occurrences.map((occurrence) => occurrence.id)).toEqual([
+			"1-to-2/revert/restore-timeout",
+		]);
+	});
+
+	it("reports reachable downgrades, the closest alternative, and blockers", () => {
+		const error = failure(History.resolve(history, { from: "3.0.0", to: "1.0.0" }));
+
+		expect(error).toMatchObject({
+			_tag: "UnsupportedRoute",
+			direction: "downgrade",
+			reachable: [],
+			closest: [],
+			blockers: [
+				{
+					from: "3.0.0",
+					to: "2.0.0",
+					reason: 'No migration is declared from "3.0.0" to "2.0.0".',
+				},
+			],
+		});
+		expect(
+			success(History.downgrades(history, { from: "2.0.0" })).map(
+				(entry) => entry.version.id,
+			),
+		).toEqual(["1.0.0"]);
+		expect(success(History.upgrades(history, { from: "1.0.0" }))).toEqual([
+			{ version: v2, routes: ["1.0.0>2.0.0"] },
+			{ version: v3, routes: ["1.0.0>2.0.0>3.0.0"] },
+		]);
+	});
+
+	it("lists the closest reachable downgrade along ancestry", () => {
+		const v4 = Version.make("4.0.0", { previous: v3, changes: [] });
+		const up34 = Migration.noop("3-to-4", { from: v3, to: v4, reversible: true });
+		const partial = History.make({
+			versions: [v1, v2, v3, v4],
+			migrations: [up12, up23, up34],
+		});
+		const error = failure(History.resolve(partial, { from: "4.0.0", to: "1.0.0" }));
+
+		expect(error).toMatchObject({
+			_tag: "UnsupportedRoute",
+			reachable: ["3.0.0"],
+			closest: ["3.0.0"],
+		});
+	});
+
+	it("blocks a reverse transition when a complementary migration has no revert", () => {
+		const yamlOnly = Migration.make("yaml-1-to-2", { from: v1, to: v2 })`${addRetryLimit}`;
+		const incomplete = History.make({ versions: [v1, v2], migrations: [up12, yamlOnly] });
+		const error = failure(History.resolve(incomplete, { from: "2.0.0", to: "1.0.0" }));
+
+		expect(error._tag === "UnsupportedRoute" && error.blockers).toEqual([
+			{
+				from: "2.0.0",
+				to: "1.0.0",
+				reason: 'Migrations "yaml-1-to-2" have no revert, so the reverse transition is incomplete.',
+			},
+		]);
+	});
+});
+
+describe("parallel groups and structural rules", () => {
+	const v1 = Version.make("1.0.0", { changes: [] });
+	const v2 = Version.make("2.0.0", { previous: v1, changes: [] });
+	const v3 = Version.make("3.0.0", { previous: v2, changes: [] });
+	const createConfig = AddKey.make("create-config", { target: "config", key: "file" });
+	const updateCreated = RenameKey.make("update-created", {
+		target: "config",
+		from: "x",
+		to: "y",
+	});
+	const updateSource = RenameKey.make("update-source", { target: "src", from: "x", to: "y" });
+	const tasks = Action.parallel([Action.sequence([createConfig, updateCreated]), updateSource]);
+	const grouped = Migration.make("1-to-2", { from: v1, to: v2 })`${tasks}`;
+
+	it("keeps the declared group structure in the plan", () => {
+		const history = History.make({ versions: [v1, v2], migrations: [grouped] });
+		const plan = success(History.resolve(history, { from: "1.0.0", to: "2.0.0" }));
+
+		expect(plan.steps[0]?.node).toMatchObject({
+			_tag: "Sequence",
+			children: [
+				{
+					_tag: "Parallel",
+					concurrency: "unbounded",
+					branches: [
+						{
+							_tag: "Sequence",
+							children: [
+								{ id: "1-to-2/create-config" },
+								{ id: "1-to-2/update-created" },
+							],
+						},
+						{ id: "1-to-2/update-source" },
+					],
+				},
+			],
+		});
+	});
+
+	it("simplifies within a branch but never across branches", () => {
+		const restoreCreated = RenameKey.make("restore-created", {
+			target: "config",
+			from: "y",
+			to: "x",
+		});
+		const branchLocal = Rule.replace("branch-local", {
+			match: [updateCreated, restoreCreated],
+			replacement: [],
+		});
+		const across = Rule.replace("across", {
+			match: [createConfig, updateSource],
+			replacement: [],
+		});
+		const withRestore = Migration.make("1-to-2", { from: v1, to: v2 })`${Action.parallel([
+			Action.sequence([createConfig, updateCreated, restoreCreated]),
+			updateSource,
+		])}`;
+		const history = History.make({
+			versions: [v1, v2],
+			migrations: [withRestore],
+			rules: [branchLocal, across],
+		});
+		const plan = success(History.resolve(history, { from: "1.0.0", to: "2.0.0" }));
+
+		expect(actionIds(plan)).toEqual(["create-config", "update-source"]);
+		expect(plan.steps[0]?.node.children[0]?._tag).toBe("Parallel");
+	});
+
+	it("rewrites a whole group only through an explicit structural rule", () => {
+		const undo = Action.parallel([
+			Action.sequence([createConfig, updateCreated]),
+			updateSource,
+		]);
+		const replaceGroup = Rule.replace("replace-group", {
+			match: [undo],
+			replacement: [AddKey.make("combined", { target: "all", key: "combined" })],
+		});
+		const after = Migration.make("2-to-3", { from: v2, to: v3 })`${addRetryLimit}`;
+		const history = History.make({
+			versions: [v1, v2, v3],
+			migrations: [grouped, after],
+			rules: [replaceGroup],
+		});
+		const plan = success(History.resolve(history, { from: "1.0.0", to: "3.0.0" }));
+
+		expect(actionIds(plan)).toEqual(["combined", "add-retry-limit"]);
+	});
+});
+
+describe("prose ownership in resolved guides", () => {
+	const v1 = Version.make("1.0.0", { changes: [] });
+	const v2 = Version.make("2.0.0", { previous: v1, changes: [timeoutRenamed, retriesAdded] });
+	const v3 = Version.make("3.0.0", { previous: v2, changes: [timeoutRestored] });
+	const configure = Migration.make("configure-v2", {
+		from: v1,
+		to: v2,
+		addresses: [timeoutRenamed, retriesAdded],
+	})`
+		Shared context for version 2.
+
+		${Migration.instruction(renameTimeout)`Rename the timeout option, keeping its existing value.`}
+
+		${Migration.instruction(addRetryLimit)`Add a retry limit. Start with ${3}.`}
+	`;
+	const restore = Migration.make("restore-v3", { from: v2, to: v3 })`${restoreTimeout}`;
+	const cancel = Rule.replace("cancel", {
+		match: [renameTimeout, addRetryLimit, restoreTimeout],
+		replacement: [],
+	});
+
+	it("omits a cancelled action's instruction block and keeps shared prose", () => {
+		const retriesFirst = Migration.make("configure-v2", { from: v1, to: v2 })`
+			Shared context for version 2.
+
+			${Migration.instruction(addRetryLimit)`Add a retry limit. Start with ${3}.`}
+
+			${Migration.instruction(renameTimeout)`Rename the timeout option, keeping its existing value.`}
+		`;
+		const roundTrip = Rule.replace("round-trip", {
+			match: [renameTimeout, restoreTimeout],
+			replacement: [],
+		});
+		const history = History.make({
+			versions: [v1, v2, v3],
+			migrations: [retriesFirst, restore],
+			rules: [roundTrip],
+		});
+		const plan = success(History.resolve(history, { from: "1.0.0", to: "3.0.0" }));
+		const guide = plan.steps[0]?.guide.flatMap((item) => {
+			if (item._tag === "Text") return [item.text.trim()];
+			if (item._tag !== "Occurrence") return [];
+
+			return (
+				item.occurrence.instruction?.content.map((part) =>
+					part._tag === "Text" ? part.text : "",
+				) ?? []
+			);
+		});
+
+		expect(guide).toEqual([
+			"Shared context for version 2.",
+			"Add a retry limit. Start with 3.",
+			"",
+		]);
+		expect(plan.steps[1]?.omitted).toBe(true);
+		expect(retriesFirst.content.filter((part) => part._tag === "Instruction")).toHaveLength(2);
+	});
+
+	it("omits a migration from the guide when rules remove all of its actions", () => {
+		const history = History.make({
+			versions: [v1, v2, v3],
+			migrations: [configure, restore],
+			rules: [cancel],
+		});
+		const plan = success(History.resolve(history, { from: "1.0.0", to: "3.0.0" }));
+
+		expect(plan.steps.map((step) => [step.omitted, step.guide.length])).toEqual([
+			[true, 0],
+			[true, 0],
+		]);
+		expect(configure.content[1]).toMatchObject({ _tag: "Instruction", action: renameTimeout });
+	});
+
+	it("keeps a deliberately text-only migration", () => {
+		const manual = Migration.make("manual", { from: v1, to: v2 })`Back up your database.`;
+		const history = History.make({ versions: [v1, v2], migrations: [manual] });
+		const plan = success(History.resolve(history, { from: "1.0.0", to: "2.0.0" }));
+
+		expect(plan.steps[0]).toMatchObject({
+			omitted: false,
+			guide: [{ _tag: "Text", text: "Back up your database." }],
+		});
+	});
+});
+
+describe("validation", () => {
+	const v1 = Version.make("1.0.0", { changes: [timeoutRenamed] });
+	const v2 = Version.make("2.0.0", { previous: v1, changes: [] });
+
+	it("rejects registering a migration and its withRevert result together", () => {
+		const forward = Migration.make("1-to-2", { from: v1, to: v2 })`${renameTimeout}`;
+		const reversible = Migration.withRevert(forward)`${restoreTimeout}`;
+		const history = History.make({ versions: [v1, v2], migrations: [forward, reversible] });
+
+		expect(History.validate(history).map((issue) => issue._tag)).toEqual([
+			"DuplicateMigration",
+		]);
+	});
+
+	it("rejects a repeated action interpolation and suggests Action.ref", () => {
+		const repeated = Migration.make("1-to-2", { from: v1, to: v2 })`
+			${renameTimeout}
+			Then check that ${renameTimeout} worked; compare ${Action.ref(renameTimeout)}.
+		`;
+		const [issue] = History.validate(
+			History.make({ versions: [v1, v2], migrations: [repeated] }),
+		);
+
+		expect(issue).toMatchObject({ _tag: "DuplicateOccurrence", subject: "1-to-2" });
+		expect(issue?.message).toContain("occurs 2 times");
+		expect(issue?.message).toContain("Action.ref");
+	});
+
+	it("reports conflicting definitions, empty migrations, and unregistered versions together", () => {
+		const conflicting = { ...timeoutRenamed, description: "Something else." };
+		const v3 = Version.make("3.0.0", { previous: v2, changes: [conflicting] });
+		const empty = Migration.make("empty", { from: v1, to: v2 })``;
+		const sameId = RenameKey.make("rename-timeout", { target: "other", from: "a", to: "b" });
+		const conflictingAction = Migration.make("2-to-3", { from: v2, to: v3 })`${sameId}`;
+		const history = History.make({
+			versions: [v1, v3],
+			migrations: [
+				empty,
+				conflictingAction,
+				Migration.make("1-to-2", { from: v1, to: v2 })`${renameTimeout}`,
+			],
+		});
+
+		expect(History.validate(history).map((issue) => [issue._tag, issue.subject])).toEqual([
+			["ConflictingAction", "rename-timeout"],
+			["ConflictingChange", timeoutRenamed.id],
+			["EmptyMigration", "empty"],
+			["UnregisteredVersion", "2.0.0"],
+		]);
+	});
+
+	it("rejects unsupported interpolations in types and at declaration time", () => {
+		// @ts-expect-error objects are not interpolations.
+		expect(() => Migration.make("bad", { from: v1, to: v2 })`${{ not: "an action" }}`).toThrow(
+			"cannot interpolate an object",
+		);
+		// @ts-expect-error an instruction block cannot declare another occurrence.
+		expect(() => Migration.instruction(renameTimeout)`${renameTimeout}`).toThrow(
+			"would declare another occurrence",
+		);
+	});
+});

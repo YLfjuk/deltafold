@@ -2,10 +2,16 @@
  * deltafold models version history, resolves migration instructions between versions,
  * and generates changelogs.
  *
- * The public API is not implemented yet.
- *
  * @packageDocumentation
  */
 
-// oxlint-disable-next-line unicorn/require-module-specifiers -- Remove with the first public export.
-export {};
+export * as Action from "./action.ts";
+export * as Change from "./change.ts";
+export * as Handler from "./handler.ts";
+export * as History from "./history.ts";
+export * as Migration from "./migration.ts";
+export * as Package from "./package.ts";
+export * as Plan from "./plan.ts";
+export * as Rule from "./rule.ts";
+export * as Shortcut from "./shortcut.ts";
+export * as Version from "./version.ts";
