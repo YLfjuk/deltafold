@@ -1,8 +1,7 @@
 # deltafold
 
 deltafold is a planned TypeScript library for modeling version history,
-resolving migration instructions between versions, and generating changelogs. It
-targets Effect 4.
+resolving migration instructions between versions, and generating changelogs.
 
 The repository has a workspace and tooling setup and an empty `deltafold` package
 in `packages/deltafold`. No library API or release exists yet.
