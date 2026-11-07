@@ -64,7 +64,8 @@ Repository files:
   Version updates wait 7 days after release. `vite-plus` is excluded because its
   `vite` and `vitest` overrides in `pnpm-workspace.yaml` must change with it.
 - The CI workflow keeps read-only `contents` permission and uses no
-  `pull_request_target` trigger.
+  `pull_request_target` trigger. Its check job fails if install, build, or tests
+  change a tracked file or leave a file that is not ignored.
 - Branch protection, rulesets, labels, and security settings are configured on
   GitHub, outside this repository.
 
@@ -93,8 +94,20 @@ Layout and conventions:
   of `vite-plus`. pnpm links them only when the package that depends on
   `vite-plus` also declares them; otherwise they resolve through pnpm's hidden
   hoisting.
+- The default pnpm catalog in `pnpm-workspace.yaml` holds the shared versions.
+  Every devDependency uses `catalog:`. The catalog stays in `pnpm-workspace.yaml`
+  because Dependabot does not read catalogs split into other files. The `effect`
+  peer range stays explicit.
 - `exactOptionalPropertyTypes` is not in the shared base. A package can enable it
   when its API distinguishes a missing property from an explicit `undefined`.
+- `allowImportingTsExtensions` allows relative `.ts` imports. Only tsdown emits
+  files. `declaration` and `declarationMap` are on, so tsdown writes the `.d.ts.map`
+  that the bundled declarations reference. Type checking emits nothing.
+- The package publishes `dist` and `src`, so the JavaScript and declaration source
+  maps resolve. Published `exports` come from `publishConfig.exports` and do not
+  include the development condition.
+- Package metadata includes keywords, homepage, bugs, author, and a package
+  README.
 - `src/index.ts` exports nothing yet. Its targeted lint suppression goes away with
   the first public export.
 - No release workflow, npm token, or publish step is configured. `pnpm run
@@ -127,6 +140,9 @@ Layout and conventions:
   the pinned version on Windows. Upgrading pnpm, or running `npx pnpm@12.18.0`,
   works around it.
 - Publishing must go through pnpm, which applies `publishConfig.exports`.
+- With `sourcemap: true` and declaration maps off, the bundled `.d.ts` still ends
+  with a `sourceMappingURL` comment, but no map is written. Turning on
+  `declarationMap` produces the map.
 - In CI, pnpm 12 fails the install when a dependency's build script was not
   approved. Locally it only warns. Removing a package can leave its optional
   peers (for example `tsx`, which pulls in `esbuild`) resolved in the lockfile, so

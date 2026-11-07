@@ -36,6 +36,11 @@ jobs:
             - run: pnpm run typecheck
             - run: pnpm run build
             - run: pnpm run test
+            - name: Check that checks left no changed or untracked files
+              shell: bash
+              run: |
+                  git status --porcelain
+                  test -z "$(git status --porcelain)"
 
     node:
         name: Node ${{ matrix.node }}
