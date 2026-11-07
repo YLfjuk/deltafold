@@ -48,6 +48,26 @@ documentation, orwell-clear-writing, ponytail, react-conventions,
 typescript-conventions, and unslop. They are copies rather than symlinks, so they
 check out correctly where Git does not create symlinks. Oxfmt ignores them.
 
+Repository files:
+
+- `.github/CODEOWNERS` assigns every path to @YLfjuk.
+- `.github/pull_request_template.md` covers validation, whether a changeset applies,
+  and a public-content check.
+- Bug and feature issue forms apply the existing `bug` and `enhancement` labels.
+  Blank issues stay enabled, and a contact link points to the security policy.
+- `CONTRIBUTING.md` covers requirements, setup, scripts, changesets, and
+  pull-request expectations. `SECURITY.md` asks for reports through GitHub
+  private vulnerability reporting, with no promised response time.
+- `.github/dependabot.yml` checks GitHub Actions and the pnpm workspace weekly,
+  with the `dependencies` label. Actions updates are grouped together. Effect
+  packages share one group, and other minor and patch updates share another.
+  Version updates wait 7 days after release. `vite-plus` is excluded because its
+  `vite` and `vitest` overrides in `pnpm-workspace.yaml` must change with it.
+- The CI workflow keeps read-only `contents` permission and uses no
+  `pull_request_target` trigger.
+- Branch protection, rulesets, labels, and security settings are configured on
+  GitHub, outside this repository.
+
 Node requirement for development and CI: `^22.18.0 || ^24.11.0 || >=26.0.0`, the
 range required by Vite+, Vitest 5, and tsdown. `.node-version` selects Node 24.
 The library targets ES2022 without Node types, and its own runtime support

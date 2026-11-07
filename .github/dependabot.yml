@@ -1,0 +1,28 @@
+version: 2
+updates:
+    - package-ecosystem: github-actions
+      directory: /
+      schedule:
+          interval: weekly
+      labels: [dependencies]
+      groups:
+          github-actions:
+              patterns: ["*"]
+
+    # pnpm workspace; Dependabot uses the npm ecosystem for pnpm.
+    - package-ecosystem: npm
+      directory: /
+      schedule:
+          interval: weekly
+      labels: [dependencies]
+      cooldown:
+          default-days: 7
+      ignore:
+          # The vite and vitest overrides in pnpm-workspace.yaml must match the
+          # vite-plus version, so update vite-plus by hand together with them.
+          - dependency-name: vite-plus
+      groups:
+          effect:
+              patterns: ["effect", "@effect/*"]
+          routine:
+              update-types: [minor, patch]

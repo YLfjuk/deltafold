@@ -12,21 +12,9 @@ in `packages/deltafold`. No library API or release exists yet.
 
 ## Development
 
-Requirements: Node.js `^22.18.0 || ^24.11.0 || >=26.0.0` and pnpm 12. The
-`packageManager` field pins the pnpm version, and `.node-version` selects Node 24
-for local work and CI.
-
-```sh
-pnpm install
-pnpm run build         # vp pack, through Turborepo
-pnpm run typecheck     # tsc --noEmit, through Turborepo
-pnpm run test          # vp test, through Turborepo
-pnpm run lint          # vp lint (Oxlint, type-aware)
-pnpm run format:check  # vp fmt --check (Oxfmt)
-pnpm run check         # all of the above
-```
-
-Record consumer-facing package changes with `pnpm run changeset`.
+Requirements: Node.js `^22.18.0 || ^24.11.0 || >=26.0.0` and pnpm 12. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for setup, checks, and changesets, and
+[SECURITY.md](SECURITY.md) for reporting vulnerabilities.
 
 Project agent skills are installed with [skills.sh](https://skills.sh) as copies in
 `.agents/skills` and `.claude/skills`. `skills-lock.json` records their sources.
