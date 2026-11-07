@@ -15,6 +15,9 @@ updates:
       schedule:
           interval: weekly
       labels: [dependencies]
+      # Keep in-range updates lockfile-only, so the shared effect range, which is
+      # also the published peer range, only rises when a change is deliberate.
+      versioning-strategy: increase-if-necessary
       cooldown:
           default-days: 7
       ignore:

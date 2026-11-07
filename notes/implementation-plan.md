@@ -96,8 +96,10 @@ Layout and conventions:
   hoisting.
 - The default pnpm catalog in `pnpm-workspace.yaml` holds the shared versions.
   Every devDependency uses `catalog:`. The catalog stays in `pnpm-workspace.yaml`
-  because Dependabot does not read catalogs split into other files. The `effect`
-  peer range stays explicit.
+  because Dependabot does not read catalogs split into other files. The catalog's
+  `effect` entry is the range `^4.1.2`, which serves as both the development
+  version and the published peer range. Dependabot uses `increase-if-necessary`,
+  so updates within that range change only the lockfile.
 - `exactOptionalPropertyTypes` is not in the shared base. A package can enable it
   when its API distinguishes a missing property from an explicit `undefined`.
 - `allowImportingTsExtensions` allows relative `.ts` imports. Only tsdown emits
