@@ -578,7 +578,10 @@ export const effect = <A extends Action.Any, H extends Handler.Any = never>(
 	>;
 
 type ServicesOption<R> = [R] extends [never]
-	? { readonly services?: undefined }
+	? {
+			/** Optional services, such as `Handler.layer` bindings for run-time coverage plans. */
+			readonly services?: Context.Context<any> | Layer.Layer<any, unknown>;
+		}
 	: {
 			/** Supplies the handlers' Effect services and any `Handler.layer` bindings. */
 			readonly services: Context.Context<R> | Layer.Layer<R, unknown>;

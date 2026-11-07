@@ -558,6 +558,38 @@ describe("Executor behavior", () => {
 		expect(error.message).toContain("may still be running");
 	});
 
+	it("reports settlement for Promise handlers bound through Handler.layer", async () => {
+		const stubborn = touch("stubborn");
+		const controller = new AbortController();
+		const bindings = Handler.layer([
+			Handler.promise(stubborn, () => {
+				controller.abort();
+
+				return new Promise<void>(() => {});
+			}),
+		]);
+		const error: unknown = await Executor.runPromise(
+			Plan.withRuntimeCoverage(planOf(single(stubborn), "2.0.0")),
+			{
+				signal: controller.signal,
+				settleTimeout: "20 millis",
+				services: bindings,
+			},
+		).then(
+			() => undefined,
+			(cause: unknown) => cause,
+		);
+
+		expect(
+			error instanceof Executor.ExecutionInterrupted && error.report.occurrences[0]?.outcome,
+		).toEqual({
+			_tag: "Interrupted",
+			phase: "body",
+			reason: "cancelled",
+			settled: false,
+		});
+	});
+
 	it("rejects Promise execution with the partial report", async () => {
 		const done = touch("done");
 		const fails = touch("fails");
