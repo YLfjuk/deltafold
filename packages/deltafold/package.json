@@ -1,7 +1,7 @@
 {
 	"name": "deltafold",
 	"version": "0.0.0",
-	"description": "Model version history and resolve migration instructions between versions.",
+	"description": "Model version history, resolve migration instructions between versions, and generate changelogs.",
 	"keywords": [
 		"changelog",
 		"effect",

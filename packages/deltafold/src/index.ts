@@ -1,5 +1,6 @@
 /**
- * deltafold models version history and resolves migration instructions between versions.
+ * deltafold models version history, resolves migration instructions between versions,
+ * and generates changelogs.
  *
  * The public API is not implemented yet.
  *
