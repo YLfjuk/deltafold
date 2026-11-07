@@ -274,6 +274,84 @@ Suggested order:
    side effects before claiming safe resume. Retry/rollback remain explicitly
    configured, off by default; do not confuse downgrades with execution undo.
 
+### Phase 3 progress
+
+Each item lists the tests that provide its evidence. "Prototype choice" marks a
+behavior picked to make the prototype work; it still needs the user's
+confirmation before it becomes a contract.
+
+1. Handler typing: done. `test/handler.test.ts` and the typing cases in
+   `test/executor.test.ts` cover payload inference, declared services, the
+   reserved `signal` name, error guards and schemas, `UnexpectedHandlerError`, an
+   ordinary mixed handler array, a third-party factory
+   (`test/__fixtures__/codemod.ts`), missing-binding requirements, `Handler.layer`,
+   and `Executor.runPromise` service checks, each with negative cases.
+   Findings: TypeScript infers type predicates, so
+   `(cause: unknown) => cause instanceof X` is a valid guard. `Schema.is(schema)`
+   is generic and breaks inference, so `errors` accepts the schema itself. Guards
+   must annotate their parameter type, or the whole `errors` tuple falls back to
+   its default. Layer-bound handlers report failures as `BoundHandlerError`,
+   because a binding is looked up by identifier and its error type is not visible
+   to the executor.
+2. Model: done. Change, Action, Version, Migration (`make`, `noop`, `withRevert`),
+   Rule, Shortcut, History, and Package. `History.make` does not throw;
+   `History.validate` returns aggregated issues in a deterministic order.
+   Prototype choices: `Migration.noop(id, { reversible: true })` declares the
+   reverse zero-work transition. A non-noop migration with no content is an
+   `EmptyMigration` issue. Repeating an action in one migration side is a
+   `DuplicateOccurrence` issue that points to `Action.ref`; intentional
+   repetition uses separate action instances.
+3. Routing: done in `test/history.test.ts`, scenarios 1 to 7. Migrations with
+   identical endpoints are one complementary edge and all run in registration
+   order. A reverse edge exists only when every migration of the forward group
+   has a revert. A route never mixes moves toward ancestors with moves toward
+   descendants; explicit cross-branch migrations fit either direction. Route
+   identifiers are version identifiers joined by `>`, with shortcut hops written
+   as `[id]`. Prototype choice: several candidates fail as `AmbiguousRoute`
+   unless the `route` option selects one or an opt-in policy
+   (`fewest-actions`, `fewest-migrations`, `lowest-cost`, `prefer-shortcuts`)
+   leaves exactly one. `prefer-shortcuts` only drops a route that a candidate
+   reproduces with a shortcut; unrelated routes stay ambiguous. Unsupported
+   routes report reachable versions, the closest by ancestry distance, and
+   blockers.
+4. Rewrites and groups: done. Rules match consecutive occurrences on a route's
+   sequential spine, across migration boundaries, and inside one parallel
+   branch. A parallel pattern is an explicit structural rule. Text-only
+   migrations block matching. The resolver explores every rule application and
+   reports `RewriteCycle`, `ConflictingRewrites`, or `RewriteLimitExceeded`
+   (10 000 states or 256 chained applications); equal outcomes reached by
+   different rules are accepted. Replacement occurrence identifiers name the
+   rule and the replaced occurrences. Prototype choice: a replacement that
+   spans migrations belongs to the step of its first replaced occurrence.
+5. Execution: done in `test/executor.test.ts`. Coverage is checked before any
+   precondition or body runs. Failures stop admission while started actions
+   settle. Explicit cancellation interrupts in-flight actions; a timeout
+   interrupts only the timed-out action. Reports state whether an interrupted
+   Promise settled within `settleTimeout` (5 seconds by default, a prototype
+   choice). Dry runs evaluate preconditions only when no earlier action in the
+   same dependency chain could have changed state; independent parallel
+   branches are evaluated against the state before the group.
+6. Prose ownership: partly done. Resolved guides drop cancelled instruction
+   blocks, render replacements at their first replaced occurrence, keep shared
+   prose, keep text-only migrations, and omit steps whose actions were all
+   removed. The document rendering is still to do.
+7. Document layer: not started.
+8. Durability investigation: not started.
+
+Open questions for the user, with the current prototype behavior:
+
+- Route selection default: ambiguity fails, including when a newly added
+  shortcut introduces a second candidate. Should `prefer-shortcuts` become the
+  default?
+- Repeated interpolation: currently a validation error. Alternative: it
+  declares a second occurrence with a positional identifier.
+- Static coverage uses the history's whole action union, so `runPromise` on a
+  resolved plan needs handlers for every action in the history.
+  `Plan.withRuntimeCoverage` opts out. Is that the right default for Promise
+  users?
+- Cross-migration replacement placement (first replaced step) and the
+  `settleTimeout` default.
+
 Acceptance evidence should cover the scenarios in api-design.md and reviewer
 findings. In particular, establish stable occurrence identifiers and actionable
 error/report contracts where necessary. Type/schema options, repeated occurrences,
