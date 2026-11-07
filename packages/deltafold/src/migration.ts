@@ -16,14 +16,23 @@ import type { Version } from "./version.ts";
 export { instruction };
 export type { Instruction, Prose, ProseValue, Text } from "./instruction.ts";
 
-/** Prose, mentions, and occurrence-declaring steps in template order. */
+/**
+ * Prose, mentions, and occurrence-declaring steps in template order.
+ *
+ * @since @next
+ */
 export type Content<A extends Action.Any = Action.Any> = ReadonlyArray<
 	Text | Action.Ref | Action.Step<A>
 >;
 
-/** Values accepted in migration templates. */
+/**
+ * Values accepted in migration templates.
+ *
+ * @since @next
+ */
 export type Interpolation = Scalar | Action.Ref | Action.Step;
 
+/** @since @next */
 export type Migration<A extends Action.Any = Action.Any> = {
 	readonly _tag: "Migration";
 	readonly id: string;
@@ -42,12 +51,21 @@ export type Migration<A extends Action.Any = Action.Any> = {
 	readonly "~actions"?: A;
 };
 
-/** Any migration. */
+/**
+ * Any migration.
+ *
+ * @since @next
+ */
 export type Any = Migration<any>;
 
-/** The action instances a migration can contribute to a plan. */
+/**
+ * The action instances a migration can contribute to a plan.
+ *
+ * @since @next
+ */
 export type ActionsOf<M> = M extends Migration<infer A> ? A : never;
 
+/** @since @next */
 export type Options = {
 	readonly from: Version;
 	readonly to: Version;
@@ -55,6 +73,7 @@ export type Options = {
 	readonly cost?: number;
 };
 
+/** @since @next */
 export const isMigration = (value: unknown): value is Any => Predicate.isTagged(value, "Migration");
 
 const isStep = (value: unknown): value is Action.Step =>
@@ -81,7 +100,7 @@ const checkStep = (value: unknown, context: string): void => {
 };
 
 /** Builds content from a tagged template. */
-export const content = (
+const content = (
 	strings: ReadonlyArray<string>,
 	values: ReadonlyArray<unknown>,
 	context: string,
@@ -141,6 +160,8 @@ export const content = (
  * 	${renameExportA}
  * `;
  * ```
+ *
+ * @since @next
  */
 export const make =
 	(id: string, options: Options) =>
@@ -159,6 +180,7 @@ export const make =
 		revert: undefined,
 	});
 
+/** @since @next */
 export type NoopOptions = Options & {
 	/** Also declares the reverse transition as zero-work. */
 	readonly reversible?: boolean;
@@ -168,6 +190,8 @@ export type NoopOptions = Options & {
  * Declares a supported transition that requires no consumer work. It is a directed edge
  * like any migration. Do not use it to hide missing support for changes that need
  * instructions.
+ *
+ * @since @next
  */
 export const noop = (id: string, options: NoopOptions): Migration<never> => ({
 	_tag: "Migration",
@@ -193,6 +217,8 @@ export const noop = (id: string, options: NoopOptions): Migration<never> => ({
  * 	${restoreTimeout}
  * `;
  * ```
+ *
+ * @since @next
  */
 export const withRevert =
 	<A extends Action.Any>(migration: Migration<A>) =>
@@ -203,14 +229,3 @@ export const withRevert =
 		...migration,
 		revert: content(strings, values, `Revert of migration "${migration.id}"`),
 	});
-
-/** Whether content declares at least one occurrence. */
-export const hasSteps = (value: Content): boolean => value.some(isStep);
-
-/** Whether content has any prose or mentions. */
-export const hasProse = (value: Content): boolean =>
-	value.some(
-		(fragment) =>
-			fragment._tag === "ActionRef" ||
-			(fragment._tag === "Text" && fragment.text.trim() !== ""),
-	);

@@ -8,7 +8,11 @@ import { Predicate } from "effect";
 
 import { describeValue, dedent, isScalar, type Scalar } from "./internal/template.ts";
 
-/** Change classifications. Breaking status is recorded separately. */
+/**
+ * Change classifications. Breaking status is recorded separately.
+ *
+ * @since @next
+ */
 export const Kind = {
 	Added: "added",
 	Changed: "changed",
@@ -16,8 +20,10 @@ export const Kind = {
 	Fixed: "fixed",
 } as const;
 
+/** @since @next */
 export type Kind = (typeof Kind)[keyof typeof Kind];
 
+/** @since @next */
 export type Change = {
 	readonly _tag: "Change";
 	/** Stable identifier. Editing the description does not change identity. */
@@ -31,6 +37,7 @@ export type Change = {
 	readonly backportOf: Change | undefined;
 };
 
+/** @since @next */
 export type Options = {
 	readonly kind: Kind;
 	readonly breaking?: boolean;
@@ -50,6 +57,8 @@ export type Options = {
  * 	Rename the timeout configuration option to requestTimeout.
  * `;
  * ```
+ *
+ * @since @next
  */
 export const make =
 	(id: string, options: Options) =>
@@ -78,15 +87,5 @@ export const make =
 		};
 	};
 
+/** @since @next */
 export const isChange = (value: unknown): value is Change => Predicate.isTagged(value, "Change");
-
-/** Whether two definitions with the same identifier describe the same change. */
-export const sameDefinition = (self: Change, that: Change): boolean =>
-	self === that ||
-	(self.id === that.id &&
-		self.kind === that.kind &&
-		self.breaking === that.breaking &&
-		self.description === that.description &&
-		self.backportOf?.id === that.backportOf?.id &&
-		self.reverts.length === that.reverts.length &&
-		self.reverts.every((change, index) => change.id === that.reverts[index]?.id));

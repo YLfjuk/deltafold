@@ -3,7 +3,11 @@ import { Data } from "effect";
 import type { Issue } from "./internal/validate.ts";
 import type { RequestDirection } from "./plan.ts";
 
-/** A candidate route, summarized for diagnostics and explicit selection. */
+/**
+ * A candidate route, summarized for diagnostics and explicit selection.
+ *
+ * @since @next
+ */
 export type RouteSummary = {
 	/** Pass this as the `route` option to select the route. */
 	readonly id: string;
@@ -16,14 +20,22 @@ export type RouteSummary = {
 	readonly failure: string | undefined;
 };
 
-/** An ancestry hop with no declared route in the requested direction. */
+/**
+ * An ancestry hop with no declared route in the requested direction.
+ *
+ * @since @next
+ */
 export type Blocker = {
 	readonly from: string;
 	readonly to: string;
 	readonly reason: string;
 };
 
-/** The history's declarations are invalid. Resolution needs a valid history. */
+/**
+ * The history's declarations are invalid. Resolution needs a valid history.
+ *
+ * @since @next
+ */
 export class InvalidHistory extends Data.TaggedError("InvalidHistory")<{
 	readonly issues: ReadonlyArray<Issue>;
 }> {
@@ -34,6 +46,7 @@ export class InvalidHistory extends Data.TaggedError("InvalidHistory")<{
 	}
 }
 
+/** @since @next */
 export class UnknownVersion extends Data.TaggedError("UnknownVersion")<{
 	readonly version: string;
 	readonly known: ReadonlyArray<string>;
@@ -46,6 +59,8 @@ export class UnknownVersion extends Data.TaggedError("UnknownVersion")<{
 /**
  * No declared route connects the versions. This never means that no work is needed:
  * declare `Migration.noop` for a supported zero-work transition.
+ *
+ * @since @next
  */
 export class UnsupportedRoute extends Data.TaggedError("UnsupportedRoute")<{
 	readonly from: string;
@@ -65,7 +80,11 @@ export class UnsupportedRoute extends Data.TaggedError("UnsupportedRoute")<{
 	}
 }
 
-/** Several routes connect the versions and no selection or policy chose one. */
+/**
+ * Several routes connect the versions and no selection or policy chose one.
+ *
+ * @since @next
+ */
 export class AmbiguousRoute extends Data.TaggedError("AmbiguousRoute")<{
 	readonly from: string;
 	readonly to: string;
@@ -81,7 +100,11 @@ export class AmbiguousRoute extends Data.TaggedError("AmbiguousRoute")<{
 	}
 }
 
-/** The `route` option names no candidate route. */
+/**
+ * The `route` option names no candidate route.
+ *
+ * @since @next
+ */
 export class UnknownRoute extends Data.TaggedError("UnknownRoute")<{
 	readonly route: string;
 	readonly candidates: ReadonlyArray<RouteSummary>;
@@ -93,7 +116,11 @@ export class UnknownRoute extends Data.TaggedError("UnknownRoute")<{
 	}
 }
 
-/** Rules rewrite a sequence back into itself. */
+/**
+ * Rules rewrite a sequence back into itself.
+ *
+ * @since @next
+ */
 export class RewriteCycle extends Data.TaggedError("RewriteCycle")<{
 	readonly route: string;
 	readonly rules: ReadonlyArray<string>;
@@ -104,7 +131,11 @@ export class RewriteCycle extends Data.TaggedError("RewriteCycle")<{
 	}
 }
 
-/** Rules can produce different results depending on which applies first. */
+/**
+ * Rules can produce different results depending on which applies first.
+ *
+ * @since @next
+ */
 export class ConflictingRewrites extends Data.TaggedError("ConflictingRewrites")<{
 	readonly route: string;
 	readonly outcomes: ReadonlyArray<{
@@ -120,6 +151,8 @@ export class ConflictingRewrites extends Data.TaggedError("ConflictingRewrites")
 /**
  * Optimization explored too many states or chained too many rule applications, for
  * example because a rule keeps growing the sequence.
+ *
+ * @since @next
  */
 export class RewriteLimitExceeded extends Data.TaggedError("RewriteLimitExceeded")<{
 	readonly route: string;
@@ -133,7 +166,11 @@ export class RewriteLimitExceeded extends Data.TaggedError("RewriteLimitExceeded
 	}
 }
 
-/** More candidate routes exist than the resolver enumerates. */
+/**
+ * More candidate routes exist than the resolver enumerates.
+ *
+ * @since @next
+ */
 export class TooManyRoutes extends Data.TaggedError("TooManyRoutes")<{
 	readonly from: string;
 	readonly to: string;
@@ -144,8 +181,10 @@ export class TooManyRoutes extends Data.TaggedError("TooManyRoutes")<{
 	}
 }
 
+/** @since @next */
 export type RewriteError = RewriteCycle | ConflictingRewrites | RewriteLimitExceeded;
 
+/** @since @next */
 export type ResolveError =
 	| InvalidHistory
 	| UnknownVersion

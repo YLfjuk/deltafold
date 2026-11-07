@@ -4,22 +4,36 @@ import type * as Action from "./action.ts";
 import { isAction, isRef } from "./action.ts";
 import { describeValue, dedent, isScalar, type Scalar } from "./internal/template.ts";
 
-/** Literal prose. */
+/**
+ * Literal prose.
+ *
+ * @since @next
+ */
 export type Text = {
 	readonly _tag: "Text";
 	readonly text: string;
 };
 
-/** Prose content: text and action mentions. */
+/**
+ * Prose content: text and action mentions.
+ *
+ * @since @next
+ */
 export type Prose = ReadonlyArray<Text | Action.Ref>;
 
-/** Values accepted inside prose templates. */
+/**
+ * Values accepted inside prose templates.
+ *
+ * @since @next
+ */
 export type ProseValue = Scalar | Action.Ref;
 
 /**
  * Prose associated with exactly one action occurrence. The block declares that
  * occurrence; when optimization removes the action, the block leaves the resolved guide
  * with it.
+ *
+ * @since @next
  */
 export type Instruction<A extends Action.Any = Action.Any> = {
 	readonly _tag: "Instruction";
@@ -84,6 +98,8 @@ export const prose = (
  * 	Rename the timeout option, keeping its existing value.
  * `;
  * ```
+ *
+ * @since @next
  */
 export const instruction =
 	<A extends Action.Any>(action: A) =>

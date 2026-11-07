@@ -3,7 +3,6 @@ import { Array as Arr, Graph, Order, Result, SemVer } from "effect";
 import type * as Action from "../action.ts";
 import type { Change } from "../change.ts";
 import type * as Migration from "../migration.ts";
-import { hasProse } from "../migration.ts";
 import type {
 	Direction,
 	Explanation,
@@ -32,9 +31,13 @@ import type * as Shortcut from "../shortcut.ts";
 import type { Version } from "../version.ts";
 import { resolveGuide } from "./guide.ts";
 import { itemsOf, occurrencesOf, rewrite, type Item, type MakeOccurrence } from "./rewrite.ts";
-import { actionsOfSteps, stepsOf, type Declarations } from "./validate.ts";
+import { actionsOfSteps, hasProse, stepsOf, type Declarations } from "./validate.ts";
 
-/** Route policies for choosing between candidate routes. Each one is opt-in. */
+/**
+ * Route policies for choosing between candidate routes. Each one is opt-in.
+ *
+ * @since @next
+ */
 export type RoutePolicy =
 	| "fewest-actions"
 	| "fewest-migrations"
@@ -596,6 +599,7 @@ const unsupported = (context: Context, from: string, to: string, direction: Requ
 	});
 };
 
+/** @since @next */
 export type ResolveOptions = {
 	readonly from: Version | string;
 	readonly to: Version | string;
@@ -676,7 +680,11 @@ export const resolve = (
 		);
 	});
 
-/** A reachable destination and the identifiers of its candidate routes. */
+/**
+ * A reachable destination and the identifiers of its candidate routes.
+ *
+ * @since @next
+ */
 export type Destination = {
 	readonly version: Version;
 	readonly routes: ReadonlyArray<string>;

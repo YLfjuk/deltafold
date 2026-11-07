@@ -10,12 +10,18 @@ import { Context, Data, Effect, Layer, Predicate, Schema } from "effect";
 import type * as Action from "./action.ts";
 import { trackPromise } from "./internal/settlement.ts";
 
-/** Where a handler failure happened. */
+/**
+ * Where a handler failure happened.
+ *
+ * @since @next
+ */
 export type Phase = "precondition" | "body";
 
 /**
  * A Promise handler rejected or threw a value that none of its declared error guards
  * recognized.
+ *
+ * @since @next
  */
 export class UnexpectedHandlerError extends Data.TaggedError("UnexpectedHandlerError")<{
 	readonly actionId: string;
@@ -32,6 +38,8 @@ export class UnexpectedHandlerError extends Data.TaggedError("UnexpectedHandlerE
  * A handler supplied through `Handler.layer` failed. Layer bindings are looked up by
  * action identifier at run time, so their declared error types are not visible to the
  * executor. The original error is kept in `cause`.
+ *
+ * @since @next
  */
 export class BoundHandlerError extends Data.TaggedError("BoundHandlerError")<{
 	readonly actionId: string;
@@ -47,6 +55,8 @@ const TypeId = "~deltafold/Handler";
 /**
  * Implements one action instance. `E` and `R` are the errors and Effect services of the
  * body and precondition together.
+ *
+ * @since @next
  */
 export type Handler<out A extends Action.Any, out E = never, out R = never> = {
 	readonly [TypeId]: typeof TypeId;
@@ -59,18 +69,35 @@ export type Handler<out A extends Action.Any, out E = never, out R = never> = {
 	readonly skipReason: string;
 };
 
-/** Any handler. */
+/**
+ * Any handler.
+ *
+ * @since @next
+ */
 export type Any = Handler<Action.Any, any, any>;
 
-/** The errors of a handler or a union of handlers. */
+/**
+ * The errors of a handler or a union of handlers.
+ *
+ * @since @next
+ */
 export type Error<H> = H extends Handler<any, infer E, any> ? E : never;
 
-/** The Effect services of a handler or a union of handlers. */
+/**
+ * The Effect services of a handler or a union of handlers.
+ *
+ * @since @next
+ */
 export type Services<H> = H extends Handler<any, any, infer R> ? R : never;
 
-/** The action identifiers implemented by a handler or a union of handlers. */
+/**
+ * The action identifiers implemented by a handler or a union of handlers.
+ *
+ * @since @next
+ */
 export type ActionId<H> = H extends Handler<infer A, any, any> ? A["id"] : never;
 
+/** @since @next */
 export const isHandler = (value: unknown): value is Any => Predicate.hasProperty(value, TypeId);
 
 type SkipReason<P> = string | ((payload: P) => string);
@@ -81,7 +108,11 @@ const skipReasonOf = <P>(action: Action.Action<string, P>, reason: SkipReason<P>
 	return typeof reason === "string" ? reason : reason(action.payload);
 };
 
-/** Named Effect services that a Promise handler declares. */
+/**
+ * Named Effect services that a Promise handler declares.
+ *
+ * @since @next
+ */
 export type ServiceMap = { readonly [name: string]: Context.Key<any, any> };
 
 // oxlint-disable-next-line typescript/no-generated-empty-object-type -- A handler without services declares an empty service map.
@@ -91,6 +122,8 @@ type NoServices = Record<never, never>;
  * The second argument of Promise handler callbacks: the declared services, resolved,
  * and the `AbortSignal` that `Effect.tryPromise` aborts on interruption. `signal` is
  * reserved and cannot name a service.
+ *
+ * @since @next
  */
 export type PromiseContext<S extends ServiceMap = NoServices> = {
 	readonly [K in keyof S]: S[K]["Service"];
@@ -104,6 +137,8 @@ type ServiceIds<S extends ServiceMap> = {
  * Recognizes a declared rejection: a schema, or a type guard such as an `instanceof`
  * check. Guards must declare their parameter type, for example
  * `(cause: unknown): cause is NotFound => cause instanceof NotFound`.
+ *
+ * @since @next
  */
 export type ErrorGuard = Schema.Top | ((cause: unknown) => cause is any);
 
@@ -124,6 +159,7 @@ type ReservedSignal<S> = "signal" extends keyof S
 		}
 	: unknown;
 
+/** @since @next */
 export type PromiseOptions<P, S extends ServiceMap, G extends ReadonlyArray<ErrorGuard>> = {
 	/** Effect services resolved for the callbacks and added to the handler requirements. */
 	readonly services?: S;
@@ -158,6 +194,8 @@ const declaredError =
  * 	{ services: { editor: ConfigEditor } },
  * );
  * ```
+ *
+ * @since @next
  */
 export const promise = <
 	A extends Action.Any,
@@ -215,6 +253,7 @@ export const promise = <
 	};
 };
 
+/** @since @next */
 export type EffectOptions<P, E, R> = {
 	/** Read-only precondition. Succeeding with `false` skips the occurrence. */
 	readonly when?: (payload: P) => Effect.Effect<boolean, E, R>;
@@ -224,6 +263,8 @@ export type EffectOptions<P, E, R> = {
 /**
  * Implements an action with an Effect. The body keeps its own errors and services, and
  * stops through native Effect interruption.
+ *
+ * @since @next
  */
 export const effect = <A extends Action.Any, E = never, R = never, E2 = never, R2 = never>(
 	action: A,
@@ -241,7 +282,11 @@ export const effect = <A extends Action.Any, E = never, R = never, E2 = never, R
 	};
 };
 
-/** The Effect service that holds the handler bound to one action identifier. */
+/**
+ * The Effect service that holds the handler bound to one action identifier.
+ *
+ * @since @next
+ */
 export type Binding<Id extends string> = {
 	readonly _tag: "deltafold/Handler.Binding";
 	readonly actionId: Id;
@@ -251,19 +296,19 @@ type BoundHandler = Handler<Action.Any, BoundHandlerError>;
 
 const bindingPrefix = "deltafold/Handler.Binding/";
 
-/** The context key for the handler bound to `actionId`. */
+/**
+ * The context key for the handler bound to `actionId`.
+ *
+ * @since @next
+ */
 export const bindingKey = <Id extends string>(actionId: Id) =>
 	Context.Service<Binding<Id>, BoundHandler>(`${bindingPrefix}${actionId}`);
-
-/** Looks up a bound handler in a context by action identifier. */
-export const findBinding = (
-	context: Context.Context<never>,
-	actionId: string,
-): BoundHandler | undefined => Context.getOrUndefined(context, bindingKey(actionId));
 
 /**
  * Provides handlers as Effect services. The layer requires the handlers' own services
  * and captures them when it is built, so executors see only `Binding` requirements.
+ *
+ * @since @next
  */
 export const layer = <const H extends ReadonlyArray<Any>>(
 	handlers: H,

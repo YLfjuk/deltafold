@@ -14,8 +14,13 @@ import type { Package } from "../package.ts";
 import type { GuideItem, Plan, Step } from "../plan.ts";
 import type { Release, Version } from "../version.ts";
 import * as Document from "./document.ts";
+import { asRelease, blocksOf, insert } from "./sections.ts";
 
-/** A change section of a release. The first section whose `select` matches wins. */
+/**
+ * A change section of a release. The first section whose `select` matches wins.
+ *
+ * @since @next
+ */
 export type SectionDefinition = {
 	readonly _tag: "ChangelogSection";
 	readonly id: string;
@@ -23,12 +28,17 @@ export type SectionDefinition = {
 	readonly select: (change: Change) => boolean;
 };
 
+/** @since @next */
 export const section = (
 	id: string,
 	options: { readonly title: string; readonly select: (change: Change) => boolean },
 ): SectionDefinition => ({ _tag: "ChangelogSection", id, ...options });
 
-/** The sections used when `Changelog.make` receives none. */
+/**
+ * The sections used when `Changelog.make` receives none.
+ *
+ * @since @next
+ */
 export const defaultSections: ReadonlyArray<SectionDefinition> = [
 	section("breaking", { title: "Breaking changes", select: (change) => change.breaking }),
 	section("added", { title: "Features", select: (change) => change.kind === "added" }),
@@ -37,13 +47,18 @@ export const defaultSections: ReadonlyArray<SectionDefinition> = [
 	section("fixed", { title: "Fixes", select: (change) => change.kind === "fixed" }),
 ];
 
-/** Release metadata does not match the package history. */
+/**
+ * Release metadata does not match the package history.
+ *
+ * @since @next
+ */
 export class ReleaseMetadataError extends Data.TaggedError("ReleaseMetadataError")<{
 	readonly reason: "duplicate" | "unrelated" | "missing";
 	readonly versions: ReadonlyArray<string>;
 	readonly message: string;
 }> {}
 
+/** @since @next */
 export type HistoryOptions<M> = {
 	/** Release metadata annotations, one per included version, in any order. */
 	readonly releases: ReadonlyArray<Release<M>>;
@@ -51,6 +66,7 @@ export type HistoryOptions<M> = {
 	readonly versions?: ReadonlyArray<Version>;
 };
 
+/** @since @next */
 export type GuideOptions = {
 	/** The modeled package, for the guide title. */
 	readonly package?: Package;
@@ -58,6 +74,7 @@ export type GuideOptions = {
 	readonly explain?: boolean;
 };
 
+/** @since @next */
 export type Changelog<M> = {
 	readonly sections: ReadonlyArray<SectionDefinition>;
 	readonly plugins: ReadonlyArray<Document.Plugin<M>>;
@@ -81,6 +98,7 @@ export type Changelog<M> = {
 	readonly upgrade: (plan: Plan, options?: GuideOptions) => Document.Document;
 };
 
+/** @since @next */
 export type Options<M> = {
 	readonly sections?: ReadonlyArray<SectionDefinition>;
 	readonly plugins?: ReadonlyArray<Document.Plugin<M>>;
@@ -191,6 +209,8 @@ const stepId = (step: Step) =>
  * });
  * Markdown.render(changelog.history(widgets, { releases: [release100, release200] }));
  * ```
+ *
+ * @since @next
  */
 export const make = <M = never>(options: Options<M> = {}): Changelog<M> => {
 	const sections = options.sections ?? defaultSections;
@@ -234,7 +254,7 @@ export const make = <M = never>(options: Options<M> = {}): Changelog<M> => {
 	};
 
 	const releaseSection = (context: Document.ReleaseContext<M>): Document.Section => {
-		let result = Document.asRelease(
+		let result = asRelease(
 			Document.Section(context.version.id, {
 				title: context.version.id,
 				children: changeSections(context.version.changes),
@@ -243,7 +263,7 @@ export const make = <M = never>(options: Options<M> = {}): Changelog<M> => {
 		);
 		for (const plugin of plugins) {
 			if (plugin.scope !== Document.Release) continue;
-			result = Document.insert(result, plugin.at, Document.blocksOf(plugin.resolve(context)));
+			result = insert(result, plugin.at, blocksOf(plugin.resolve(context)));
 		}
 
 		return result;
@@ -335,10 +355,10 @@ export const make = <M = never>(options: Options<M> = {}): Changelog<M> => {
 			});
 			for (const plugin of plugins) {
 				if (plugin.scope !== Document.History) continue;
-				root = Document.insert(
+				root = insert(
 					root,
 					plugin.at,
-					Document.blocksOf(plugin.resolve({ package: pkg, releases: contexts })),
+					blocksOf(plugin.resolve({ package: pkg, releases: contexts })),
 				);
 			}
 

@@ -1,14 +1,17 @@
 import { Array as Arr, Equal, Graph, Option, Order } from "effect";
 
 import type * as Action from "../action.ts";
-import { sameDefinition, type Change } from "../change.ts";
+import type { Change } from "../change.ts";
 import type * as Migration from "../migration.ts";
-import { hasProse, hasSteps } from "../migration.ts";
 import type * as Rule from "../rule.ts";
 import type * as Shortcut from "../shortcut.ts";
 import type { Version } from "../version.ts";
 
-/** A problem in a history's declarations. */
+/**
+ * A problem in a history's declarations.
+ *
+ * @since @next
+ */
 export type Issue = {
 	readonly _tag:
 		| "DuplicateVersion"
@@ -62,6 +65,28 @@ export const actionsOfSteps = (steps: ReadonlyArray<Action.Step>): ReadonlyArray
 export const stepsOf = (content: Migration.Content): ReadonlyArray<Action.Step> =>
 	content.flatMap((fragment) =>
 		fragment._tag === "Text" || fragment._tag === "ActionRef" ? [] : [fragment],
+	);
+
+/** Whether two definitions with the same identifier describe the same change. */
+const sameDefinition = (self: Change, that: Change): boolean =>
+	self === that ||
+	(self.id === that.id &&
+		self.kind === that.kind &&
+		self.breaking === that.breaking &&
+		self.description === that.description &&
+		self.backportOf?.id === that.backportOf?.id &&
+		self.reverts.length === that.reverts.length &&
+		self.reverts.every((change, index) => change.id === that.reverts[index]?.id));
+
+/** Whether content declares at least one occurrence. */
+const hasSteps = (content: Migration.Content): boolean => stepsOf(content).length > 0;
+
+/** Whether content has prose or mentions. */
+export const hasProse = (content: Migration.Content): boolean =>
+	content.some(
+		(fragment) =>
+			fragment._tag === "ActionRef" ||
+			(fragment._tag === "Text" && fragment.text.trim() !== ""),
 	);
 
 const sameAction = (self: Action.Any, that: Action.Any) =>
