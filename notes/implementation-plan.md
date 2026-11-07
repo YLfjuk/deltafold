@@ -331,12 +331,49 @@ confirmation before it becomes a contract.
    choice). Dry runs evaluate preconditions only when no earlier action in the
    same dependency chain could have changed state; independent parallel
    branches are evaluated against the state before the group.
-6. Prose ownership: partly done. Resolved guides drop cancelled instruction
-   blocks, render replacements at their first replaced occurrence, keep shared
-   prose, keep text-only migrations, and omit steps whose actions were all
-   removed. The document rendering is still to do.
-7. Document layer: not started.
-8. Durability investigation: not started.
+6. Prose ownership: done. Resolved guides drop cancelled instruction blocks,
+   render replacements at their first replaced occurrence with their own
+   instruction or description, keep shared prose, keep text-only migrations, and
+   omit steps whose actions were all removed. `changelog.upgrade(plan, { explain:
+   true })` lists the omissions and responsible rules. `test/changelog.test.ts`
+   renders both the guide and the history that keeps the original changes.
+7. Document layer: done in `test/changelog.test.ts`, scenarios 12 to 15. The
+   `deltafold/changelog` entry holds the Document semantic layer and
+   `Changelog.make`. `deltafold/markdown` and `deltafold/html` lower to mdast and
+   reuse mdast-util-to-markdown 2.2.0, mdast-util-to-hast 13.2.1, and
+   hast-util-to-html 9.0.5, which handle escaping in both formats. mdast is
+   adequate for headings, paragraphs, lists, links, inline code, and code blocks.
+   Prototype choices: releases are listed newest first by semver when every
+   identifier parses; `changelog.change` titles drafts "Unreleased"; a standalone
+   release has no package wrapper; release-scoped plugins run once per included
+   release and history-scoped plugins once per document; missing, duplicate, and
+   unrelated release metadata throw `ReleaseMetadataError`, and the `versions`
+   option limits a history. The serializer dependencies are pinned exactly; their
+   published ranges are decided before release.
+8. Durability investigation: done as a scratch probe outside the repository,
+   with effect 4.1.2, @effect/sql-sqlite-node 4.1.2 (built on `node:sqlite`), and
+   @effect/platform-node 4.1.2 on Node 24. A workflow ran three activities on
+   ClusterWorkflowEngine and SingleRunner with SQL runner storage in a SQLite
+   file. Each activity appended its side effect to a log, and the first run exited
+   after the second activity's side effect but before its result was saved.
+   - Resume replayed the first activity from storage without running it, ran the
+     second activity again, and finished. Recorded completion is reused, but the
+     interrupted step repeats: no exactly-once external writes.
+   - Recording a "started" marker activity before each body lets resume detect the
+     uncertain step and fail instead of repeating it.
+   - Resuming with a renamed activity ran the new definition without any error.
+     The engine does not detect definition changes, so deltafold would have to
+     record a plan fingerprint and compare it on resume.
+   - Activities retry interruptions up to 10 times by default.
+     `interruptRetryPolicy: Schedule.recurs(0)` turns that off, which deltafold
+     needs because retries are opt-in.
+   - The workflow and cluster modules are marked unstable, and the SQLite client
+     and crypto digest layer are Node-specific. Any durable executor belongs in
+     an optional Node entry point or package, not in the core.
+   Not built: a durable executor. A design would run each occurrence as a
+   guarded activity, store the plan fingerprint and route as the first activity,
+   fail on uncertain steps with an explicit recovery choice, and keep
+   stop-on-failure.
 
 Open questions for the user, with the current prototype behavior:
 
@@ -351,6 +388,8 @@ Open questions for the user, with the current prototype behavior:
   users?
 - Cross-migration replacement placement (first replaced step) and the
   `settleTimeout` default.
+- Whether to build the optional durable executor described in step 8, and
+  where it lives.
 
 Acceptance evidence should cover the scenarios in api-design.md and reviewer
 findings. In particular, establish stable occurrence identifiers and actionable
