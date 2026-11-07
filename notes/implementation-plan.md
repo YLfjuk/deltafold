@@ -153,6 +153,24 @@ Layout and conventions:
   peers (for example `tsx`, which pulls in `esbuild`) resolved in the lockfile, so
   check the lockfile diff after removing dependencies.
 
+### Deferred: TSDoc examples and generated API docs
+
+`@effect/docgen` is wanted eventually but is not required for the package, so it
+is deferred. A trial with version 4.1.2 found the following:
+
+- It copies each `@example` into `docs/examples`, type-checks the copies with the
+  project's `tsc` (TypeScript 7 worked), and writes Markdown API docs.
+- With `runExamples`, it also runs each example with `tsx`, and failed
+  assertions fail the run. Its convention is `node:assert`, which needs
+  `@types/node` in the examples' compiler options. Type-check only avoids `tsx`
+  and `@types/node` and keeps examples platform-neutral. Vitest still covers
+  behavior.
+- Requirements: a `homepage` field (now present), `@since` on every export by
+  default, Node `>=22.19.0` (one patch above the current minimum), and an
+  allowance for its `typescript` peer range (`<7`). It calls the `tsc` binary
+  and does not import TypeScript.
+- Still open: whether generated docs are committed or only produced in CI.
+
 ### Verification
 
 On Windows with Node 24.19.0 and pnpm 12.18.0: `pnpm install` reported no peer
