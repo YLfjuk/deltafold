@@ -41,6 +41,12 @@ Phase 3 starts only after the user explicitly approves the setup.
 | Effect | `effect` 4.1.2; the package declares `effect: ^4.1.2` as a peer dependency |
 | Versioning | Changesets 3.0.3, public access, base branch `main` |
 | CI | GitHub Actions: full checks on Ubuntu and Windows (Node 24), build and test on Node 22.18.0 and 26 |
+| Agent skills | skills.sh 1.7.6, project scope, copied into `.agents/skills` and `.claude/skills`, sources in `skills-lock.json` |
+
+Installed agent skills: abstraction-boundaries, codebase-structure, deslop,
+documentation, orwell-clear-writing, ponytail, react-conventions,
+typescript-conventions, and unslop. They are copies rather than symlinks, so they
+check out correctly where Git does not create symlinks. Oxfmt ignores them.
 
 Node requirement for development and CI: `^22.18.0 || ^24.11.0 || >=26.0.0`, the
 range required by Vite+, Vitest 5, and tsdown. `.node-version` selects Node 24.

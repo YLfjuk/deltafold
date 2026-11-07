@@ -28,6 +28,11 @@ pnpm run check         # all of the above
 
 Record consumer-facing package changes with `pnpm run changeset`.
 
+Project agent skills are installed with [skills.sh](https://skills.sh) as copies in
+`.agents/skills` and `.claude/skills`. `skills-lock.json` records their sources.
+Restore them with `npx skills experimental_install`. Update them with
+`npx skills update -p`.
+
 ## License
 
 [MIT](LICENSE)
