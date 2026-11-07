@@ -153,6 +153,25 @@ Layout and conventions:
   peers (for example `tsx`, which pulls in `esbuild`) resolved in the lockfile, so
   check the lockfile diff after removing dependencies.
 
+### Changelogs and releases
+
+- Changesets keeps its default formatter, `@changesets/cli/changelog`.
+  `pnpm run version` writes `packages/deltafold/CHANGELOG.md`, as a trial
+  confirmed. Entries are plain lines with a commit hash.
+- GitHub Releases are wanted but not configured. They need a release workflow,
+  for example Changesets' GitHub Action, with write permissions and a decision
+  about npm publishing.
+- Long term, deltafold should generate its own changelog. Changesets' changelog
+  plugin interface (`getReleaseLine`, `getDependencyReleaseLine`) formats one
+  line per changeset. Changesets itself writes the `## <version>` and
+  `### Major/Minor/Patch Changes` headings and prepends the entry to
+  `CHANGELOG.md`. A plugin therefore cannot express deltafold sections or
+  resolved migration guides. The likely integration sets `"changelog": false`,
+  which Changesets supports, and lets a deltafold step render `CHANGELOG.md`
+  from the package history. Release metadata from the release plan arrives as
+  `Version.withMetadata` annotations, which fits the release-tool adapter
+  boundary in the API design. This depends on the phase 3 document layer.
+
 ### Deferred: TSDoc examples and generated API docs
 
 `@effect/docgen` is wanted eventually but is not required for the package, so it
