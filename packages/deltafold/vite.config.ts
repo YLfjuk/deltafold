@@ -19,7 +19,7 @@ export default defineConfig({
 		},
 	},
 	pack: {
-		entry: ["src/index.ts"],
+		entry: ["src/index.ts", "src/changelog/index.ts", "src/markdown.ts", "src/html.ts"],
 		format: ["esm"],
 		platform: "neutral",
 		dts: true,

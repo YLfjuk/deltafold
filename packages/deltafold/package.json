@@ -34,11 +34,26 @@
 			"@deltafold/dev.src": "./src/index.ts",
 			"default": "./dist/index.js"
 		},
+		"./changelog": {
+			"@deltafold/dev.src": "./src/changelog/index.ts",
+			"default": "./dist/changelog/index.js"
+		},
+		"./html": {
+			"@deltafold/dev.src": "./src/html.ts",
+			"default": "./dist/html.js"
+		},
+		"./markdown": {
+			"@deltafold/dev.src": "./src/markdown.ts",
+			"default": "./dist/markdown.js"
+		},
 		"./package.json": "./package.json"
 	},
 	"publishConfig": {
 		"exports": {
 			".": "./dist/index.js",
+			"./changelog": "./dist/changelog/index.js",
+			"./html": "./dist/html.js",
+			"./markdown": "./dist/markdown.js",
 			"./package.json": "./package.json"
 		},
 		"access": "public"
@@ -47,6 +62,13 @@
 		"build": "vp pack",
 		"typecheck": "tsc --noEmit",
 		"test": "vp test run"
+	},
+	"dependencies": {
+		"@types/hast": "catalog:",
+		"@types/mdast": "catalog:",
+		"hast-util-to-html": "catalog:",
+		"mdast-util-to-hast": "catalog:",
+		"mdast-util-to-markdown": "catalog:"
 	},
 	"devDependencies": {
 		"@arethetypeswrong/core": "catalog:",
