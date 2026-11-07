@@ -59,8 +59,6 @@ export default defineConfig({
 			".claude/**",
 			"pnpm-lock.yaml",
 			"skills-lock.json",
-			// Design input is kept verbatim until it is consolidated into maintained docs.
-			"notes/**",
 		],
 	},
 	lint: {

@@ -22,7 +22,11 @@ import * as Handler from "./handler.ts";
 import { SettlementReference } from "./internal/settlement.ts";
 import type { Node, Occurrence, Plan } from "./plan.ts";
 
-/** What happened to one occurrence, or what a dry run predicts. */
+/**
+ * What happened to one occurrence, or what a dry run predicts.
+ *
+ * @since @next
+ */
 export type Outcome<E = unknown> =
 	| { readonly _tag: "Completed" }
 	| { readonly _tag: "Skipped"; readonly reason: string }
@@ -55,11 +59,13 @@ export type Outcome<E = unknown> =
 			readonly cause: Cause.Cause<E>;
 	  };
 
+/** @since @next */
 export type OccurrenceReport<A extends Action.Any = Action.Any, E = unknown> = {
 	readonly occurrence: Occurrence<A>;
 	readonly outcome: Outcome<E>;
 };
 
+/** @since @next */
 export type Report<A extends Action.Any = Action.Any, E = unknown> = {
 	readonly _tag: "Report";
 	readonly mode: "execute" | "dry-run";
@@ -81,7 +87,11 @@ export type Report<A extends Action.Any = Action.Any, E = unknown> = {
 	readonly persistence: "none";
 };
 
-/** A handler is missing, duplicated, or bound to a different definition. */
+/**
+ * A handler is missing, duplicated, or bound to a different definition.
+ *
+ * @since @next
+ */
 export type CoverageIssue = {
 	readonly _tag: "Missing" | "Duplicate" | "Mismatched";
 	readonly occurrenceId: string;
@@ -99,7 +109,11 @@ export type CoverageIssue = {
 
 const HandlerCoverageBase = Data.TaggedError("HandlerCoverageError");
 
-/** Handler coverage failed before any precondition or body ran. */
+/**
+ * Handler coverage failed before any precondition or body ran.
+ *
+ * @since @next
+ */
 export class HandlerCoverageError<A extends Action.Any = Action.Any> extends HandlerCoverageBase<{
 	readonly issues: ReadonlyArray<CoverageIssue>;
 	readonly report: Report<A, never>;
@@ -116,7 +130,11 @@ export class HandlerCoverageError<A extends Action.Any = Action.Any> extends Han
 
 const ExecutionFailedBase = Data.TaggedError("ExecutionFailed");
 
-/** An occurrence failed. Execution stopped admitting new actions; started ones settled. */
+/**
+ * An occurrence failed. Execution stopped admitting new actions; started ones settled.
+ *
+ * @since @next
+ */
 export class ExecutionFailed<
 	A extends Action.Any = Action.Any,
 	E = unknown,
@@ -133,7 +151,11 @@ export class ExecutionFailed<
 
 const ExecutionInterruptedBase = Data.TaggedError("ExecutionInterrupted");
 
-/** Explicit cancellation or a configured timeout stopped execution. */
+/**
+ * Explicit cancellation or a configured timeout stopped execution.
+ *
+ * @since @next
+ */
 export class ExecutionInterrupted<
 	A extends Action.Any = Action.Any,
 	E = unknown,
@@ -154,6 +176,7 @@ export class ExecutionInterrupted<
 	}
 }
 
+/** @since @next */
 export type ExecutionError<A extends Action.Any, E> =
 	| HandlerCoverageError<A>
 	| ExecutionFailed<A, E>
@@ -177,7 +200,11 @@ type UsesBindings<A extends Action.Any, H> = [Uncovered<A, H>] extends [never]
 		: false
 	: true;
 
-/** Errors an execution can report for its occurrences. */
+/**
+ * Errors an execution can report for its occurrences.
+ *
+ * @since @next
+ */
 export type Errors<A extends Action.Any, H> =
 	| Handler.Error<H>
 	| (UsesBindings<A, H> extends true ? Handler.BoundHandlerError : never);
@@ -185,9 +212,12 @@ export type Errors<A extends Action.Any, H> =
 /**
  * Effect services an execution requires: the handlers' services, plus a
  * `Handler.Binding` for every statically known action the handler array does not cover.
+ *
+ * @since @next
  */
 export type Requirements<A extends Action.Any, H> = Handler.Services<H> | Bindings<Uncovered<A, H>>;
 
+/** @since @next */
 export type Options<H extends Handler.Any> = {
 	readonly handlers?: ReadonlyArray<H>;
 	/** Evaluate preconditions without running any action body. */
@@ -245,7 +275,9 @@ const coverage = (
 		const candidates = byAction.get(occurrence.action.id) ?? [];
 		const [handler] = candidates;
 		const bound =
-			handler === undefined ? Handler.findBinding(context, occurrence.action.id) : undefined;
+			handler === undefined
+				? Context.getOrUndefined(context, Handler.bindingKey(occurrence.action.id))
+				: undefined;
 		const selected = handler ?? bound;
 		if (candidates.length > 1) issue("Duplicate");
 		else if (selected === undefined) issue("Missing");
@@ -544,6 +576,8 @@ const dryRun = (plan: Plan, resolved: Resolved): Effect.Effect<Report, never, an
  * Steps are sequential barriers; parallel groups run their branches concurrently. On
  * failure, no new action starts, and actions already running settle before the effect
  * fails with the partial report.
+ *
+ * @since @next
  */
 export const effect = <A extends Action.Any, H extends Handler.Any = never>(
 	plan: Plan<A>,
@@ -590,6 +624,8 @@ type ServicesOption<R> = [R] extends [never]
 /**
  * Runs a plan and returns a Promise. It rejects with `HandlerCoverageError`,
  * `ExecutionFailed`, or `ExecutionInterrupted`, each carrying the partial report.
+ *
+ * @since @next
  */
 export const runPromise = <A extends Action.Any, H extends Handler.Any = never>(
 	plan: Plan<A>,

@@ -12,9 +12,12 @@ import type * as Action from "./action.ts";
 /**
  * What a rule matches: an action instance, or a parallel group matched by its branch
  * structure. Matching a parallel group is an explicit structural rule.
+ *
+ * @since @next
  */
 export type Pattern = Action.Any | Action.Parallel;
 
+/** @since @next */
 export type Rule<A extends Action.Any = Action.Any> = {
 	readonly _tag: "Rule";
 	readonly id: string;
@@ -23,10 +26,18 @@ export type Rule<A extends Action.Any = Action.Any> = {
 	readonly replacement: ReadonlyArray<Action.Step<A>>;
 };
 
-/** Any rule. */
+/**
+ * Any rule.
+ *
+ * @since @next
+ */
 export type Any = Rule<any>;
 
-/** The action instances a rule can contribute to a plan. */
+/**
+ * The action instances a rule can contribute to a plan.
+ *
+ * @since @next
+ */
 export type ActionsOf<R> = R extends Rule<infer A> ? A : never;
 
 /**
@@ -46,6 +57,8 @@ export type ActionsOf<R> = R extends Rule<infer A> ? A : never;
  * 	replacement: [renameAtoC],
  * });
  * ```
+ *
+ * @since @next
  */
 export const replace = <A extends Action.Any = never>(
 	id: string,
@@ -60,4 +73,5 @@ export const replace = <A extends Action.Any = never>(
 	replacement: options.replacement,
 });
 
+/** @since @next */
 export const isRule = (value: unknown): value is Any => Predicate.isTagged(value, "Rule");

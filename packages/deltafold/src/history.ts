@@ -29,6 +29,7 @@ import type { Version } from "./version.ts";
 export * from "./resolve-error.ts";
 export type { Destination, Issue, ResolveOptions, RoutePolicy };
 
+/** @since @next */
 export type History<A extends Action.Any = Action.Any> = {
 	readonly _tag: "History";
 	readonly versions: ReadonlyArray<Version>;
@@ -39,10 +40,18 @@ export type History<A extends Action.Any = Action.Any> = {
 	readonly "~actions"?: A;
 };
 
-/** Any history. */
+/**
+ * Any history.
+ *
+ * @since @next
+ */
 export type Any = History<any>;
 
-/** Every action instance that a plan resolved from the history can contain. */
+/**
+ * Every action instance that a plan resolved from the history can contain.
+ *
+ * @since @next
+ */
 export type ActionsOf<H> = H extends History<infer A> ? A : never;
 
 /**
@@ -51,6 +60,8 @@ export type ActionsOf<H> = H extends History<infer A> ? A : never;
  *
  * `make` does not throw. Use `History.validate` to list declaration issues;
  * resolution fails with `InvalidHistory` when there are any.
+ *
+ * @since @next
  */
 export const make = <
 	const M extends ReadonlyArray<Migration.Any>,
@@ -71,6 +82,7 @@ export const make = <
 	shortcuts: declarations.shortcuts ?? [],
 });
 
+/** @since @next */
 export const isHistory = (value: unknown): value is Any => Predicate.isTagged(value, "History");
 
 const contexts = new WeakMap<
@@ -88,7 +100,11 @@ const prepare = (history: Any) => {
 	return prepared;
 };
 
-/** Lists declaration issues in a deterministic order. An empty list means valid. */
+/**
+ * Lists declaration issues in a deterministic order. An empty list means valid.
+ *
+ * @since @next
+ */
 export const validate = (history: Any): ReadonlyArray<Issue> => prepare(history).issues;
 
 const valid = (history: Any): Result.Result<Context, InvalidHistory> => {
@@ -110,6 +126,8 @@ const valid = (history: Any): Result.Result<Context, InvalidHistory> => {
  * const result = History.resolve(history, { from: "1.5.3", to: "2.0.0" });
  * if (Result.isSuccess(result)) console.log(result.success.route.id);
  * ```
+ *
+ * @since @next
  */
 export const resolve = <A extends Action.Any>(
 	history: History<A>,
@@ -122,14 +140,22 @@ export const resolve = <A extends Action.Any>(
 		ResolveError
 	>;
 
-/** Destinations reachable by upgrade from a version, with their candidate routes. */
+/**
+ * Destinations reachable by upgrade from a version, with their candidate routes.
+ *
+ * @since @next
+ */
 export const upgrades = (
 	history: Any,
 	options: { readonly from: Version | string },
 ): Result.Result<ReadonlyArray<Destination>, InvalidHistory | UnknownVersion> =>
 	reachableFrom(history, options.from, "upgrade");
 
-/** Destinations reachable by downgrade from a version, with their candidate routes. */
+/**
+ * Destinations reachable by downgrade from a version, with their candidate routes.
+ *
+ * @since @next
+ */
 export const downgrades = (
 	history: Any,
 	options: { readonly from: Version | string },

@@ -5,38 +5,52 @@
  *
  * @packageDocumentation
  */
-import { Data, Pipeable, Predicate } from "effect";
+import { Data, Predicate, type Pipeable } from "effect";
 import type * as Mdast from "mdast";
 
+import { pipeable } from "../internal/pipeable.ts";
 import type { Package } from "../package.ts";
 import type { Version } from "../version.ts";
 
+/** @since @next */
 export type Text = { readonly _tag: "Text"; readonly value: string };
+/** @since @next */
 export type Code = { readonly _tag: "Code"; readonly value: string };
+/** @since @next */
 export type Link = {
 	readonly _tag: "Link";
 	readonly url: string;
 	readonly children: ReadonlyArray<Inline>;
 };
+/** @since @next */
 export type Strong = { readonly _tag: "Strong"; readonly children: ReadonlyArray<Inline> };
+/** @since @next */
 export type Emphasis = { readonly _tag: "Emphasis"; readonly children: ReadonlyArray<Inline> };
 
-/** Phrasing content. */
+/**
+ * Phrasing content.
+ *
+ * @since @next
+ */
 export type Inline = Text | Code | Link | Strong | Emphasis;
 
+/** @since @next */
 export type Paragraph = { readonly _tag: "Paragraph"; readonly children: ReadonlyArray<Inline> };
+/** @since @next */
 export type List = {
 	readonly _tag: "List";
 	readonly ordered: boolean;
 	/** One entry per item. */
 	readonly items: ReadonlyArray<ReadonlyArray<Block>>;
 };
+/** @since @next */
 export type CodeBlock = {
 	readonly _tag: "CodeBlock";
 	readonly value: string;
 	readonly lang: string | undefined;
 };
 
+/** @since @next */
 export type Title = Pipeable.Pipeable & {
 	readonly _tag: "Title";
 	readonly children: ReadonlyArray<Inline>;
@@ -47,6 +61,8 @@ export type Title = Pipeable.Pipeable & {
 /**
  * A titled part of a document. Its `id` must be unique within the containing release,
  * or within the document outside releases.
+ *
+ * @since @next
  */
 export type Section = Pipeable.Pipeable & {
 	readonly _tag: "Section";
@@ -61,20 +77,26 @@ export type Section = Pipeable.Pipeable & {
 	readonly release: Version | undefined;
 };
 
+/** @since @next */
 export type Block = Paragraph | List | CodeBlock | Section;
 
-/** A complete document returned by changelog builders. */
+/**
+ * A complete document returned by changelog builders.
+ *
+ * @since @next
+ */
 export type Document = {
 	readonly _tag: "Document";
 	readonly kind: "change" | "release" | "history" | "upgrade" | "downgrade";
 	readonly children: ReadonlyArray<Block>;
 };
 
-/** Text, or inline nodes. */
+/**
+ * Text, or inline nodes.
+ *
+ * @since @next
+ */
 export type InlineInput = string | Inline | ReadonlyArray<string | Inline>;
-
-const pipeable = <T extends object>(fields: T): T & Pipeable.Pipeable =>
-	Object.assign(Object.create(Pipeable.Prototype), fields);
 
 const isInline = (value: unknown): value is Inline =>
 	Predicate.isTagged(value, "Text") ||
@@ -83,7 +105,7 @@ const isInline = (value: unknown): value is Inline =>
 	Predicate.isTagged(value, "Strong") ||
 	Predicate.isTagged(value, "Emphasis");
 
-const isBlock = (value: unknown): value is Block =>
+export const isBlock = (value: unknown): value is Block =>
 	Predicate.isTagged(value, "Paragraph") ||
 	Predicate.isTagged(value, "List") ||
 	Predicate.isTagged(value, "CodeBlock") ||
@@ -96,32 +118,43 @@ const inlines = (value: InlineInput): ReadonlyArray<Inline> => {
 	return value.map((item) => (typeof item === "string" ? Text(item) : item));
 };
 
+/** @since @next */
 export const Text = (value: string): Text => ({ _tag: "Text", value });
+/** @since @next */
 export const Code = (value: string): Code => ({ _tag: "Code", value });
+/** @since @next */
 export const Link = (text: InlineInput, url: string): Link => ({
 	_tag: "Link",
 	url,
 	children: inlines(text),
 });
+/** @since @next */
 export const Strong = (children: InlineInput): Strong => ({
 	_tag: "Strong",
 	children: inlines(children),
 });
+/** @since @next */
 export const Emphasis = (children: InlineInput): Emphasis => ({
 	_tag: "Emphasis",
 	children: inlines(children),
 });
+/** @since @next */
 export const Paragraph = (children: InlineInput): Paragraph => ({
 	_tag: "Paragraph",
 	children: inlines(children),
 });
+/** @since @next */
 export const CodeBlock = (value: string, options: { readonly lang?: string } = {}): CodeBlock => ({
 	_tag: "CodeBlock",
 	value,
 	lang: options.lang,
 });
 
-/** Builds a list. Each item is text, an inline node, a block, or several blocks. */
+/**
+ * Builds a list. Each item is text, an inline node, a block, or several blocks.
+ *
+ * @since @next
+ */
 export const List = (
 	items: ReadonlyArray<string | Inline | Block | ReadonlyArray<Block>>,
 	options: { readonly ordered?: boolean } = {},
@@ -136,7 +169,11 @@ export const List = (
 	}),
 });
 
-/** An insertion point inside a plugin's scope. */
+/**
+ * An insertion point inside a plugin's scope.
+ *
+ * @since @next
+ */
 export type Anchor = {
 	readonly _tag: "Anchor";
 	readonly part: "title" | "body";
@@ -155,18 +192,25 @@ const makeTitle = (text: InlineInput, options: { readonly level?: number } = {})
 /**
  * Builds a title. `Document.Title.pre` and `Document.Title.post` are the insertion points
  * around a scoped section's title.
+ *
+ * @since @next
  */
 export const Title = Object.assign(makeTitle, {
 	pre: anchor("title", "pre"),
 	post: anchor("title", "post"),
 });
 
-/** The insertion points around a scoped section's body. */
+/**
+ * The insertion points around a scoped section's body.
+ *
+ * @since @next
+ */
 export const Body = { pre: anchor("body", "pre"), post: anchor("body", "post") } as const;
 
 const titleOf = (title: Title | string | undefined) =>
 	typeof title === "string" ? makeTitle(title) : title;
 
+/** @since @next */
 export const Section = (
 	id: string,
 	options: { readonly title?: Title | string; readonly children?: ReadonlyArray<Block> } = {},
@@ -181,43 +225,41 @@ export const Section = (
 		release: undefined,
 	});
 
-/** Sets an absolute heading level on a title. Levels outside 1 to 6 fail at render time. */
+/**
+ * Sets an absolute heading level on a title. Levels outside 1 to 6 fail at render time.
+ *
+ * @since @next
+ */
 export const withLevel =
 	(level: number) =>
 	(title: Title): Title =>
 		pipeable({ ...title, level });
 
-/** Sets the title of a section. */
+/**
+ * Sets the title of a section.
+ *
+ * @since @next
+ */
 export const withTitle =
 	(title: Title | string) =>
 	(section: Section): Section =>
 		pipeable({ ...section, title: titleOf(title) });
 
-/** Appends blocks to a section's body. */
+/**
+ * Appends blocks to a section's body.
+ *
+ * @since @next
+ */
 export const append =
 	(...blocks: ReadonlyArray<Block>) =>
 	(section: Section): Section =>
 		pipeable({ ...section, children: [...section.children, ...blocks] });
 
-/** Marks a section as the section of one release. */
-export const asRelease = (section: Section, version: Version): Section =>
-	pipeable({ ...section, release: version });
-
-/** Inserts blocks at an anchor of a section, after earlier insertions at that anchor. */
-export const insert = (section: Section, at: Anchor, blocks: ReadonlyArray<Block>): Section => {
-	if (blocks.length === 0) return section;
-	if (at.part === "title") {
-		return at.position === "pre"
-			? pipeable({ ...section, before: [...section.before, ...blocks] })
-			: pipeable({ ...section, after: [...section.after, ...blocks] });
-	}
-
-	return at.position === "pre"
-		? pipeable({ ...section, children: [...blocks, ...section.children] })
-		: pipeable({ ...section, children: [...section.children, ...blocks] });
-};
-
-/** A document structure that cannot be rendered. */
+/**
+ * A document structure that cannot be rendered.
+ *
+ * @since @next
+ */
 export class DocumentError extends Data.TaggedError("DocumentError")<{
 	readonly reason: "duplicate-section" | "heading-level";
 	readonly message: string;
@@ -225,25 +267,40 @@ export class DocumentError extends Data.TaggedError("DocumentError")<{
 
 // Plugins.
 
-/** Release-scoped plugins run once per included release. */
+/**
+ * Release-scoped plugins run once per included release.
+ *
+ * @since @next
+ */
 export const Release = "release";
-/** History-scoped plugins run once per history document. */
+/**
+ * History-scoped plugins run once per history document.
+ *
+ * @since @next
+ */
 export const History = "history";
 
+/** @since @next */
 export type ReleaseContext<M> = {
 	readonly package: Package;
 	readonly version: Version;
 	readonly metadata: M;
 };
 
+/** @since @next */
 export type HistoryContext<M> = {
 	readonly package: Package;
 	readonly releases: ReadonlyArray<ReleaseContext<M>>;
 };
 
-/** Plugin output: blocks to insert, or `null` for nothing. */
+/**
+ * Plugin output: blocks to insert, or `null` for nothing.
+ *
+ * @since @next
+ */
 export type PluginOutput = Block | ReadonlyArray<Block> | null;
 
+/** @since @next */
 export type PluginOptions<M> =
 	| {
 			readonly scope: typeof Release;
@@ -260,24 +317,24 @@ export type PluginOptions<M> =
  * Contributes content at an insertion point. Plugins work on format-neutral content:
  * they must not fetch metadata or execute migrations. Output is inserted once and is not
  * processed by other plugins.
+ *
+ * @since @next
  */
 export type Plugin<M> = { readonly _tag: "Plugin"; readonly id: string } & PluginOptions<M>;
 
+/** @since @next */
 export const makePlugin = <M>(id: string, options: PluginOptions<M>): Plugin<M> => ({
 	_tag: "Plugin",
 	id,
 	...options,
 });
 
-/** `Document.Plugin.make` */
+/**
+ * `Document.Plugin.make`
+ *
+ * @since @next
+ */
 export const Plugin = { make: makePlugin } as const;
-
-export const blocksOf = (output: PluginOutput): ReadonlyArray<Block> => {
-	if (output === null) return [];
-	if (isBlock(output)) return [output];
-
-	return output;
-};
 
 // Lowering to mdast.
 
@@ -368,6 +425,8 @@ const lowerBlocks = (
 /**
  * Resolves heading levels, checks section identifiers, and lowers a document to an
  * mdast root. Throws `DocumentError` for unsupported structure.
+ *
+ * @since @next
  */
 export const toMdast = (document: Document): Mdast.Root => ({
 	type: "root",
