@@ -12,7 +12,7 @@ import {
 	securityFixed,
 	timeoutRenamed,
 	timeoutRestored,
-} from "./fixtures/config.ts";
+} from "./__fixtures__/config.ts";
 
 const success = <A, E>(result: Result.Result<A, E>): A => {
 	if (Result.isFailure(result))

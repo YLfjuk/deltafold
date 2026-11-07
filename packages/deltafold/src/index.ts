@@ -7,6 +7,7 @@
 
 export * as Action from "./action.ts";
 export * as Change from "./change.ts";
+export * as Executor from "./executor.ts";
 export * as Handler from "./handler.ts";
 export * as History from "./history.ts";
 export * as Migration from "./migration.ts";
