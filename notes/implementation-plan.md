@@ -21,11 +21,14 @@ reference image. No package has been published.
 
 ## Phase 2: set up the repository
 
-Status: setup complete on branch `setup/workspace-tooling`, in review as a pull
-request. It is not merged.
+Status: complete. The setup is merged to `main` through pull request #1.
 
-Approval gate: the user reviews the setup before package implementation begins.
-Phase 3 starts only after the user explicitly approves the setup.
+Next step: the user publishes `deltafold@0.0.0` from `main` with `pnpm publish` as
+a placeholder that reserves the npm name.
+
+Approval gate: phase 3 starts only after the user explicitly approves package
+implementation. Merging the setup and publishing the placeholder are not that
+approval.
 
 ### Adopted toolchain
 
@@ -115,8 +118,9 @@ Layout and conventions:
   README.
 - `src/index.ts` exports nothing yet. Its targeted lint suppression goes away with
   the first public export.
-- No release workflow, npm token, or publish step is configured. `pnpm run
-  changeset` records changes, and `pnpm run version` applies them.
+- No release workflow, npm token, or publish step is configured. The 0.0.0
+  placeholder is published manually. `pnpm run changeset` records changes, and
+  `pnpm run version` applies them.
 
 ### Vite+ trial findings
 
@@ -227,7 +231,8 @@ Setup brief:
 
 ## Phase 3: prototype and implement the package
 
-Status: pending; waiting for the user to approve the phase 2 setup.
+Status: pending; waiting for the user's explicit approval after the 0.0.0
+placeholder is published.
 
 Start a feature branch from the completed setup. Follow the current design notes
 and accepted decisions. Keep this plan updated with short acceptance evidence. Do not silently label unresolved

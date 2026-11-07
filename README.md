@@ -4,7 +4,8 @@ deltafold is a planned TypeScript library for modeling version history,
 resolving migration instructions between versions, and generating changelogs.
 
 The repository has a workspace and tooling setup and an empty `deltafold` package
-in `packages/deltafold`. No library API or release exists yet.
+in `packages/deltafold`. No library API exists yet. Version 0.0.0 on npm is a placeholder that
+reserves the package name.
 
 - [API design](notes/api-design.md): the pre-implementation specification.
 - [Review findings](notes/review-findings.md): design review results.
