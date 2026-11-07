@@ -5,3 +5,9 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+
+# Workspace tooling
+.turbo/
+dist/
+coverage/
+*.tsbuildinfo

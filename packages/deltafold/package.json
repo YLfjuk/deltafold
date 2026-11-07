@@ -1,0 +1,62 @@
+{
+	"name": "deltafold",
+	"version": "0.0.0",
+	"description": "Model version history, resolve migration instructions between versions, and generate changelogs.",
+	"keywords": [
+		"changelog",
+		"effect",
+		"migration",
+		"migrations",
+		"typescript",
+		"upgrade-guide",
+		"version-history",
+		"versioning"
+	],
+	"homepage": "https://github.com/YLfjuk/deltafold/tree/main/packages/deltafold#readme",
+	"bugs": {
+		"url": "https://github.com/YLfjuk/deltafold/issues"
+	},
+	"license": "MIT",
+	"author": "YLfjuk (https://github.com/YLfjuk)",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/YLfjuk/deltafold.git",
+		"directory": "packages/deltafold"
+	},
+	"files": [
+		"dist",
+		"src"
+	],
+	"type": "module",
+	"sideEffects": false,
+	"exports": {
+		".": {
+			"@deltafold/dev.src": "./src/index.ts",
+			"default": "./dist/index.js"
+		},
+		"./package.json": "./package.json"
+	},
+	"publishConfig": {
+		"exports": {
+			".": "./dist/index.js",
+			"./package.json": "./package.json"
+		},
+		"access": "public"
+	},
+	"scripts": {
+		"build": "vp pack",
+		"typecheck": "tsc --noEmit",
+		"test": "vp test run"
+	},
+	"devDependencies": {
+		"@arethetypeswrong/core": "catalog:",
+		"@effect/vitest": "catalog:",
+		"effect": "catalog:",
+		"publint": "catalog:",
+		"typescript": "catalog:",
+		"vite-plus": "catalog:"
+	},
+	"peerDependencies": {
+		"effect": "catalog:"
+	}
+}

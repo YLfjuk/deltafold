@@ -1,0 +1,38 @@
+name: Bug report
+description: Report behavior that does not match the documentation or design.
+labels: [bug]
+body:
+    - type: markdown
+      attributes:
+          value: >-
+              Report security vulnerabilities privately as described in the security
+              policy, not here. Do not include credentials or private data.
+    - type: textarea
+      id: description
+      attributes:
+          label: What happened
+          description: Describe the problem and what you expected instead.
+      validations:
+          required: true
+    - type: textarea
+      id: reproduction
+      attributes:
+          label: Reproduction
+          description: A minimal code sample or steps that show the problem.
+          render: ts
+      validations:
+          required: true
+    - type: input
+      id: versions
+      attributes:
+          label: Versions
+          description: deltafold, effect, and runtime (for example Node.js) versions.
+          placeholder: deltafold x.y.z, effect 4.1.2, Node.js 24.11.0
+      validations:
+          required: true
+    - type: textarea
+      id: context
+      attributes:
+          label: Additional context
+          description: Logs, error output, or anything else that helps.
+          render: text
