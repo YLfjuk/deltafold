@@ -23,12 +23,8 @@ reference image. No package has been published.
 
 Status: complete. The setup is merged to `main` through pull request #1.
 
-Next step: the user publishes `deltafold@0.0.0` from `main` with `pnpm publish` as
-a placeholder that reserves the npm name.
-
-Approval gate: phase 3 starts only after the user explicitly approves package
-implementation. Merging the setup and publishing the placeholder are not that
-approval.
+The user published `deltafold@0.0.0` from `main` as a placeholder that reserves the
+npm name, and then explicitly approved phase 3.
 
 ### Adopted toolchain
 
@@ -231,8 +227,8 @@ Setup brief:
 
 ## Phase 3: prototype and implement the package
 
-Status: pending; waiting for the user's explicit approval after the 0.0.0
-placeholder is published.
+Status: in progress on the `feat/core-prototype` branch, started after the user's
+explicit approval.
 
 Start a feature branch from the completed setup. Follow the current design notes
 and accepted decisions. Keep this plan updated with short acceptance evidence. Do not silently label unresolved
