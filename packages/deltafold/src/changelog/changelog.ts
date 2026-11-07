@@ -1,0 +1,413 @@
+/**
+ * Changelogs build documents from declarations: historical release notes from versions,
+ * and resolved upgrade or downgrade guides from plans. `Changelog.make` configures
+ * sections and plugins; it holds no package identity.
+ *
+ * @packageDocumentation
+ */
+import { Array as Arr, Data, Order, Result, SemVer } from "effect";
+
+import type * as Action from "../action.ts";
+import { isChange, type Change } from "../change.ts";
+import type { Prose } from "../instruction.ts";
+import type { Package } from "../package.ts";
+import type { GuideItem, Plan, Step } from "../plan.ts";
+import type { Release, Version } from "../version.ts";
+import * as Document from "./document.ts";
+
+/** A change section of a release. The first section whose `select` matches wins. */
+export type SectionDefinition = {
+	readonly _tag: "ChangelogSection";
+	readonly id: string;
+	readonly title: string;
+	readonly select: (change: Change) => boolean;
+};
+
+export const section = (
+	id: string,
+	options: { readonly title: string; readonly select: (change: Change) => boolean },
+): SectionDefinition => ({ _tag: "ChangelogSection", id, ...options });
+
+/** The sections used when `Changelog.make` receives none. */
+export const defaultSections: ReadonlyArray<SectionDefinition> = [
+	section("breaking", { title: "Breaking changes", select: (change) => change.breaking }),
+	section("added", { title: "Features", select: (change) => change.kind === "added" }),
+	section("changed", { title: "Changes", select: (change) => change.kind === "changed" }),
+	section("removed", { title: "Removals", select: (change) => change.kind === "removed" }),
+	section("fixed", { title: "Fixes", select: (change) => change.kind === "fixed" }),
+];
+
+/** Release metadata does not match the package history. */
+export class ReleaseMetadataError extends Data.TaggedError("ReleaseMetadataError")<{
+	readonly reason: "duplicate" | "unrelated" | "missing";
+	readonly versions: ReadonlyArray<string>;
+	readonly message: string;
+}> {}
+
+export type HistoryOptions<M> = {
+	/** Release metadata annotations, one per included version, in any order. */
+	readonly releases: ReadonlyArray<Release<M>>;
+	/** The versions to include. Defaults to every version in the package history. */
+	readonly versions?: ReadonlyArray<Version>;
+};
+
+export type GuideOptions = {
+	/** The modeled package, for the guide title. */
+	readonly package?: Package;
+	/** Adds a section that lists omitted instructions and the rules responsible. */
+	readonly explain?: boolean;
+};
+
+export type Changelog<M> = {
+	readonly sections: ReadonlyArray<SectionDefinition>;
+	readonly plugins: ReadonlyArray<Document.Plugin<M>>;
+	/** A document for changes that are not assigned to a release yet. */
+	readonly change: (
+		change: Change | ReadonlyArray<Change>,
+		options?: { readonly title?: string },
+	) => Document.Document;
+	/** The section for one release. */
+	readonly release: (pkg: Package, release: Release<M>) => Document.Document;
+	/**
+	 * Release history, titled with the package name. Historical changes stay, including
+	 * reverted ones. Releases are listed newest first by semver when every identifier
+	 * parses, and in reverse registration order otherwise.
+	 */
+	readonly history: (pkg: Package, options: HistoryOptions<M>) => Document.Document;
+	/**
+	 * The resolved instructions of a plan. Cancelled instructions are omitted. Downgrade
+	 * plans are titled as downgrades.
+	 */
+	readonly upgrade: (plan: Plan, options?: GuideOptions) => Document.Document;
+};
+
+export type Options<M> = {
+	readonly sections?: ReadonlyArray<SectionDefinition>;
+	readonly plugins?: ReadonlyArray<Document.Plugin<M>>;
+	/** The section for unmatched changes, or `false` to leave them out. */
+	readonly other?: { readonly title: string } | false;
+};
+
+const paragraphsOf = (text: string): ReadonlyArray<Document.Paragraph> =>
+	text
+		.split(/\n\s*\n/)
+		.map((part) => part.replace(/\s*\n\s*/g, " ").trim())
+		.filter((part) => part !== "")
+		.map((part) => Document.Paragraph(part));
+
+const changeList = (changes: ReadonlyArray<Change>) =>
+	Document.List(changes.map((change) => paragraphsOf(change.description)));
+
+const knows = (pkg: Package, version: Version) =>
+	pkg.history.versions.some((known) => known.id === version.id);
+
+const releaseOrder = (versions: ReadonlyArray<Version>): ReadonlyArray<Version> => {
+	const parsed = versions.map((version) => SemVer.parse(version.id));
+	if (!parsed.every(Result.isSuccess)) return Arr.reverse(versions);
+
+	return Arr.sort(
+		versions,
+		Order.flip(
+			Order.mapInput(SemVer.Order, (version: Version) => SemVer.parseUnsafe(version.id)),
+		),
+	);
+};
+
+const occurrenceBlocks = (action: Action.Any, prose: Prose | undefined) =>
+	prose === undefined ? [Document.Paragraph(action.description)] : guideBlocks(prose);
+
+/** Builds guide blocks: prose becomes paragraphs; groups become lists. */
+const guideBlocks = (
+	items: ReadonlyArray<GuideItem | Prose[number]>,
+): ReadonlyArray<Document.Block> => {
+	const blocks: Array<Document.Block> = [];
+	let current: Array<Document.Inline> = [];
+	const flush = () => {
+		const trimmed = trimInlines(current);
+		if (trimmed.length > 0) blocks.push(Document.Paragraph(trimmed));
+		current = [];
+	};
+	for (const item of items) {
+		switch (item._tag) {
+			case "Text": {
+				const [first = "", ...rest] = item.text.split(/\n\s*\n/);
+				current.push(Document.Text(first.replace(/\s*\n\s*/g, " ")));
+				for (const part of rest) {
+					flush();
+					current.push(Document.Text(part.replace(/\s*\n\s*/g, " ")));
+				}
+				break;
+			}
+			case "ActionRef":
+				current.push(Document.Text(item.action.description));
+				break;
+			case "Occurrence": {
+				const { action, instruction } = item.occurrence;
+				if (instruction === undefined && trimInlines(current).length > 0) {
+					current.push(Document.Text(action.description));
+					break;
+				}
+				flush();
+				blocks.push(...occurrenceBlocks(action, instruction?.content));
+				break;
+			}
+			case "Group":
+				flush();
+				blocks.push(Document.List(item.children.map((child) => guideBlocks(child))));
+				break;
+		}
+	}
+	flush();
+
+	return blocks;
+};
+
+const trimInlines = (values: ReadonlyArray<Document.Inline>): ReadonlyArray<Document.Inline> => {
+	const result = values.flatMap((value) =>
+		value._tag === "Text" && value.value === "" ? [] : [value],
+	);
+	const first = result[0];
+	const last = result.at(-1);
+	if (first?._tag === "Text") result[0] = Document.Text(first.value.trimStart());
+	if (last?._tag === "Text") result[result.length - 1] = Document.Text(last.value.trimEnd());
+
+	return result.flatMap((value) => (value._tag === "Text" && value.value === "" ? [] : [value]));
+};
+
+const stepId = (step: Step) =>
+	step.direction === "forward" ? step.migration.id : `${step.migration.id}/revert`;
+
+/**
+ * Configures sections and plugins for changelog documents.
+ *
+ * @example
+ * ```ts
+ * const changelog = Changelog.make<ReleaseMetadata>({
+ * 	sections: [
+ * 		Changelog.section("breaking", { title: "Breaking changes", select: (change) => change.breaking }),
+ * 		Changelog.section("fixes", { title: "Fixes", select: (change) => change.kind === "fixed" }),
+ * 	],
+ * 	plugins: [contributorsPlugin],
+ * });
+ * Markdown.render(changelog.history(widgets, { releases: [release100, release200] }));
+ * ```
+ */
+export const make = <M = never>(options: Options<M> = {}): Changelog<M> => {
+	const sections = options.sections ?? defaultSections;
+	const plugins = options.plugins ?? [];
+	const other = options.other === undefined ? { title: "Other changes" } : options.other;
+
+	const changeSections = (changes: ReadonlyArray<Change>): ReadonlyArray<Document.Section> => {
+		const grouped = new Map<string, Array<Change>>();
+		const unmatched: Array<Change> = [];
+		for (const change of changes) {
+			const match = sections.find((definition) => definition.select(change));
+			if (match === undefined) {
+				unmatched.push(change);
+				continue;
+			}
+			const list = grouped.get(match.id) ?? [];
+			list.push(change);
+			grouped.set(match.id, list);
+		}
+		const result = sections.flatMap((definition) => {
+			const matched = grouped.get(definition.id);
+			if (matched === undefined) return [];
+
+			return [
+				Document.Section(definition.id, {
+					title: definition.title,
+					children: [changeList(matched)],
+				}),
+			];
+		});
+		if (other !== false && unmatched.length > 0) {
+			result.push(
+				Document.Section("other", {
+					title: other.title,
+					children: [changeList(unmatched)],
+				}),
+			);
+		}
+
+		return result;
+	};
+
+	const releaseSection = (context: Document.ReleaseContext<M>): Document.Section => {
+		let result = Document.asRelease(
+			Document.Section(context.version.id, {
+				title: context.version.id,
+				children: changeSections(context.version.changes),
+			}),
+			context.version,
+		);
+		for (const plugin of plugins) {
+			if (plugin.scope !== Document.Release) continue;
+			result = Document.insert(result, plugin.at, Document.blocksOf(plugin.resolve(context)));
+		}
+
+		return result;
+	};
+
+	const requireKnown = (pkg: Package, releases: ReadonlyArray<Release<M>>) => {
+		const unrelated = releases.flatMap((release) =>
+			knows(pkg, release.version) ? [] : [release.version.id],
+		);
+		if (unrelated.length > 0) {
+			throw new ReleaseMetadataError({
+				reason: "unrelated",
+				versions: unrelated,
+				message: `Release metadata for ${unrelated.map((id) => `"${id}"`).join(", ")} does not belong to the history of "${pkg.name}".`,
+			});
+		}
+	};
+
+	return {
+		sections,
+		plugins,
+		change: (input, changeOptions = {}) => {
+			const changes = isChange(input) ? [input] : input;
+
+			return {
+				_tag: "Document",
+				kind: "change",
+				children: [
+					Document.Section("unreleased", {
+						title: changeOptions.title ?? "Unreleased",
+						children: changeSections(changes),
+					}),
+				],
+			};
+		},
+		release: (pkg, release) => {
+			requireKnown(pkg, [release]);
+
+			return {
+				_tag: "Document",
+				kind: "release",
+				children: [
+					releaseSection({
+						package: pkg,
+						version: release.version,
+						metadata: release.metadata,
+					}),
+				],
+			};
+		},
+		history: (pkg, historyOptions) => {
+			const { releases } = historyOptions;
+			requireKnown(pkg, releases);
+			const byVersion = new Map<string, Release<M>>();
+			const duplicates = new Set<string>();
+			for (const release of releases) {
+				if (byVersion.has(release.version.id)) duplicates.add(release.version.id);
+				byVersion.set(release.version.id, release);
+			}
+			if (duplicates.size > 0) {
+				throw new ReleaseMetadataError({
+					reason: "duplicate",
+					versions: [...duplicates],
+					message: `Release metadata is supplied more than once for ${[...duplicates].map((id) => `"${id}"`).join(", ")}.`,
+				});
+			}
+			const included = historyOptions.versions ?? pkg.history.versions;
+			const missing = included.flatMap((version) =>
+				byVersion.has(version.id) ? [] : [version.id],
+			);
+			if (missing.length > 0) {
+				throw new ReleaseMetadataError({
+					reason: "missing",
+					versions: missing,
+					message: `Release metadata is missing for ${missing.map((id) => `"${id}"`).join(", ")}. Supply an annotation for each, or limit the document with the \`versions\` option.`,
+				});
+			}
+
+			const contexts = releaseOrder(included).flatMap((version) => {
+				const release = byVersion.get(version.id);
+
+				return release === undefined
+					? []
+					: [{ package: pkg, version, metadata: release.metadata }];
+			});
+			let root = Document.Section("package", {
+				title: pkg.name,
+				children: contexts.map(releaseSection),
+			});
+			for (const plugin of plugins) {
+				if (plugin.scope !== Document.History) continue;
+				root = Document.insert(
+					root,
+					plugin.at,
+					Document.blocksOf(plugin.resolve({ package: pkg, releases: contexts })),
+				);
+			}
+
+			return { _tag: "Document", kind: "history", children: [root] };
+		},
+		upgrade: (plan, guideOptions = {}) => {
+			const verb =
+				plan.direction === "downgrade"
+					? "Downgrade"
+					: plan.direction === "upgrade"
+						? "Upgrade"
+						: "Migrate";
+			const subject =
+				guideOptions.package === undefined ? "" : ` ${guideOptions.package.name}`;
+			const shown = plan.steps.filter((step) => !step.omitted);
+			const sharedEndpoints = (step: Step) =>
+				shown.filter(
+					(candidate) =>
+						candidate.from.id === step.from.id && candidate.to.id === step.to.id,
+				).length > 1;
+			const stepSections = shown.map((step) =>
+				Document.Section(stepId(step), {
+					title: `${step.from.id} to ${step.to.id}${sharedEndpoints(step) ? ` (${step.migration.id})` : ""}`,
+					children: guideBlocks(step.guide),
+				}),
+			);
+			const children: Array<Document.Block> =
+				stepSections.length === 0
+					? [Document.Paragraph("No migration work is needed.")]
+					: stepSections;
+			if (guideOptions.explain === true && plan.explanations.length > 0) {
+				children.push(
+					Document.Section("explanations", {
+						title: "Omitted instructions",
+						children: [
+							Document.List(
+								plan.explanations.map((explanation) => {
+									if (explanation._tag === "OmittedStep") {
+										return explanation.reason === "noop"
+											? `Migration "${explanation.migration.id}" needs no work.`
+											: `Rules removed every action of migration "${explanation.migration.id}".`;
+									}
+									const removed = explanation.removed.map(
+										(occurrence) => occurrence.action.description,
+									);
+									const produced = explanation.produced.map(
+										(occurrence) => occurrence.action.description,
+									);
+
+									return produced.length === 0
+										? `Rule "${explanation.rule.id}" cancelled: ${removed.join("; ")}.`
+										: `Rule "${explanation.rule.id}" replaced ${removed.join("; ")} with ${produced.join("; ")}.`;
+								}),
+							),
+						],
+					}),
+				);
+			}
+
+			return {
+				_tag: "Document",
+				kind: plan.direction === "downgrade" ? "downgrade" : "upgrade",
+				children: [
+					Document.Section("guide", {
+						title: `${verb}${subject} from ${plan.from.id} to ${plan.to.id}`,
+						children,
+					}),
+				],
+			};
+		},
+	};
+};
