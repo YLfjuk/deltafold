@@ -1,0 +1,26 @@
+{
+	"name": "deltafold-workspace",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build": "turbo run build",
+		"typecheck": "turbo run typecheck",
+		"test": "turbo run test",
+		"lint": "vp lint",
+		"format": "vp fmt",
+		"format:check": "vp fmt --check",
+		"check": "vp fmt --check && vp lint && turbo run typecheck build test",
+		"changeset": "changeset",
+		"version-packages": "changeset version"
+	},
+	"devDependencies": {
+		"@changesets/cli": "3.0.3",
+		"turbo": "2.11.10",
+		"typescript": "7.0.2",
+		"vite-plus": "1.5.0"
+	},
+	"engines": {
+		"node": "^22.18.0 || ^24.11.0 || >=26.0.0"
+	},
+	"packageManager": "pnpm@12.18.0"
+}

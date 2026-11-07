@@ -1,0 +1,43 @@
+{
+	"name": "deltafold",
+	"version": "0.0.0",
+	"description": "Model version history and resolve migration instructions between versions with Effect.",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/YLfjuk/deltafold.git",
+		"directory": "packages/deltafold"
+	},
+	"files": [
+		"dist"
+	],
+	"type": "module",
+	"sideEffects": false,
+	"exports": {
+		".": {
+			"@deltafold/dev.src": "./src/index.ts",
+			"default": "./dist/index.js"
+		},
+		"./package.json": "./package.json"
+	},
+	"publishConfig": {
+		"exports": {
+			".": "./dist/index.js",
+			"./package.json": "./package.json"
+		},
+		"access": "public"
+	},
+	"scripts": {
+		"build": "vp pack",
+		"typecheck": "tsc --noEmit",
+		"test": "vp test run"
+	},
+	"devDependencies": {
+		"@effect/vitest": "4.1.2",
+		"effect": "4.1.2",
+		"publint": "0.3.25"
+	},
+	"peerDependencies": {
+		"effect": "^4.1.2"
+	}
+}

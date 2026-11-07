@@ -21,7 +21,88 @@ reference image. No package has been published.
 
 ## Phase 2: set up the repository
 
-Status: pending.
+Status: setup complete on branch `setup/workspace-tooling`, in review as a pull
+request. It is not merged.
+
+Approval gate: the user reviews the setup before package implementation begins.
+Phase 3 starts only after the user explicitly approves the setup.
+
+### Adopted toolchain
+
+| Concern | Choice |
+| --- | --- |
+| Package manager | pnpm 12.18.0 (`packageManager`), workspace `packages/*` |
+| Task ordering and cache | Turborepo 2.11.10: `build`, `typecheck`, `test` |
+| Library packaging | Vite+ 1.5.0 `vp pack` (tsdown), ESM only, neutral platform, declarations, publint |
+| Tests | Vite+ `vp test` (Vitest 5.1.0) with `@effect/vitest` 4.1.2 |
+| Lint | Vite+ `vp lint` (Oxlint), type-aware with type checking |
+| Format | Vite+ `vp fmt` (Oxfmt), options copied from the shared oxfmt template |
+| Type checking | TypeScript 7.0.2 `tsc --noEmit`, strict base config |
+| Effect | `effect` 4.1.2; the package declares `effect: ^4.1.2` as a peer dependency |
+| Versioning | Changesets 3.0.3, public access, base branch `main` |
+| CI | GitHub Actions: full checks on Ubuntu and Windows (Node 24), build and test on Node 22.18.0 and 26 |
+
+Node requirement for development and CI: `^22.18.0 || ^24.11.0 || >=26.0.0`, the
+range required by Vite+, Vitest 5, and tsdown. `.node-version` selects Node 24.
+The library targets ES2022 without Node types, and its own runtime support
+policy is still to be decided before the first release.
+
+Layout and conventions:
+
+- `tsconfig.base.json` defines the `@deltafold/dev.src` condition and the strict
+  compiler options. The package `vite.config.ts` reads that condition and passes
+  it to `pack.exports.devExports`, which matches the shared tsdown template.
+  During development, `exports` resolve to `src`; `publishConfig.exports` point
+  at `dist`.
+- The root `vite.config.ts` holds the lint and format settings that Vite+ applies
+  across the workspace. `lint` and `format:check` run as root scripts. Package
+  tasks run through Turborepo.
+- `vite-plus` is the only test, lint, format, and packaging dependency. No direct
+  `vitest`, `vite`, `oxlint`, `oxfmt`, or `tsdown` dependency is declared.
+- `src/index.ts` exports nothing yet. Its targeted lint suppression goes away with
+  the first public export.
+- No release workflow, npm token, or publish step is configured. `pnpm run
+  changeset` records changes, and `pnpm run version-packages` applies them.
+
+### Vite+ trial findings
+
+- Vite+ needs pnpm overrides that alias `vite` to `@voidzero-dev/vite-plus-core`
+  and pin `vitest`. The alias version is outside the `vite` peer range of
+  Vitest, so `peerDependencyRules.allowedVersions` accepts it.
+- Vite+ reads tsdown settings from the `pack` block, so the shared tsdown template
+  logic lives in the package `vite.config.ts` rather than in `tsdown.config.ts`.
+- Top-level `resolve.conditions` does not reach the Vitest server environment.
+  `ssr.resolve.conditions` must also list the development condition, along with
+  Vite's default server conditions. Without it, tests resolved `dist`, or failed
+  when `dist` was absent.
+- tsdown emits declarations with TypeScript 7 but warns that its API is
+  experimental. If declaration output regresses, fall back to TypeScript 6 for
+  declaration emit.
+- Oxlint's Vitest plugin does not recognize `@effect/vitest` test blocks until
+  they are listed in `vitest/no-standalone-expect`.
+- Oxfmt formats code blocks inside Markdown. `notes/**` is excluded from
+  formatting so the design input stays verbatim until it is consolidated.
+- `vp test` and `vp lint` print a note that built-in commands take precedence
+  over scripts of the same name. The note is harmless.
+- `changeset init` in Changesets 3 is interactive, so its default configuration
+  was written by hand. Changesets' own formatting is off (`format: false`), so
+  there is one formatter configuration, the Vite+ `fmt` block.
+- pnpm 12 ships as a native binary. An older global pnpm 10 failed to switch to
+  the pinned version on Windows. Upgrading pnpm, or running `npx pnpm@12.18.0`,
+  works around it.
+- Publishing must go through pnpm, which applies `publishConfig.exports`.
+
+### Verification
+
+On Windows with Node 24.19.0 and pnpm 12.18.0: `pnpm install` reported no peer
+issues, and `pnpm run check` passed format, lint, typecheck, build with publint,
+and tests. A second run restored all three Turborepo tasks from cache. Tests
+passed with `dist` deleted, which proves that source resolution uses the
+development condition. A temporary file with a type error and a floating promise
+failed `vp lint`, which proves that type-aware lint and type checking run.
+`changeset status` ran with the written configuration.
+
+Setup brief:
 
 - Read applicable repository instructions and tooling templates. Honor the
   selected bare library name deltafold; the composer owns the @deltafold npm scope
@@ -48,7 +129,7 @@ Status: pending.
 
 ## Phase 3: prototype and implement the package
 
-Status: pending; depends on phase 2.
+Status: pending; waiting for the user to approve the phase 2 setup.
 
 Start a feature branch from the completed setup. Follow the current design notes
 and accepted decisions. Keep this plan updated with short acceptance evidence. Do not silently label unresolved
@@ -109,3 +190,20 @@ Commit useful checkpoints, run checks appropriate to each meaningful change, and
 push a reviewable branch. Create a draft PR when the prototype is reviewable; link
 it in the project tracking context. Do not merge without instruction. Report
 what is actually implemented, tested, incomplete, or awaiting a design decision.
+
+Completion criteria for notes: once implementation is complete, clean up the notes.
+Much of the proposal, review, and work-tracking material will be obsolete by then.
+Keep the specification and review notes as implementation input until then; do not
+clean them up early.
+
+- Consolidate the useful content into maintained documentation: functional
+  requirements, non-functional requirements, API and usage documentation, and
+  short design or decision notes where needed.
+- Remove superseded proposals and redundant reviewer and work-tracking history
+  instead of keeping them as permanent documentation.
+- Describe implemented, verified behavior. Label actual limitations, and keep
+  unresolved requirements stated honestly.
+- Keep one source of truth for each topic, and do not duplicate the API reference
+  across notes.
+- Bring the maintained documentation under `vp fmt` by removing the `notes/**`
+  formatter exclusion, or by narrowing it to any remaining verbatim input.

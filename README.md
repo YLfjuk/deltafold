@@ -3,12 +3,30 @@
 deltafold is a planned TypeScript library for modeling version history and
 resolving migration instructions between versions. It targets Effect 4.
 
-This repository contains planning notes only. No library code, package, or release
-exists yet.
+The repository has a workspace and tooling setup and an empty `deltafold` package
+in `packages/deltafold`. No library API or release exists yet.
 
 - [API design](notes/api-design.md): the pre-implementation specification.
 - [Review findings](notes/review-findings.md): design review results.
 - [Implementation plan](notes/implementation-plan.md): phases and progress.
+
+## Development
+
+Requirements: Node.js `^22.18.0 || ^24.11.0 || >=26.0.0` and pnpm 12. The
+`packageManager` field pins the pnpm version, and `.node-version` selects Node 24
+for local work and CI.
+
+```sh
+pnpm install
+pnpm run build         # vp pack, through Turborepo
+pnpm run typecheck     # tsc --noEmit, through Turborepo
+pnpm run test          # vp test, through Turborepo
+pnpm run lint          # vp lint (Oxlint, type-aware)
+pnpm run format:check  # vp fmt --check (Oxfmt)
+pnpm run check         # all of the above
+```
+
+Record consumer-facing package changes with `pnpm run changeset`.
 
 ## License
 
