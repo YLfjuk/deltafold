@@ -1,7 +1,8 @@
 import { describe, expect, it } from "@effect/vitest";
-import * as deltafold from "deltafold";
 import { Effect, Fiber } from "effect";
 import { TestClock } from "effect/testing";
+
+import * as deltafold from "deltafold";
 
 describe("deltafold package", () => {
 	it("resolves its own entry point through the development source condition", () => {

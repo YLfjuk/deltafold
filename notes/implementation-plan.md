@@ -33,7 +33,7 @@ Phase 3 starts only after the user explicitly approves the setup.
 | --- | --- |
 | Package manager | pnpm 12.18.0 (`packageManager`), workspace `packages/*` |
 | Task ordering and cache | Turborepo 2.11.10: `build`, `typecheck`, `test` |
-| Library packaging | Vite+ 1.5.0 `vp pack` (tsdown), ESM only, neutral platform, declarations, publint |
+| Library packaging | Vite+ 1.5.0 `vp pack` (tsdown), ESM only, neutral platform, declarations, strict publint, attw (`esm-only` profile, error level) |
 | Tests | Vite+ `vp test` (Vitest 5.1.0) with `@effect/vitest` 4.1.2 |
 | Lint | Vite+ `vp lint` (Oxlint), type-aware with type checking |
 | Format | Vite+ `vp fmt` (Oxfmt), options copied from the shared oxfmt template |
@@ -85,10 +85,20 @@ Layout and conventions:
   tasks run through Turborepo.
 - `vite-plus` is the only test, lint, format, and packaging dependency. No direct
   `vitest`, `vite`, `oxlint`, `oxfmt`, or `tsdown` dependency is declared.
+- Each package declares the dependencies that its own files, scripts, and
+  configuration use: `vite-plus`, `typescript`, `effect`, `@effect/vitest`,
+  `publint`, and `@arethetypeswrong/core`. The root declares only workspace tools:
+  `turbo`, `@changesets/cli`, `vite-plus` for root lint and format, and
+  `typescript`. Vite+'s bundled tsdown loads publint and attw as optional peers
+  of `vite-plus`. pnpm links them only when the package that depends on
+  `vite-plus` also declares them; otherwise they resolve through pnpm's hidden
+  hoisting.
+- `exactOptionalPropertyTypes` is not in the shared base. A package can enable it
+  when its API distinguishes a missing property from an explicit `undefined`.
 - `src/index.ts` exports nothing yet. Its targeted lint suppression goes away with
   the first public export.
 - No release workflow, npm token, or publish step is configured. `pnpm run
-  changeset` records changes, and `pnpm run version-packages` applies them.
+  changeset` records changes, and `pnpm run version` applies them.
 
 ### Vite+ trial findings
 

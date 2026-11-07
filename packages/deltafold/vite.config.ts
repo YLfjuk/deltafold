@@ -4,21 +4,18 @@ import baseTsConfig from "../../tsconfig.base.json" with { type: "json" };
 
 const {
 	compilerOptions: {
+		customConditions,
 		customConditions: [devExports],
 	},
 } = baseTsConfig;
 
-if (devExports === undefined) {
-	throw new Error("tsconfig.base.json must declare the development source condition.");
-}
-
 export default defineConfig({
 	resolve: {
-		conditions: [devExports, ...defaultClientConditions],
+		conditions: [...customConditions, ...defaultClientConditions],
 	},
 	ssr: {
 		resolve: {
-			conditions: [devExports, ...defaultServerConditions],
+			conditions: [...customConditions, ...defaultServerConditions],
 		},
 	},
 	pack: {
@@ -30,7 +27,13 @@ export default defineConfig({
 		exports: {
 			devExports,
 		},
-		publint: true,
+		publint: {
+			strict: true,
+		},
+		attw: {
+			profile: "esm-only",
+			level: "error",
+		},
 	},
 	test: {
 		include: ["test/**/*.test.ts"],

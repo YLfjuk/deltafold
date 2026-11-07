@@ -27,7 +27,7 @@ export default defineConfig({
 				},
 				{
 					groupName: "scope",
-					elementNamePattern: ["@deltafold/**"],
+					elementNamePattern: ["deltafold", "deltafold/**", "@deltafold/**"],
 				},
 			],
 			internalPattern: ["@/"],

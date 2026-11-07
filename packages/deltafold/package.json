@@ -33,9 +33,12 @@
 		"test": "vp test run"
 	},
 	"devDependencies": {
+		"@arethetypeswrong/core": "0.18.5",
 		"@effect/vitest": "4.1.2",
 		"effect": "4.1.2",
-		"publint": "0.3.25"
+		"publint": "0.3.25",
+		"typescript": "7.0.2",
+		"vite-plus": "1.5.0"
 	},
 	"peerDependencies": {
 		"effect": "^4.1.2"

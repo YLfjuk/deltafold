@@ -41,7 +41,7 @@ pnpm run changeset
 ```
 
 Changes that only touch tooling, tests, or notes do not need one. Maintainers
-apply changesets with `pnpm run version-packages`. No automated release is
+apply changesets with `pnpm run version`. No automated release is
 configured.
 
 ## Pull requests
