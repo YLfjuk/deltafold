@@ -2,8 +2,8 @@
 
 ## Supported versions
 
-deltafold has not published a release yet. Once releases exist, security fixes
-target the latest published version.
+deltafold has no supported release yet. Version 0.0.0 is a placeholder with no
+code. Once releases exist, security fixes target the latest published version.
 
 ## Reporting a vulnerability
 
