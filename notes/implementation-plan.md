@@ -66,8 +66,11 @@ Repository files:
 - The CI workflow keeps read-only `contents` permission and uses no
   `pull_request_target` trigger. Its check job fails if install, build, or tests
   change a tracked file or leave a file that is not ignored.
-- Branch protection, rulesets, labels, and security settings are configured on
-  GitHub, outside this repository.
+- Rulesets, labels, and security settings are configured on GitHub, outside this
+  repository. `CONTRIBUTING.md` summarizes the branch policy: changes reach `main`
+  only through pull requests, which need passing CI on an up-to-date branch,
+  resolved conversations, and a code-owner approval, and merges are squash-only.
+  Private vulnerability reporting and the `dependencies` label are enabled.
 
 Node requirement for development and CI: `^22.18.0 || ^24.11.0 || >=26.0.0`, the
 range required by Vite+, Vitest 5, and tsdown. `.node-version` selects Node 24.

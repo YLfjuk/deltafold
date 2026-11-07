@@ -44,6 +44,16 @@ Changes that only touch tooling, tests, or notes do not need one. Maintainers
 apply changesets with `pnpm run version`. No automated release is
 configured.
 
+## Branches and merging
+
+- `main` changes only through pull requests. Direct pushes, force pushes, and
+  branch deletion are blocked.
+- A pull request merges only when all CI checks pass on a branch that is up to
+  date with `main` and every review conversation is resolved. It also needs one
+  approval from a code owner, given after the last push.
+- Pull requests are squash-merged, so `main` keeps a linear history. Merged
+  branches are deleted automatically.
+
 ## Pull requests
 
 - Keep each pull request focused, and fill in the template.
