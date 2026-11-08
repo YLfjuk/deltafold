@@ -6,10 +6,9 @@ and generating changelogs and upgrade guides. It is built on Effect 4 and is in
 early development.
 
 - [Package README](packages/deltafold/README.md): installation and usage.
-- [Requirements](notes/requirements.md): what the library must do, with status.
+- [Requirements](notes/requirements.md): what the library must do.
 - [Decisions](notes/decisions.md): design decisions, provisional choices,
-  limitations, and open questions.
-- [Tooling](notes/tooling.md): how the workspace is set up.
+  limitations, unbuilt work, and open questions.
 
 ## Development
 

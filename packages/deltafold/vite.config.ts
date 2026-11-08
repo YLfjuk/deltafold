@@ -13,6 +13,8 @@ export default defineConfig({
 	resolve: {
 		conditions: [...customConditions, ...defaultClientConditions],
 	},
+	// Top-level resolve.conditions does not reach the Vitest server environment. Without
+	// this, tests resolve dist instead of the development source condition.
 	ssr: {
 		resolve: {
 			conditions: [...customConditions, ...defaultServerConditions],
