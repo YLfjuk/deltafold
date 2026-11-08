@@ -7,7 +7,13 @@
  */
 import { Predicate, Result } from "effect";
 
-import type * as Action from "./action.ts";
+import type * as Action from "../../foundation/action.ts";
+import type * as Migration from "../../foundation/migration.ts";
+import type { Plan } from "../../foundation/plan.ts";
+import type * as Rule from "../../foundation/rule.ts";
+import type * as Shortcut from "../../foundation/shortcut.ts";
+import type { Version } from "../../foundation/version.ts";
+import { InvalidHistory, type ResolveError, type UnknownVersion } from "./resolve-error.ts";
 import {
 	destinations,
 	lookup as lookupVersion,
@@ -17,14 +23,8 @@ import {
 	type Destination,
 	type ResolveOptions,
 	type RoutePolicy,
-} from "./internal/resolve.ts";
-import { validate as validateDeclarations, type Issue } from "./internal/validate.ts";
-import type * as Migration from "./migration.ts";
-import type { Plan } from "./plan.ts";
-import { InvalidHistory, type ResolveError, type UnknownVersion } from "./resolve-error.ts";
-import type * as Rule from "./rule.ts";
-import type * as Shortcut from "./shortcut.ts";
-import type { Version } from "./version.ts";
+} from "./resolve.ts";
+import { validate as validateDeclarations, type Issue } from "./validate.ts";
 
 export * from "./resolve-error.ts";
 export type { Destination, Issue, ResolveOptions, RoutePolicy };

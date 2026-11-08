@@ -6,7 +6,7 @@
  */
 import { Predicate } from "effect";
 
-import { describeValue, dedent, isScalar, type Scalar } from "./internal/template.ts";
+import { describeValue, dedent, isScalar, type Scalar } from "./template.ts";
 
 /**
  * Change classifications. Breaking status is recorded separately.

@@ -6,8 +6,8 @@
  */
 import { Predicate } from "effect";
 
-import type * as Action from "./action.ts";
-import type { History } from "./history.ts";
+import type * as Action from "../foundation/action.ts";
+import type { History } from "./planning/history.ts";
 
 /** @since @next */
 export type Package<A extends Action.Any = Action.Any> = {

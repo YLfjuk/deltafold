@@ -23,7 +23,7 @@ export default defineConfig({
 	pack: {
 		entry: {
 			index: "src/index.ts",
-			"changelog/index": "src/changelog/index.ts",
+			"changelog/index": "src/features/documents/index.ts",
 			markdown: "src/renderers/markdown.ts",
 			html: "src/renderers/html.ts",
 		},

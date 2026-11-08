@@ -1,7 +1,7 @@
 import { Data } from "effect";
 
-import type { Issue } from "./internal/validate.ts";
-import type { RequestDirection } from "./plan.ts";
+import type { RequestDirection } from "../../foundation/plan.ts";
+import type { Issue } from "./validate.ts";
 
 /**
  * A candidate route, summarized for diagnostics and explicit selection.

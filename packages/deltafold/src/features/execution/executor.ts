@@ -17,11 +17,11 @@ import {
 	Option,
 } from "effect";
 
-import type * as Action from "./action.ts";
+import type * as Action from "../../foundation/action.ts";
+import type * as Plan from "../../foundation/plan.ts";
+import type { Node, Occurrence } from "../../foundation/plan.ts";
 import * as Handler from "./handler.ts";
-import { SettlementReference } from "./internal/settlement.ts";
-import type * as Plan from "./plan.ts";
-import type { Node, Occurrence } from "./plan.ts";
+import { SettlementReference } from "./settlement.ts";
 
 /**
  * What happened to one occurrence, or what a dry run predicts.

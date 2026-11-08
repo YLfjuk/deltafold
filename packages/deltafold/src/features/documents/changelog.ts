@@ -7,12 +7,12 @@
  */
 import { Array as Arr, Data, Order, Result, SemVer } from "effect";
 
-import type * as Action from "../action.ts";
-import { isChange, type Change } from "../change.ts";
-import type { Prose } from "../instruction.ts";
+import type * as Action from "../../foundation/action.ts";
+import { isChange, type Change } from "../../foundation/change.ts";
+import type { Prose } from "../../foundation/instruction.ts";
+import type { Coverage, GuideItem, Plan, Step } from "../../foundation/plan.ts";
+import type { Release, Version } from "../../foundation/version.ts";
 import type { Package } from "../package.ts";
-import type { Coverage, GuideItem, Plan, Step } from "../plan.ts";
-import type { Release, Version } from "../version.ts";
 import * as Document from "./document.ts";
 import { asRelease, blocksOf, insertAll } from "./sections.ts";
 

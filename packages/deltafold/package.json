@@ -35,7 +35,7 @@
 			"default": "./dist/index.js"
 		},
 		"./changelog": {
-			"@deltafold/dev.src": "./src/changelog/index.ts",
+			"@deltafold/dev.src": "./src/features/documents/index.ts",
 			"default": "./dist/changelog/index.js"
 		},
 		"./html": {

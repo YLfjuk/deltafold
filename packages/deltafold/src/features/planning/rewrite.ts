@@ -1,9 +1,9 @@
 import { Array as Arr, Order } from "effect";
 
-import type * as Action from "../action.ts";
-import type * as Migration from "../migration.ts";
-import type { Occurrence } from "../plan.ts";
-import type * as Rule from "../rule.ts";
+import type * as Action from "../../foundation/action.ts";
+import type * as Migration from "../../foundation/migration.ts";
+import type { Occurrence } from "../../foundation/plan.ts";
+import type * as Rule from "../../foundation/rule.ts";
 
 /**
  * A top-level element of a route's sequential spine, or of one parallel branch. `step`

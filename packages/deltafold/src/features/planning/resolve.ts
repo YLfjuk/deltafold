@@ -1,8 +1,8 @@
 import { Array as Arr, Graph, Order, Result, SemVer } from "effect";
 
-import type * as Action from "../action.ts";
-import type { Change } from "../change.ts";
-import type * as Migration from "../migration.ts";
+import type * as Action from "../../foundation/action.ts";
+import type { Change } from "../../foundation/change.ts";
+import type * as Migration from "../../foundation/migration.ts";
 import type {
 	Direction,
 	Explanation,
@@ -12,7 +12,10 @@ import type {
 	RequestDirection,
 	Route,
 	Step,
-} from "../plan.ts";
+} from "../../foundation/plan.ts";
+import type * as Shortcut from "../../foundation/shortcut.ts";
+import type { Version } from "../../foundation/version.ts";
+import { resolveGuide } from "./guide.ts";
 import {
 	AmbiguousRoute,
 	ConflictingRewrites,
@@ -26,10 +29,7 @@ import {
 	type ResolveError,
 	type RewriteError,
 	type RouteSummary,
-} from "../resolve-error.ts";
-import type * as Shortcut from "../shortcut.ts";
-import type { Version } from "../version.ts";
-import { resolveGuide } from "./guide.ts";
+} from "./resolve-error.ts";
 import { itemsOf, occurrencesOf, rewrite, type Item, type MakeOccurrence } from "./rewrite.ts";
 import { actionsOfSteps, hasProse, stepsOf, type Declarations } from "./validate.ts";
 

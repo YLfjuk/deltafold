@@ -1,6 +1,6 @@
-import { pipeable } from "../internal/pipeable.ts";
-import type { Version } from "../version.ts";
+import type { Version } from "../../foundation/version.ts";
 import { isBlock, type Anchor, type Block, type PluginOutput, type Section } from "./document.ts";
+import { pipeable } from "./pipeable.ts";
 
 /** Marks a section as the section of one release. */
 export const asRelease = (section: Section, version: Version): Section =>

@@ -204,8 +204,18 @@ keep stop-on-failure.
 **Packaging.** The package compiles with `lib: ES2022` and no DOM or Node types,
 so source uses Effect's `Array` and `Order` modules for non-mutating sorts.
 Minimal `AbortSignal` declarations for the package live in
-`packages/deltafold/types`; tests declare the rest. Entry points are named in the
-package's `pack.entry`, and the packer writes the matching `exports`.
+`packages/deltafold/@types`; tests declare the rest in `test/@types`. Entry points
+are named in the package's `pack.entry`, and the packer writes the matching
+`exports`.
+
+**Source layout.** `src/foundation` holds the shared model: actions, changes,
+versions, migrations, instructions, rules, shortcuts, templates, and plans.
+`src/features` holds capabilities. Planning covers history validation, route
+resolution, rewrites, and guides. Execution covers handlers, the executor, and
+settlement. Documents covers documents, sections, and changelogs. `package.ts`
+is a single file until it needs more. A helper used by one feature stays in that
+feature. `src/renderers` lowers documents for the `markdown` and `html` entry
+points. Ambient declarations live in `@types` folders.
 
 **TypeScript 7.** tsdown emits declarations with TypeScript 7 and warns that its
 API is experimental. If declaration output regresses, fall back to TypeScript 6
