@@ -1,5 +1,5 @@
 // Tests create and inspect signals. These declarations extend the package's minimal
-// AbortSignal declarations in types/abort-signal.d.ts.
+// AbortSignal declarations in @types/abort-signal.d.ts.
 
 interface AbortSignal {
 	readonly reason: unknown;

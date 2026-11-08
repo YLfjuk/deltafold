@@ -10,7 +10,7 @@ import type * as Action from "./action.ts";
 import { isAction, isParallel, isRef, isSequence } from "./action.ts";
 import type { Change } from "./change.ts";
 import { instruction, isInstruction, type Text } from "./instruction.ts";
-import { describeValue, dedent, isScalar, type Scalar } from "./internal/template.ts";
+import { describeValue, dedent, isScalar, type Scalar } from "./template.ts";
 import type { Version } from "./version.ts";
 
 export { instruction };

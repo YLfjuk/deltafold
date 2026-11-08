@@ -1,6 +1,6 @@
-import type * as Action from "../action.ts";
-import type * as Migration from "../migration.ts";
-import type { GuideItem, Occurrence } from "../plan.ts";
+import type * as Action from "../../foundation/action.ts";
+import type * as Migration from "../../foundation/migration.ts";
+import type { GuideItem, Occurrence } from "../../foundation/plan.ts";
 
 /** The declared occurrence a retained occurrence is rendered at. */
 const anchorOf = (occurrence: Occurrence): Occurrence => {

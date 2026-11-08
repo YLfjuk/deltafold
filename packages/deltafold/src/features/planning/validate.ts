@@ -1,11 +1,11 @@
 import { Array as Arr, Equal, Graph, Option, Order } from "effect";
 
-import type * as Action from "../action.ts";
-import type { Change } from "../change.ts";
-import type * as Migration from "../migration.ts";
-import type * as Rule from "../rule.ts";
-import type * as Shortcut from "../shortcut.ts";
-import type { Version } from "../version.ts";
+import type * as Action from "../../foundation/action.ts";
+import type { Change } from "../../foundation/change.ts";
+import type * as Migration from "../../foundation/migration.ts";
+import type * as Rule from "../../foundation/rule.ts";
+import type * as Shortcut from "../../foundation/shortcut.ts";
+import type { Version } from "../../foundation/version.ts";
 
 /**
  * A problem in a history's declarations.

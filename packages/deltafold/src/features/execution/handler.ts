@@ -7,8 +7,8 @@
  */
 import { Context, Data, Effect, Predicate, Schema } from "effect";
 
-import type * as Action from "./action.ts";
-import { trackPromise } from "./internal/settlement.ts";
+import type * as Action from "../../foundation/action.ts";
+import { trackPromise } from "./settlement.ts";
 
 /**
  * Where a handler failure happened.

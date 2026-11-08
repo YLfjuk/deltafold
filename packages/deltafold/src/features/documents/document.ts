@@ -7,9 +7,9 @@
  */
 import { Data, Predicate, type Pipeable } from "effect";
 
-import { pipeable } from "../internal/pipeable.ts";
+import type { Version } from "../../foundation/version.ts";
 import type { Package } from "../package.ts";
-import type { Version } from "../version.ts";
+import { pipeable } from "./pipeable.ts";
 
 /** @since @next */
 export type Text = { readonly _tag: "Text"; readonly value: string };
