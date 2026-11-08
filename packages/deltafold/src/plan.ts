@@ -169,8 +169,16 @@ export type Route = {
  */
 export type RequestDirection = "none" | "upgrade" | "downgrade" | "cross-branch";
 
+/**
+ * When executors check handler coverage. Static plans also expose uncovered actions in
+ * the execution's type.
+ *
+ * @since @next
+ */
+export type Coverage = "static" | "runtime";
+
 /** @since @next */
-export type Plan<A extends Action.Any = Action.Any> = {
+export type Plan<A extends Action.Any = Action.Any, C extends Coverage = "static"> = {
 	readonly _tag: "Plan";
 	readonly from: Version;
 	readonly to: Version;
@@ -186,7 +194,7 @@ export type Plan<A extends Action.Any = Action.Any> = {
 	 * Whether executors check handler coverage only at run time. Plans resolved from a
 	 * history are checked statically against its conservative action union.
 	 */
-	readonly coverage: "static" | "runtime";
+	readonly coverage: C;
 };
 
 /**
@@ -194,14 +202,14 @@ export type Plan<A extends Action.Any = Action.Any> = {
  *
  * @since @next
  */
-export type Any = Plan<any>;
+export type Any = Plan<any, any>;
 
 /**
  * The action instances of a plan.
  *
  * @since @next
  */
-export type ActionsOf<P> = P extends Plan<infer A> ? A : never;
+export type ActionsOf<P> = P extends Plan<infer A, any> ? A : never;
 
 /**
  * Whether the plan has no action occurrences. An empty plan is valid.
@@ -217,7 +225,9 @@ export const isEmpty = (plan: Any): boolean => plan.occurrences.length === 0;
  *
  * @since @next
  */
-export const withRuntimeCoverage = (plan: Any): Plan<Action.Action> => ({
+export const withRuntimeCoverage = <A extends Action.Any>(
+	plan: Plan<A, Coverage>,
+): Plan<A, "runtime"> => ({
 	...plan,
 	coverage: "runtime",
 });

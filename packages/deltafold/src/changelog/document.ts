@@ -1,12 +1,11 @@
 /**
  * Format-neutral document values. A small semantic layer adds sections with stable
- * identifiers, insertion points, and automatic heading levels, then lowers to mdast so
- * existing serializers handle formatting and escaping.
+ * identifiers, insertion points, and automatic heading levels. Renderers lower documents
+ * to mdast so existing serializers handle formatting and escaping.
  *
  * @packageDocumentation
  */
 import { Data, Predicate, type Pipeable } from "effect";
-import type * as Mdast from "mdast";
 
 import { pipeable } from "../internal/pipeable.ts";
 import type { Package } from "../package.ts";
@@ -211,10 +210,27 @@ const titleOf = (title: Title | string | undefined) =>
 	typeof title === "string" ? makeTitle(title) : title;
 
 /** @since @next */
-export const Section = (
-	id: string,
-	options: { readonly title?: Title | string; readonly children?: ReadonlyArray<Block> } = {},
-): Section =>
+export const Section = (id: string, options: SectionOptions = {}): Section => {
+	if (id.startsWith(reservedPrefix)) {
+		throw new DocumentError({
+			reason: "reserved-id",
+			message: `Section identifier "${id}" uses the reserved "${reservedPrefix}" prefix.`,
+		});
+	}
+
+	return generatedSection(id, options);
+};
+
+type SectionOptions = {
+	readonly title?: Title | string;
+	readonly children?: ReadonlyArray<Block>;
+};
+
+/** Section identifiers that deltafold generates start with this prefix. */
+const reservedPrefix = "deltafold/";
+
+/** Builds a section without the reserved-prefix check, for sections deltafold generates. */
+export const generatedSection = (id: string, options: SectionOptions = {}): Section =>
 	pipeable({
 		_tag: "Section",
 		id,
@@ -261,7 +277,7 @@ export const append =
  * @since @next
  */
 export class DocumentError extends Data.TaggedError("DocumentError")<{
-	readonly reason: "duplicate-section" | "heading-level";
+	readonly reason: "duplicate-section" | "heading-level" | "reserved-id";
 	readonly message: string;
 }> {}
 
@@ -335,100 +351,3 @@ export const makePlugin = <M>(id: string, options: PluginOptions<M>): Plugin<M> 
  * @since @next
  */
 export const Plugin = { make: makePlugin } as const;
-
-// Lowering to mdast.
-
-const maximumLevel = 6;
-
-const isDepth = (level: number): level is Mdast.Heading["depth"] =>
-	Number.isInteger(level) && level >= 1 && level <= maximumLevel;
-
-const lowerInline = (value: Inline): Mdast.PhrasingContent => {
-	switch (value._tag) {
-		case "Text":
-			return { type: "text", value: value.value };
-		case "Code":
-			return { type: "inlineCode", value: value.value };
-		case "Link":
-			return { type: "link", url: value.url, children: value.children.map(lowerInline) };
-		case "Strong":
-			return { type: "strong", children: value.children.map(lowerInline) };
-	}
-
-	return { type: "emphasis", children: value.children.map(lowerInline) };
-};
-
-type Scope = { readonly ids: Set<string>; readonly label: string };
-
-const lowerBlocks = (
-	blocks: ReadonlyArray<Block>,
-	depth: number,
-	scope: Scope,
-): Array<Mdast.BlockContent> =>
-	blocks.flatMap((block): Array<Mdast.BlockContent> => {
-		switch (block._tag) {
-			case "Paragraph":
-				return [{ type: "paragraph", children: block.children.map(lowerInline) }];
-			case "CodeBlock":
-				return [{ type: "code", value: block.value, lang: block.lang ?? null }];
-			case "List":
-				return [
-					{
-						type: "list",
-						ordered: block.ordered,
-						spread: false,
-						children: block.items.map((item) => ({
-							type: "listItem",
-							spread: false,
-							children: lowerBlocks(item, depth, scope),
-						})),
-					},
-				];
-		}
-
-		if (scope.ids.has(block.id)) {
-			throw new DocumentError({
-				reason: "duplicate-section",
-				message: `Section "${block.id}" appears more than once in ${scope.label}.`,
-			});
-		}
-		scope.ids.add(block.id);
-		const inner =
-			block.release === undefined
-				? scope
-				: { ids: new Set<string>(), label: `release "${block.release.id}"` };
-
-		if (block.title === undefined) {
-			return [
-				...lowerBlocks(block.before, depth, inner),
-				...lowerBlocks(block.after, depth, inner),
-				...lowerBlocks(block.children, depth, inner),
-			];
-		}
-
-		const level = block.title.level ?? depth;
-		if (!isDepth(level)) {
-			throw new DocumentError({
-				reason: "heading-level",
-				message: `Section "${block.id}" needs heading level ${level}, but levels range from 1 to ${maximumLevel}.`,
-			});
-		}
-
-		return [
-			...lowerBlocks(block.before, level + 1, inner),
-			{ type: "heading", depth: level, children: block.title.children.map(lowerInline) },
-			...lowerBlocks(block.after, level + 1, inner),
-			...lowerBlocks(block.children, level + 1, inner),
-		];
-	});
-
-/**
- * Resolves heading levels, checks section identifiers, and lowers a document to an
- * mdast root. Throws `DocumentError` for unsupported structure.
- *
- * @since @next
- */
-export const toMdast = (document: Document): Mdast.Root => ({
-	type: "root",
-	children: lowerBlocks(document.children, 1, { ids: new Set(), label: "the document" }),
-});

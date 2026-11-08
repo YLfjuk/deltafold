@@ -78,8 +78,9 @@ const sameDefinition = (self: Change, that: Change): boolean =>
 		self.reverts.length === that.reverts.length &&
 		self.reverts.every((change, index) => change.id === that.reverts[index]?.id));
 
-/** Whether content declares at least one occurrence. */
-const hasSteps = (content: Migration.Content): boolean => stepsOf(content).length > 0;
+/** Whether content declares at least one occurrence. Empty groups declare none. */
+const hasOccurrences = (content: Migration.Content): boolean =>
+	actionsOfSteps(stepsOf(content)).length > 0;
 
 /** Whether content has prose or mentions. */
 export const hasProse = (content: Migration.Content): boolean =>
@@ -104,11 +105,31 @@ export const allMigrations = (declarations: Declarations): ReadonlyArray<Migrati
 	return result;
 };
 
+/** Groups consecutive migrations into hops. Complementary migrations share one hop. */
+export const hopsOf = (
+	migrations: ReadonlyArray<Migration.Any>,
+): ReadonlyArray<ReadonlyArray<Migration.Any>> => {
+	const hops: Array<Array<Migration.Any>> = [];
+	for (const migration of migrations) {
+		const hop = hops.at(-1);
+		const head = hop?.[0];
+		if (
+			hop !== undefined &&
+			head?.from.id === migration.from.id &&
+			head.to.id === migration.to.id
+		)
+			hop.push(migration);
+		else hops.push([migration]);
+	}
+
+	return hops;
+};
+
 const isChain = (migrations: ReadonlyArray<Migration.Any>, from: Version, to: Version): boolean => {
 	let current = from.id;
-	for (const migration of migrations) {
-		if (migration.from.id !== current) return false;
-		current = migration.to.id;
+	for (const [head] of hopsOf(migrations)) {
+		if (head === undefined || head.from.id !== current) return false;
+		current = head.to.id;
 	}
 
 	return migrations.length > 0 && current === to.id;
@@ -186,7 +207,9 @@ export const validate = (declarations: Declarations): ReadonlyArray<Issue> => {
 		for (const reverted of change.reverts) visitChange(reverted);
 		if (change.backportOf !== undefined) visitChange(change.backportOf);
 	};
-	for (const version of declarations.versions) version.changes.forEach(visitChange);
+	for (const version of declarations.versions) {
+		for (const change of version.changes) visitChange(change);
+	}
 
 	// Action identities.
 	const actions = new Map<string, Action.Any>();
@@ -251,7 +274,7 @@ export const validate = (declarations: Declarations): ReadonlyArray<Issue> => {
 		];
 		for (const [direction, content] of sides) {
 			if (content === undefined) continue;
-			if (!migration.noop && !hasSteps(content) && !hasProse(content)) {
+			if (!migration.noop && !hasOccurrences(content) && !hasProse(content)) {
 				issue(
 					"EmptyMigration",
 					migration.id,
@@ -286,9 +309,8 @@ export const validate = (declarations: Declarations): ReadonlyArray<Issue> => {
 			issue("InvalidRule", rule.id, `Rule "${rule.id}" matches nothing.`);
 		}
 		const patternActions = actionsOfSteps(rule.match);
-		patternActions.forEach(visitAction);
 		const replacementActions = actionsOfSteps(rule.replacement);
-		replacementActions.forEach(visitAction);
+		for (const action of [...patternActions, ...replacementActions]) visitAction(action);
 		const unique = new Set(replacementActions.map((action) => action.id));
 		if (unique.size !== replacementActions.length) {
 			issue(
@@ -335,6 +357,22 @@ export const validate = (declarations: Declarations): ReadonlyArray<Issue> => {
 				"InvalidShortcut",
 				shortcut.id,
 				`Shortcut "${shortcut.id}" must replace a consecutive route from "${shortcut.from.id}" to "${shortcut.to.id}".`,
+			);
+		}
+		for (const hop of hopsOf(shortcut.replaces)) {
+			const [head] = hop;
+			const left = declarations.migrations.filter(
+				(migration) =>
+					migration.from.id === head?.from.id &&
+					migration.to.id === head.to.id &&
+					!hop.includes(migration),
+			);
+			if (head === undefined || left.length === 0) continue;
+
+			issue(
+				"InvalidShortcut",
+				shortcut.id,
+				`Shortcut "${shortcut.id}" replaces only part of the transition from "${head.from.id}" to "${head.to.id}". It must also replace ${left.map((migration) => `"${migration.id}"`).join(", ")}.`,
 			);
 		}
 		if (!isChain(shortcut.migrations, shortcut.from, shortcut.to)) {

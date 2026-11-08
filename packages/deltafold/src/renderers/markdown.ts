@@ -6,7 +6,8 @@
  */
 import { toMarkdown } from "mdast-util-to-markdown";
 
-import { toMdast, type Document } from "./changelog/document.ts";
+import type { Document } from "../changelog/document.ts";
+import { toMdast } from "./mdast.ts";
 
 /**
  * Renders a document as Markdown. Throws `DocumentError` for unsupported structure.

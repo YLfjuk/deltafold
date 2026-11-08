@@ -194,6 +194,9 @@ catalogs:
     mdast-util-to-markdown:
       specifier: 2.2.0
       version: 2.2.0
+    micromark-util-sanitize-uri:
+      specifier: 2.0.1
+      version: 2.0.1
     publint:
       specifier: 0.3.25
       version: 0.3.25
@@ -248,6 +251,9 @@ importers:
       mdast-util-to-markdown:
         specifier: 'catalog:'
         version: 2.2.0
+      micromark-util-sanitize-uri:
+        specifier: 'catalog:'
+        version: 2.0.1
     devDependencies:
       '@arethetypeswrong/core':
         specifier: 'catalog:'

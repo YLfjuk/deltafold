@@ -6,18 +6,28 @@ import { isBlock, type Anchor, type Block, type PluginOutput, type Section } fro
 export const asRelease = (section: Section, version: Version): Section =>
 	pipeable({ ...section, release: version });
 
-/** Inserts blocks at an anchor of a section, after earlier insertions at that anchor. */
-export const insert = (section: Section, at: Anchor, blocks: ReadonlyArray<Block>): Section => {
-	if (blocks.length === 0) return section;
-	if (at.part === "title") {
-		return at.position === "pre"
-			? pipeable({ ...section, before: [...section.before, ...blocks] })
-			: pipeable({ ...section, after: [...section.after, ...blocks] });
-	}
+/** Content that one plugin contributes at an anchor. */
+export type Contribution = { readonly at: Anchor; readonly blocks: ReadonlyArray<Block> };
 
-	return at.position === "pre"
-		? pipeable({ ...section, children: [...blocks, ...section.children] })
-		: pipeable({ ...section, children: [...section.children, ...blocks] });
+/** Inserts contributions in configuration order. Each anchor receives its blocks at once. */
+export const insertAll = (
+	section: Section,
+	contributions: ReadonlyArray<Contribution>,
+): Section => {
+	const at = (part: Anchor["part"], position: Anchor["position"]) =>
+		contributions
+			.filter(
+				(contribution) =>
+					contribution.at.part === part && contribution.at.position === position,
+			)
+			.flatMap((contribution) => contribution.blocks);
+
+	return pipeable({
+		...section,
+		before: [...section.before, ...at("title", "pre")],
+		after: [...section.after, ...at("title", "post")],
+		children: [...at("body", "pre"), ...section.children, ...at("body", "post")],
+	});
 };
 
 export const blocksOf = (output: PluginOutput): ReadonlyArray<Block> => {

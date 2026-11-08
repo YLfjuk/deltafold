@@ -385,6 +385,64 @@ describe("scenario 14: document structure and escaping", () => {
 		);
 	});
 
+	it("drops link URLs with unsafe schemes and keeps relative ones", () => {
+		const links: Document.Document = {
+			_tag: "Document",
+			kind: "release",
+			children: [
+				Document.Paragraph([
+					Document.Link("unsafe", "javascript:alert(1)"),
+					" ",
+					Document.Link("relative", "../guide.md"),
+					" ",
+					Document.Link("mail", "mailto:team@example.com"),
+				]),
+			],
+		};
+
+		expect(Html.render(links)).toBe(
+			'<p><a href="">unsafe</a> <a href="../guide.md">relative</a> <a href="mailto:team@example.com">mail</a></p>',
+		);
+		expect(Markdown.render(links)).not.toContain("javascript:");
+	});
+
+	it("inserts plugin content at each anchor in configuration order", () => {
+		const note = (id: string, at: Document.Anchor) =>
+			Document.Plugin.make<ReleaseMetadata>(id, {
+				scope: Document.Release,
+				at,
+				resolve: () => Document.Paragraph(id),
+			});
+		const ordered = Changelog.make<ReleaseMetadata>({
+			plugins: [
+				note("first-body", Document.Body.pre),
+				note("second-body", Document.Body.pre),
+				note("first-title", Document.Title.pre),
+				note("second-title", Document.Title.pre),
+			],
+		});
+
+		expect(Markdown.render(ordered.release(widgets, release101))).toBe(
+			"first-title\n\nsecond-title\n\n# 1.0.1\n\nfirst-body\n\nsecond-body\n\n## Fixes\n\n- Escape header values.\n",
+		);
+	});
+
+	it("keeps generated section identifiers apart from declared ones", () => {
+		const named = Version.make("package", { changes: [] });
+		const pkg = Package.make("@acme/named", {
+			history: History.make({ versions: [named], migrations: [] }),
+		});
+
+		expect(() =>
+			Markdown.render(
+				changelog.history(pkg, {
+					releases: [Version.withMetadata(named, release101.metadata)],
+				}),
+			),
+		).not.toThrow();
+		expect(() => Document.Section("deltafold/package")).toThrow('reserved "deltafold/" prefix');
+	});
+
 	it("renders nested sections, lists, and links in HTML", () => {
 		expect(Html.render(changelog.release(widgets, release100))).toBe(
 			[

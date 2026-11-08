@@ -1,5 +1,5 @@
-import { describe, expect, expectTypeOf, it } from "@effect/vitest";
-import { Context, Effect, Fiber, Layer, Result, Schema } from "effect";
+import { describe, expect, expectTypeOf, it, vi } from "@effect/vitest";
+import { Context, Duration, Effect, Fiber, Layer, Result, Schema } from "effect";
 import { TestClock } from "effect/testing";
 
 import { Action, Executor, Handler, History, Migration, Plan, Rule, Version } from "deltafold";
@@ -634,6 +634,242 @@ describe("Executor behavior", () => {
 			});
 		}),
 	);
+});
+
+describe("Executor admission, cancellation, and settlement", () => {
+	it.effect("stops admission when a timeout fires, before the interrupted Promise settles", () =>
+		Effect.gen(function* () {
+			const hangs = touch("hangs");
+			const first = touch("first");
+			const second = touch("second");
+			const third = touch("third");
+			const history = History.make({
+				versions: [w1, w2],
+				migrations: [
+					Migration.make("1-to-2", { from: w1, to: w2 })`${Action.parallel([
+						hangs,
+						Action.sequence([first, second, third]),
+					])}`,
+				],
+			});
+			const fiber = yield* Effect.forkChild(
+				Effect.flip(
+					Executor.effect(planOf(history, "2.0.0"), {
+						timeout: "200 millis",
+						settleTimeout: "600 millis",
+						handlers: [
+							Handler.promise(hangs, () => new Promise<void>(() => {})),
+							// `second` is still running when `hangs` times out at 200 ms.
+							Handler.effect(first, () => Effect.sleep("150 millis")),
+							Handler.effect(second, () => Effect.sleep("100 millis")),
+							Handler.effect(third, () => Effect.void),
+						],
+					}),
+				),
+			);
+			yield* TestClock.adjust("2 seconds");
+			const error = yield* Fiber.join(fiber);
+
+			expect(
+				error._tag === "ExecutionInterrupted" &&
+					error.report.occurrences.map((entry) => entry.outcome),
+			).toEqual([
+				{ _tag: "Interrupted", phase: "body", reason: "timeout", settled: false },
+				{ _tag: "Completed" },
+				{ _tag: "Completed" },
+				{ _tag: "Unattempted" },
+			]);
+		}),
+	);
+
+	it.effect(
+		"limits branch concurrency and leaves queued branches unattempted after a failure",
+		() =>
+			Effect.gen(function* () {
+				let active = 0;
+				let peak = 0;
+				const gated = (action: Action.Any, fails: boolean) =>
+					Handler.effect(action, () =>
+						Effect.gen(function* () {
+							active += 1;
+							peak = Math.max(peak, active);
+							yield* Effect.sleep("100 millis");
+							active -= 1;
+							if (fails) yield* Effect.fail("broken");
+						}),
+					);
+				const [a, b, c] = [touch("a"), touch("b"), touch("c")];
+				const history = History.make({
+					versions: [w1, w2],
+					migrations: [
+						Migration.make("1-to-2", { from: w1, to: w2 })`${Action.parallel(
+							[a, b, c],
+							{
+								concurrency: 1,
+							},
+						)}`,
+					],
+				});
+				const fiber = yield* Effect.forkChild(
+					Effect.flip(
+						Executor.effect(planOf(history, "2.0.0"), {
+							handlers: [gated(a, false), gated(b, true), gated(c, false)],
+						}),
+					),
+				);
+				yield* TestClock.adjust("1 second");
+				const error = yield* Fiber.join(fiber);
+
+				expect(peak).toBe(1);
+				expect(error._tag === "ExecutionFailed" && outcomes(error.report)).toEqual({
+					a: "Completed",
+					b: "Failed",
+					c: "Unattempted",
+				});
+			}),
+	);
+
+	it("does not start a body when cancellation arrives during its precondition", async () => {
+		const checked = touch("checked");
+		const controller = new AbortController();
+		let ran = false;
+		const error: unknown = await Executor.runPromise(
+			Plan.withRuntimeCoverage(planOf(single(checked), "2.0.0")),
+			{
+				signal: controller.signal,
+				handlers: [
+					Handler.promise(
+						checked,
+						async () => {
+							ran = true;
+						},
+						{
+							when: () => {
+								controller.abort();
+
+								return true;
+							},
+						},
+					),
+				],
+			},
+		).then(
+			() => undefined,
+			(cause: unknown) => cause,
+		);
+
+		expect(ran).toBe(false);
+		expect(
+			error instanceof Executor.ExecutionInterrupted && error.report.occurrences[0]?.outcome,
+		).toEqual({
+			_tag: "Interrupted",
+			phase: "precondition",
+			reason: "cancelled",
+			settled: true,
+		});
+		expect(error instanceof Executor.ExecutionInterrupted && error.report.bodiesStarted).toBe(
+			false,
+		);
+	});
+
+	it("waits for an interrupted Promise within the settlement grace period", async () => {
+		const settlesSoon = touch("settles-soon");
+		const run = async (settleTimeout: Duration.Input) => {
+			const controller = new AbortController();
+			const error: unknown = await Executor.runPromise(
+				Plan.withRuntimeCoverage(planOf(single(settlesSoon), "2.0.0")),
+				{
+					signal: controller.signal,
+					settleTimeout,
+					handlers: [
+						Handler.promise(
+							settlesSoon,
+							(_payload, { signal }) =>
+								new Promise<void>((resolve) => {
+									// Settles 20 ms after the abort, ignoring the abort reason.
+									signal.addEventListener("abort", () => {
+										void Effect.runPromise(Effect.sleep("20 millis")).then(
+											resolve,
+										);
+									});
+									controller.abort();
+								}),
+						),
+					],
+				},
+			).then(
+				() => undefined,
+				(cause: unknown) => cause,
+			);
+
+			return error instanceof Executor.ExecutionInterrupted
+				? error.report.occurrences[0]?.outcome
+				: undefined;
+		};
+
+		expect(await run("1 second")).toMatchObject({ _tag: "Interrupted", settled: true });
+		expect(await run("1 millis")).toMatchObject({ _tag: "Interrupted", settled: false });
+	});
+
+	it("removes its abort listener when the run ends", async () => {
+		const done = touch("done");
+		const controller = new AbortController();
+		const added = vi.spyOn(controller.signal, "addEventListener");
+		const removed = vi.spyOn(controller.signal, "removeEventListener");
+		await Executor.runPromise(Plan.withRuntimeCoverage(planOf(single(done), "2.0.0")), {
+			signal: controller.signal,
+			handlers: [Handler.promise(done, async () => {})],
+		});
+
+		expect(added).toHaveBeenCalledTimes(1);
+		expect(removed).toHaveBeenCalledTimes(1);
+	});
+
+	it("applies cancellation and timeouts to dry-run preconditions", async () => {
+		const checked = touch("checked");
+		const evaluated: Array<string> = [];
+		const dryRun = (
+			options: { signal?: AbortSignal; timeout?: Duration.Input },
+			when: () => Promise<boolean>,
+		) =>
+			Executor.runPromise(Plan.withRuntimeCoverage(planOf(single(checked), "2.0.0")), {
+				...options,
+				dryRun: true,
+				settleTimeout: "1 millis",
+				handlers: [Handler.promise(checked, async () => {}, { when })],
+			}).then(
+				() => undefined,
+				(cause: unknown) => cause,
+			);
+
+		const controller = new AbortController();
+		controller.abort();
+		const cancelled = await dryRun({ signal: controller.signal }, async () => {
+			evaluated.push("cancelled");
+
+			return true;
+		});
+		const timedOut = await dryRun(
+			{ timeout: "10 millis" },
+			() => new Promise<boolean>(() => {}),
+		);
+
+		expect(evaluated).toEqual([]);
+		expect(cancelled).toMatchObject({
+			_tag: "ExecutionInterrupted",
+			reason: "cancelled",
+			report: { mode: "dry-run", status: "interrupted" },
+		});
+		expect(
+			timedOut instanceof Executor.ExecutionInterrupted &&
+				timedOut.report.occurrences[0]?.outcome,
+		).toEqual({
+			_tag: "Interrupted",
+			phase: "precondition",
+			reason: "timeout",
+			settled: false,
+		});
+	});
 });
 
 describe("Executor dry runs", () => {
