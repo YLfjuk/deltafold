@@ -11,7 +11,7 @@ import type * as Action from "../action.ts";
 import { isChange, type Change } from "../change.ts";
 import type { Prose } from "../instruction.ts";
 import type { Package } from "../package.ts";
-import type { GuideItem, Plan, Step } from "../plan.ts";
+import type { Coverage, GuideItem, Plan, Step } from "../plan.ts";
 import type { Release, Version } from "../version.ts";
 import * as Document from "./document.ts";
 import { asRelease, blocksOf, insertAll } from "./sections.ts";
@@ -95,7 +95,10 @@ export type Changelog<M> = {
 	 * The resolved instructions of a plan. Cancelled instructions are omitted. Downgrade
 	 * plans are titled as downgrades.
 	 */
-	readonly upgrade: (plan: Plan, options?: GuideOptions) => Document.Document;
+	readonly upgrade: (
+		plan: Plan<Action.Any, Coverage>,
+		options?: GuideOptions,
+	) => Document.Document;
 };
 
 /** @since @next */
