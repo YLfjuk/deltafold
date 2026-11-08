@@ -12,6 +12,7 @@ catalog:
     hast-util-to-html: 9.0.5
     mdast-util-to-hast: 13.2.1
     mdast-util-to-markdown: 2.2.0
+    micromark-util-sanitize-uri: 2.0.1
     publint: 0.3.25
     turbo: 2.11.10
     typescript: 7.0.2

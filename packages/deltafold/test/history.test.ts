@@ -503,11 +503,54 @@ describe("scenario 6: shortcuts", () => {
 
 		expect(History.validate(invalid).map((issue) => [issue._tag, issue.subject])).toEqual([
 			["InvalidShortcut", "unregistered"],
+			["InvalidShortcut", "unregistered"],
 			["InvalidShortcut", "unrelated"],
 		]);
 		expect(failure(History.resolve(invalid, { from: "2.0.1", to: "2.0.3" }))._tag).toBe(
 			"InvalidHistory",
 		);
+	});
+
+	it("requires a shortcut to replace every complementary migration of a hop", () => {
+		const yaml = Migration.make("yaml-2.0.2", { from: v1, to: v2 })`${addRetryLimit}`;
+		const partial = Shortcut.make("partial", {
+			from: v1,
+			to: v3,
+			replaces: [m2, m3],
+			migrations: [direct],
+		});
+		const complete = Shortcut.make("complete", {
+			from: v1,
+			to: v3,
+			replaces: [yaml, m2, m3],
+			migrations: [direct],
+		});
+		const declare = (shortcut: Shortcut.Any) =>
+			History.make({
+				versions: [v1, v2, v3],
+				migrations: [m2, yaml, m3],
+				shortcuts: [shortcut],
+			});
+
+		expect(History.validate(declare(partial))).toEqual([
+			{
+				_tag: "InvalidShortcut",
+				subject: "partial",
+				message:
+					'Shortcut "partial" replaces only part of the transition from "2.0.1" to "2.0.2". It must also replace "yaml-2.0.2".',
+			},
+		]);
+		expect(
+			actionIds(
+				success(
+					History.resolve(declare(complete), {
+						from: "2.0.1",
+						to: "2.0.3",
+						policy: "prefer-shortcuts",
+					}),
+				),
+			),
+		).toEqual(["add-both"]);
 	});
 });
 
@@ -683,6 +726,149 @@ describe("parallel groups and structural rules", () => {
 
 		expect(actionIds(plan)).toEqual(["combined", "add-retry-limit"]);
 	});
+
+	it("bounds a structural rule that keeps nesting groups", () => {
+		const grow = Rule.replace("grow", {
+			match: [createConfig],
+			replacement: [Action.parallel([createConfig, updateSource])],
+		});
+		const history = History.make({
+			versions: [v1, v2],
+			migrations: [Migration.make("1-to-2", { from: v1, to: v2 })`${createConfig}`],
+			rules: [grow],
+		});
+
+		expect(History.validate(history)).toEqual([]);
+		expect(failure(History.resolve(history, { from: "1.0.0", to: "2.0.0" }))).toMatchObject({
+			_tag: "RewriteLimitExceeded",
+			limit: "depth",
+			value: 256,
+		});
+	});
+
+	it("reports a branch rewrite that competes with a whole-group rewrite", () => {
+		const pair = Action.parallel([createConfig, updateSource]);
+		const inner = Rule.replace("inner", {
+			match: [createConfig],
+			replacement: [addRetryLimit],
+		});
+		const outer = Rule.replace("outer", {
+			match: [pair],
+			replacement: [AddKey.make("combined", { target: "all", key: "combined" })],
+		});
+		const history = History.make({
+			versions: [v1, v2],
+			migrations: [Migration.make("1-to-2", { from: v1, to: v2 })`${pair}`],
+			rules: [inner, outer],
+		});
+		const error = failure(History.resolve(history, { from: "1.0.0", to: "2.0.0" }));
+
+		expect(
+			error._tag === "ConflictingRewrites" && error.outcomes.map((outcome) => outcome.rules),
+		).toEqual([["outer"], ["inner"]]);
+	});
+});
+
+/** Each layer offers two sibling versions to pass through, doubling the routes. */
+const diamonds = (layers: number) => {
+	let start = Version.make("0.0.0", { changes: [] });
+	const versions: Array<Version.Version> = [start];
+	const migrations: Array<Migration.Any> = [];
+	for (let layer = 0; layer < layers; layer++) {
+		const end = Version.make(`${layer + 1}.0.0`, { previous: start, changes: [] });
+		for (const minor of [1, 2]) {
+			const via = Version.make(`${layer}.${minor}.0`, {
+				previous: start,
+				changes: [],
+			});
+			versions.push(via);
+			migrations.push(
+				Migration.noop(`${start.id}-to-${via.id}`, { from: start, to: via }),
+				Migration.noop(`${via.id}-to-${end.id}`, { from: via, to: end }),
+			);
+		}
+		versions.push(end);
+		start = end;
+	}
+
+	return History.make({ versions, migrations });
+};
+
+describe("search limits", () => {
+	const v1 = Version.make("1.0.0", { changes: [] });
+	const v2 = Version.make("2.0.0", { previous: v1, changes: [] });
+
+	/** `count` independent actions, each with a rule that replaces it. */
+	const independentRewrites = (count: number) => {
+		const indexes = Array.from({ length: count }, (_, index) => index);
+		const migration = Migration.make("1-to-2", { from: v1, to: v2 })`${Action.sequence(
+			indexes.map((index) => rename(`x${index}`, `y${index}`)),
+		)}`;
+		const rules = indexes.map((index) =>
+			Rule.replace(`r${index}`, {
+				match: [rename(`x${index}`, `y${index}`)],
+				replacement: [rename(`x${index}`, `z${index}`)],
+			}),
+		);
+
+		return History.make({ versions: [v1, v2], migrations: [migration], rules });
+	};
+
+	const chain = (length: number) => {
+		const steps = Array.from({ length: length + 1 }, (_, index) => rename(`s${index}`, "t"));
+		const rules = steps.slice(0, -1).map((step, index) =>
+			Rule.replace(`r${index}`, {
+				match: [step],
+				replacement: [steps[index + 1] ?? step],
+			}),
+		);
+
+		return History.make({
+			versions: [v1, v2],
+			migrations: [
+				Migration.make("1-to-2", { from: v1, to: v2 })`${steps[0] ?? rename("s", "t")}`,
+			],
+			rules,
+		});
+	};
+
+	it("explores at most 10 000 rewrite states", () => {
+		// 13 independent rewrites reach 2^13 = 8192 states; 14 reach 16 384.
+		expect(
+			actionIds(
+				success(History.resolve(independentRewrites(13), { from: "1.0.0", to: "2.0.0" })),
+			),
+		).toHaveLength(13);
+		expect(
+			failure(History.resolve(independentRewrites(14), { from: "1.0.0", to: "2.0.0" })),
+		).toMatchObject({ _tag: "RewriteLimitExceeded", limit: "states", value: 10_000 });
+	});
+
+	it("chains at most 256 rule applications", () => {
+		expect(
+			actionIds(success(History.resolve(chain(256), { from: "1.0.0", to: "2.0.0" }))),
+		).toEqual(["rename-s256-t"]);
+		expect(failure(History.resolve(chain(257), { from: "1.0.0", to: "2.0.0" }))).toMatchObject({
+			_tag: "RewriteLimitExceeded",
+			limit: "depth",
+			value: 256,
+		});
+	});
+
+	it("enumerates at most 100 candidate routes", () => {
+		expect(failure(History.resolve(diamonds(6), { from: "0.0.0", to: "6.0.0" }))).toMatchObject(
+			{
+				_tag: "AmbiguousRoute",
+				candidates: { length: 64 },
+			},
+		);
+		expect(failure(History.resolve(diamonds(7), { from: "0.0.0", to: "7.0.0" }))).toMatchObject(
+			{
+				_tag: "TooManyRoutes",
+				limit: 100,
+			},
+		);
+	});
 });
 
 describe("prose ownership in resolved guides", () => {
@@ -803,12 +989,17 @@ describe("validation", () => {
 		const conflicting = { ...timeoutRenamed, description: "Something else." };
 		const v3 = Version.make("3.0.0", { previous: v2, changes: [conflicting] });
 		const empty = Migration.make("empty", { from: v1, to: v2 })``;
+		const emptyGroup = Migration.make("empty-group", {
+			from: v1,
+			to: v2,
+		})`${Action.sequence([])}`;
 		const sameId = RenameKey.make("rename-timeout", { target: "other", from: "a", to: "b" });
 		const conflictingAction = Migration.make("2-to-3", { from: v2, to: v3 })`${sameId}`;
 		const history = History.make({
 			versions: [v1, v3],
 			migrations: [
 				empty,
+				emptyGroup,
 				conflictingAction,
 				Migration.make("1-to-2", { from: v1, to: v2 })`${renameTimeout}`,
 			],
@@ -818,6 +1009,7 @@ describe("validation", () => {
 			["ConflictingAction", "rename-timeout"],
 			["ConflictingChange", timeoutRenamed.id],
 			["EmptyMigration", "empty"],
+			["EmptyMigration", "empty-group"],
 			["UnregisteredVersion", "2.0.0"],
 		]);
 	});

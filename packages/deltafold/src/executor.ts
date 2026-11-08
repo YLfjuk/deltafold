@@ -20,7 +20,8 @@ import {
 import type * as Action from "./action.ts";
 import * as Handler from "./handler.ts";
 import { SettlementReference } from "./internal/settlement.ts";
-import type { Node, Occurrence, Plan } from "./plan.ts";
+import type * as Plan from "./plan.ts";
+import type { Node, Occurrence } from "./plan.ts";
 
 /**
  * What happened to one occurrence, or what a dry run predicts.
@@ -183,31 +184,35 @@ export type ExecutionError<A extends Action.Any, E> =
 	| ExecutionInterrupted<A, E>;
 
 /** Action identifiers that the handler array leaves to `Handler.layer` bindings. */
-type Uncovered<A extends Action.Any, H> = A extends Action.Any
-	? string extends A["id"]
-		? never
-		: A["id"] extends Handler.ActionId<H>
+type Uncovered<A extends Action.Any, H, C extends Plan.Coverage> = "runtime" extends C
+	? never
+	: A extends Action.Any
+		? string extends A["id"]
 			? never
-			: A["id"]
-	: never;
+			: A["id"] extends Handler.ActionId<H>
+				? never
+				: A["id"]
+		: never;
 
 type Bindings<Id> = Id extends string ? Handler.Binding<Id> : never;
 
 /** True when some occurrence may be served by a binding looked up at run time. */
-type UsesBindings<A extends Action.Any, H> = [Uncovered<A, H>] extends [never]
-	? string extends A["id"]
-		? true
-		: false
-	: true;
+type UsesBindings<A extends Action.Any, H, C extends Plan.Coverage> = "runtime" extends C
+	? true
+	: [Uncovered<A, H, C>] extends [never]
+		? string extends A["id"]
+			? true
+			: false
+		: true;
 
 /**
  * Errors an execution can report for its occurrences.
  *
  * @since @next
  */
-export type Errors<A extends Action.Any, H> =
+export type Errors<A extends Action.Any, H, C extends Plan.Coverage = "static"> =
 	| Handler.Error<H>
-	| (UsesBindings<A, H> extends true ? Handler.BoundHandlerError : never);
+	| (UsesBindings<A, H, C> extends true ? Handler.BoundHandlerError : never);
 
 /**
  * Effect services an execution requires: the handlers' services, plus a
@@ -215,16 +220,19 @@ export type Errors<A extends Action.Any, H> =
  *
  * @since @next
  */
-export type Requirements<A extends Action.Any, H> = Handler.Services<H> | Bindings<Uncovered<A, H>>;
+export type Requirements<A extends Action.Any, H, C extends Plan.Coverage = "static"> =
+	| Handler.Services<H>
+	| Bindings<Uncovered<A, H, C>>;
 
 /** @since @next */
 export type Options<H extends Handler.Any> = {
 	readonly handlers?: ReadonlyArray<H>;
 	/** Evaluate preconditions without running any action body. */
 	readonly dryRun?: boolean;
-	/** Explicit cancellation. Aborting interrupts in-flight actions and stops execution. */
-	readonly signal?: AbortSignal;
-	/** Per-occurrence limit for a precondition or body. Exceeding it interrupts the action. */
+	/**
+	 * Per-occurrence limit for a precondition or body. Exceeding it interrupts that action
+	 * and stops admitting new ones. It applies to dry-run preconditions too.
+	 */
 	readonly timeout?: Duration.Input;
 	/**
 	 * How long to wait for an interrupted Promise callback to settle before reporting it
@@ -244,7 +252,7 @@ const describeReplaces = (occurrence: Occurrence) =>
 		: [];
 
 const coverage = (
-	plan: Plan,
+	plan: Plan.Any,
 	handlers: ReadonlyArray<Handler.Any>,
 	context: Context.Context<never>,
 ): { readonly resolved: Resolved; readonly issues: ReadonlyArray<CoverageIssue> } => {
@@ -293,7 +301,7 @@ const coverage = (
 };
 
 const report = <A extends Action.Any, E>(
-	plan: Plan<A>,
+	plan: Plan.Plan<A, Plan.Coverage>,
 	mode: Report["mode"],
 	status: Report["status"],
 	outcomes: ReadonlyMap<string, Outcome<E>>,
@@ -324,44 +332,38 @@ const forEachBranch = (
 	run: (node: Node) => Effect.Effect<void, never, any>,
 ) => Effect.forEach(branches, run, { concurrency, discard: true });
 
-type Halt = { reason: "failure" | "cancelled" | "timeout" | undefined };
+/** Registers a callback that cancels the execution. Only `runPromise` uses it. */
+type Subscribe = (cancel: () => void) => void;
 
-const execute = (
-	plan: Plan,
-	resolved: Resolved,
-	options: Options<Handler.Any>,
-): Effect.Effect<Report, ExecutionFailed | ExecutionInterrupted, any> =>
+type StopReason = "failure" | "cancelled" | "timeout";
+
+type PhaseResult<T> =
+	| { readonly _tag: "Done"; readonly exit: Exit.Exit<T, unknown> }
+	| {
+			readonly _tag: "Interrupted";
+			readonly reason: "cancelled" | "timeout";
+			readonly settled: boolean;
+	  };
+
+/** Admission state, cancellation, and timeouts shared by real and dry runs. */
+const makeControl = (options: Options<Handler.Any>, subscribe: Subscribe | undefined) =>
 	Effect.gen(function* () {
-		const outcomes = new Map<string, Outcome>();
-		const halt: Halt = { reason: undefined };
-		let bodiesStarted = false;
+		const halt: { reason: StopReason | undefined } = { reason: undefined };
 		const cancelled = yield* Deferred.make<"cancelled">();
 		const settleTimeout = options.settleTimeout ?? Duration.seconds(5);
 
-		const stop = (reason: NonNullable<Halt["reason"]>) => {
+		const stop = (reason: StopReason) => {
 			halt.reason ??= reason;
 		};
-
-		const signal = options.signal;
-		const onAbort = () => {
+		subscribe?.(() => {
 			stop("cancelled");
 			Deferred.doneUnsafe(cancelled, Exit.succeed("cancelled"));
-		};
-		if (signal?.aborted === true) onAbort();
-		signal?.addEventListener("abort", onAbort, { once: true });
+		});
 
+		/** Runs one precondition or body, racing it against cancellation and the timeout. */
 		const runPhase = <T>(
 			work: Effect.Effect<T, unknown, any>,
-		): Effect.Effect<
-			| { readonly _tag: "Done"; readonly exit: Exit.Exit<T, unknown> }
-			| {
-					readonly _tag: "Interrupted";
-					readonly reason: "cancelled" | "timeout";
-					readonly settled: boolean;
-			  },
-			never,
-			any
-		> =>
+		): Effect.Effect<PhaseResult<T>, never, any> =>
 			Effect.gen(function* () {
 				let settled = true;
 				const tracked = work.pipe(
@@ -380,18 +382,44 @@ const execute = (
 				}
 				const result = yield* Effect.raceFirst(
 					Effect.map(Effect.exit(tracked), (exit) => ({ _tag: "Done" as const, exit })),
-					Effect.map(Effect.raceAll(stopSignals), (reason) => ({
-						_tag: "Stop" as const,
-						reason,
-					})),
+					Effect.raceAll(stopSignals).pipe(
+						// Stop admission as soon as the signal fires. The race returns only after
+						// the interrupted work has had its settlement grace period.
+						Effect.tap((reason) => Effect.sync(() => stop(reason))),
+						Effect.map((reason) => ({ _tag: "Stop" as const, reason })),
+					),
 				);
 				if (result._tag === "Done") return result;
 
 				// A timeout interrupts only this action. Siblings settle as after any failure.
-				stop(result.reason);
-
 				return { _tag: "Interrupted" as const, reason: result.reason, settled };
 			});
+
+		return { halt, stop, runPhase };
+	});
+
+const interrupted = <A extends Action.Any>(
+	plan: Plan.Plan<A, Plan.Coverage>,
+	mode: Report["mode"],
+	reason: "cancelled" | "timeout",
+	outcomes: ReadonlyMap<string, Outcome>,
+	bodiesStarted: boolean,
+) =>
+	new ExecutionInterrupted({
+		reason,
+		report: report(plan, mode, "interrupted", outcomes, bodiesStarted),
+	});
+
+const execute = (
+	plan: Plan.Any,
+	resolved: Resolved,
+	options: Options<Handler.Any>,
+	subscribe: Subscribe | undefined,
+): Effect.Effect<Report, ExecutionFailed | ExecutionInterrupted, any> =>
+	Effect.gen(function* () {
+		const outcomes = new Map<string, Outcome>();
+		const { halt, stop, runPhase } = yield* makeControl(options, subscribe);
+		let bodiesStarted = false;
 
 		const runOccurrence = (occurrence: Occurrence) =>
 			Effect.gen(function* () {
@@ -430,6 +458,9 @@ const execute = (
 
 						return;
 					}
+					// The occurrence has started, so a sibling failure lets it finish.
+					// Cancellation that arrived during the precondition keeps the body from starting.
+					if (halt.reason === "cancelled") return;
 				}
 
 				bodiesStarted = true;
@@ -474,7 +505,6 @@ const execute = (
 			if (halt.reason !== undefined) break;
 			yield* runNode(step.node);
 		}
-		signal?.removeEventListener("abort", onAbort);
 
 		if (halt.reason === undefined)
 			return report(plan, "execute", "completed", outcomes, bodiesStarted);
@@ -487,15 +517,18 @@ const execute = (
 			});
 		}
 
-		return yield* new ExecutionInterrupted({
-			reason: halt.reason,
-			report: report(plan, "execute", "interrupted", outcomes, bodiesStarted),
-		});
+		return yield* interrupted(plan, "execute", halt.reason, outcomes, bodiesStarted);
 	});
 
-const dryRun = (plan: Plan, resolved: Resolved): Effect.Effect<Report, never, any> =>
+const dryRun = (
+	plan: Plan.Any,
+	resolved: Resolved,
+	options: Options<Handler.Any>,
+	subscribe: Subscribe | undefined,
+): Effect.Effect<Report, ExecutionInterrupted, any> =>
 	Effect.gen(function* () {
 		const outcomes = new Map<string, Outcome>();
+		const { halt, runPhase } = yield* makeControl(options, subscribe);
 		let failedAt: string | undefined;
 
 		/** Returns whether the node would or might change state. */
@@ -518,7 +551,7 @@ const dryRun = (plan: Plan, resolved: Resolved): Effect.Effect<Report, never, an
 				}
 
 				const handler = resolved.get(node.id);
-				if (handler === undefined) return dirty;
+				if (handler === undefined || halt.reason !== undefined) return dirty;
 				if (failedAt !== undefined) {
 					outcomes.set(node.id, {
 						_tag: "Undetermined",
@@ -541,14 +574,27 @@ const dryRun = (plan: Plan, resolved: Resolved): Effect.Effect<Report, never, an
 					return true;
 				}
 
-				const exit = yield* Effect.exit(handler.precondition);
-				if (Exit.isFailure(exit)) {
-					failedAt = node.id;
-					outcomes.set(node.id, { _tag: "PreconditionFailed", ...failureOf(exit.cause) });
+				const checked = yield* runPhase(handler.precondition);
+				if (checked._tag === "Interrupted") {
+					outcomes.set(node.id, {
+						_tag: "Interrupted",
+						phase: "precondition",
+						reason: checked.reason,
+						settled: checked.settled,
+					});
 
 					return true;
 				}
-				if (!exit.value) {
+				if (Exit.isFailure(checked.exit)) {
+					failedAt = node.id;
+					outcomes.set(node.id, {
+						_tag: "PreconditionFailed",
+						...failureOf(checked.exit.cause),
+					});
+
+					return true;
+				}
+				if (!checked.exit.value) {
 					outcomes.set(node.id, { _tag: "WouldSkip", reason: handler.skipReason });
 
 					return false;
@@ -562,6 +608,10 @@ const dryRun = (plan: Plan, resolved: Resolved): Effect.Effect<Report, never, an
 		let dirty = false;
 		for (const step of plan.steps) dirty = yield* visit(step.node, dirty);
 
+		if (halt.reason === "cancelled" || halt.reason === "timeout") {
+			return yield* interrupted(plan, "dry-run", halt.reason, outcomes, false);
+		}
+
 		return report(
 			plan,
 			"dry-run",
@@ -571,18 +621,15 @@ const dryRun = (plan: Plan, resolved: Resolved): Effect.Effect<Report, never, an
 		);
 	});
 
-/**
- * Runs a plan as an Effect. Coverage is checked before any precondition or body runs.
- * Steps are sequential barriers; parallel groups run their branches concurrently. On
- * failure, no new action starts, and actions already running settle before the effect
- * fails with the partial report.
- *
- * @since @next
- */
-export const effect = <A extends Action.Any, H extends Handler.Any = never>(
-	plan: Plan<A>,
-	options: Options<H> = {},
-): Effect.Effect<Report<A, Errors<A, H>>, ExecutionError<A, Errors<A, H>>, Requirements<A, H>> =>
+const run = <A extends Action.Any, C extends Plan.Coverage, H extends Handler.Any>(
+	plan: Plan.Plan<A, C>,
+	options: Options<H>,
+	subscribe: Subscribe | undefined,
+): Effect.Effect<
+	Report<A, Errors<A, H, C>>,
+	ExecutionError<A, Errors<A, H, C>>,
+	Requirements<A, H, C>
+> =>
 	// The plan's action union and the handler union determine these types; the
 	// implementation works on erased handlers.
 	// oxlint-disable-next-line typescript/no-unsafe-type-assertion
@@ -603,13 +650,38 @@ export const effect = <A extends Action.Any, H extends Handler.Any = never>(
 		}
 
 		return options.dryRun === true
-			? yield* dryRun(plan, checked.resolved)
-			: yield* execute(plan, checked.resolved, options);
+			? yield* dryRun(plan, checked.resolved, options, subscribe)
+			: yield* execute(plan, checked.resolved, options, subscribe);
 	}) as Effect.Effect<
-		Report<A, Errors<A, H>>,
-		ExecutionError<A, Errors<A, H>>,
-		Requirements<A, H>
+		Report<A, Errors<A, H, C>>,
+		ExecutionError<A, Errors<A, H, C>>,
+		Requirements<A, H, C>
 	>;
+
+/**
+ * Runs a plan as an Effect. Coverage is checked before any precondition or body runs.
+ * Steps are sequential barriers; parallel groups run their branches concurrently. On
+ * failure, no new action starts, and actions already running settle before the effect
+ * fails with the partial report.
+ *
+ * To cancel, interrupt the fiber. Interruption reaches running actions and aborts the
+ * signal passed to Promise callbacks. The effect then ends as interrupted, without a
+ * report.
+ *
+ * @since @next
+ */
+export const effect = <
+	A extends Action.Any,
+	C extends Plan.Coverage,
+	H extends Handler.Any = never,
+>(
+	plan: Plan.Plan<A, C>,
+	options: Options<H> = {},
+): Effect.Effect<
+	Report<A, Errors<A, H, C>>,
+	ExecutionError<A, Errors<A, H, C>>,
+	Requirements<A, H, C>
+> => run(plan, options, undefined);
 
 type ServicesOption<R> = [R] extends [never]
 	? {
@@ -621,17 +693,46 @@ type ServicesOption<R> = [R] extends [never]
 			readonly services: Context.Context<R> | Layer.Layer<R, unknown>;
 		};
 
+/** @since @next */
+export type PromiseOptions<H extends Handler.Any> = Options<H> & {
+	/**
+	 * Explicit cancellation. Aborting stops admission, interrupts running actions, and
+	 * rejects with `ExecutionInterrupted` and the partial report.
+	 */
+	readonly signal?: AbortSignal;
+};
+
 /**
  * Runs a plan and returns a Promise. It rejects with `HandlerCoverageError`,
  * `ExecutionFailed`, or `ExecutionInterrupted`, each carrying the partial report.
+ * Building a supplied services layer can also reject with the layer's own error,
+ * without a report.
  *
  * @since @next
  */
-export const runPromise = <A extends Action.Any, H extends Handler.Any = never>(
-	plan: Plan<A>,
-	options: Options<H> & ServicesOption<Requirements<A, H>>,
-): Promise<Report<A, Errors<A, H>>> => {
-	const program = effect(plan, options);
+export const runPromise = <
+	A extends Action.Any,
+	C extends Plan.Coverage,
+	H extends Handler.Any = never,
+>(
+	plan: Plan.Plan<A, C>,
+	options: PromiseOptions<H> & ServicesOption<Requirements<A, H, C>>,
+): Promise<Report<A, Errors<A, H, C>>> => {
+	const { signal } = options;
+	let unsubscribe: (() => void) | undefined;
+	const subscribe: Subscribe | undefined =
+		signal === undefined
+			? undefined
+			: (cancel) => {
+					if (signal.aborted) {
+						cancel();
+
+						return;
+					}
+					signal.addEventListener("abort", cancel, { once: true });
+					unsubscribe = () => signal.removeEventListener("abort", cancel);
+				};
+	const program = run(plan, options, subscribe);
 	const services: Context.Context<never> | Layer.Layer<never, unknown> | undefined =
 		options.services;
 	const provided =
@@ -644,10 +745,12 @@ export const runPromise = <A extends Action.Any, H extends Handler.Any = never>(
 	return Effect.runPromiseExit(
 		// `ServicesOption` requires services that cover every requirement.
 		// oxlint-disable-next-line typescript/no-unsafe-type-assertion
-		provided as Effect.Effect<Report<A, Errors<A, H>>, unknown>,
-	).then((exit) => {
-		if (Exit.isSuccess(exit)) return exit.value;
+		provided as Effect.Effect<Report<A, Errors<A, H, C>>, unknown>,
+	)
+		.finally(() => unsubscribe?.())
+		.then((exit) => {
+			if (Exit.isSuccess(exit)) return exit.value;
 
-		throw Cause.squash(exit.cause);
-	});
+			throw Cause.squash(exit.cause);
+		});
 };

@@ -31,7 +31,7 @@ import type * as Shortcut from "../shortcut.ts";
 import type { Version } from "../version.ts";
 import { resolveGuide } from "./guide.ts";
 import { itemsOf, occurrencesOf, rewrite, type Item, type MakeOccurrence } from "./rewrite.ts";
-import { actionsOfSteps, hasProse, stepsOf, type Declarations } from "./validate.ts";
+import { actionsOfSteps, hasProse, hopsOf, stepsOf, type Declarations } from "./validate.ts";
 
 /**
  * Route policies for choosing between candidate routes. Each one is opt-in.
@@ -417,13 +417,22 @@ const summaryOf = (candidate: Candidate): RouteSummary => ({
 	failure: Result.isFailure(candidate.plan) ? candidate.plan.failure.message : undefined,
 });
 
+/** Tokens of one hop. Complementary migrations run as a unit, so their order is ignored. */
+const hopTokens = (members: ReadonlyArray<Member>) =>
+	Arr.sort(
+		members.map((member) => `${member.direction}:${member.migration.id}`),
+		Order.String,
+	);
+
 /** Migration tokens of a route, with shortcut hops expanded to the route they replace. */
 const canonicalTokens = (candidate: Candidate) =>
 	candidate.edges
 		.flatMap((edge) =>
 			edge.shortcut === undefined
-				? edge.members.map((member) => `${member.direction}:${member.migration.id}`)
-				: edge.shortcut.replaces.map((migration) => `forward:${migration.id}`),
+				? hopTokens(edge.members)
+				: hopsOf(edge.shortcut.replaces).flatMap((hop) =>
+						hopTokens(hop.map((migration) => ({ migration, direction: "forward" }))),
+					),
 		)
 		.join(",");
 

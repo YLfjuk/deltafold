@@ -168,72 +168,90 @@ const matchesAt = (
 		return item._tag === "Par" && keyOf([item]) === stepKey([expected]);
 	});
 
-type Normalizer = {
-	readonly normalize: (items: ReadonlyArray<Item>) => Outcome;
+type Transition = {
+	readonly next: ReadonlyArray<Item>;
+	readonly application: Application;
 };
 
-const makeNormalizer = (rules: ReadonlyArray<Rule.Any>): Normalizer => {
+/** Replaces the match of a rule at a position with occurrences that record their provenance. */
+const replace = (rule: Rule.Any, items: ReadonlyArray<Item>, position: number): Transition => {
+	const matched = items.slice(position, position + rule.match.length);
+	const removed = occurrencesOf(matched);
+	const first = removed[0];
+	// A non-empty match always covers at least one occurrence.
+	if (first === undefined) throw new Error(`Rule "${rule.id}" matched no occurrences`);
+	const step = matched[0]?.step ?? 0;
+	const produced: Array<Occurrence> = [];
+	const make: MakeOccurrence = (action, instruction) => {
+		const occurrence: Occurrence = {
+			_tag: "Occurrence",
+			id: `${rule.id}(${removed.map((replaced) => replaced.id).join("+")})/${action.id}`,
+			action,
+			migration: first.migration,
+			direction: first.direction,
+			instruction,
+			origin: { _tag: "Replacement", rule, replaces: removed },
+		};
+		produced.push(occurrence);
+
+		return occurrence;
+	};
+	const next = [
+		...items.slice(0, position),
+		...itemsOf(rule.replacement, make, step),
+		...items.slice(position + rule.match.length),
+	];
+
+	return { next, application: { rule, removed, produced } };
+};
+
+const makeNormalizer = (rules: ReadonlyArray<Rule.Any>) => {
 	const ordered = Arr.sort(
 		rules,
 		Order.mapInput(Order.String, (rule: Rule.Any) => rule.id),
 	);
 
-	/** Normalizes the branches of every group, then flattens groups that collapsed. */
-	const normalizeBranches = (items: ReadonlyArray<Item>): Outcome => {
-		const trace: Array<Application> = [];
-		const result = items.flatMap((item): ReadonlyArray<Item> => {
-			if (item._tag !== "Par") return [item];
+	/**
+	 * Every single rule application available in a sequence: at any position of the
+	 * sequence itself, or inside any branch of its groups. Branch-local and whole-group
+	 * rewrites compete as transitions from the same state.
+	 */
+	const transitions = (items: ReadonlyArray<Item>): ReadonlyArray<Transition> => {
+		const found: Array<Transition> = [];
+		for (let position = 0; position < items.length; position++) {
+			for (const rule of ordered) {
+				if (rule.match.length > 0 && matchesAt(rule.match, items, position)) {
+					found.push(replace(rule, items, position));
+				}
+			}
 
-			const branches = item.branches.map((branch) => {
-				const outcome = normalize(branch);
-				trace.push(...outcome.trace);
+			const item = items[position];
+			if (item?._tag !== "Par") continue;
+			for (const [index, branch] of item.branches.entries()) {
+				for (const inner of transitions(branch)) {
+					const branches = item.branches.map((other, otherIndex) =>
+						otherIndex === index ? inner.next : other,
+					);
+					found.push({
+						next: [
+							...items.slice(0, position),
+							...parallelOf(branches, item.concurrency, item.step),
+							...items.slice(position + 1),
+						],
+						application: inner.application,
+					});
+				}
+			}
+		}
 
-				return outcome.items;
-			});
-
-			return parallelOf(branches, item.concurrency, item.step);
-		});
-
-		return { items: result, trace };
+		return found;
 	};
 
-	const replace = (rule: Rule.Any, items: ReadonlyArray<Item>, position: number) => {
-		const matched = items.slice(position, position + rule.match.length);
-		const removed = occurrencesOf(matched);
-		const first = removed[0];
-		// A non-empty match always covers at least one occurrence.
-		if (first === undefined) throw new Error(`Rule "${rule.id}" matched no occurrences`);
-		const step = matched[0]?.step ?? 0;
-		const produced: Array<Occurrence> = [];
-		const make: MakeOccurrence = (action, instruction) => {
-			const occurrence: Occurrence = {
-				_tag: "Occurrence",
-				id: `${rule.id}(${removed.map((replaced) => replaced.id).join("+")})/${action.id}`,
-				action,
-				migration: first.migration,
-				direction: first.direction,
-				instruction,
-				origin: { _tag: "Replacement", rule, replaces: removed },
-			};
-			produced.push(occurrence);
-
-			return occurrence;
-		};
-		const replacement = normalizeBranches(itemsOf(rule.replacement, make, step));
-		const next = [
-			...items.slice(0, position),
-			...replacement.items,
-			...items.slice(position + rule.match.length),
-		];
-
-		return {
-			next,
-			applications: [{ rule, removed, produced }, ...replacement.trace],
-		};
-	};
-
+	/**
+	 * Explores every rewrite order of the whole sequence, nested groups included, under
+	 * one shared state and depth budget.
+	 */
 	const normalize = (input: ReadonlyArray<Item>): Outcome => {
-		const start = normalizeBranches(input);
 		const seen = new Set<string>();
 		const onPath = new Map<string, number>();
 		const normals = new Map<string, Outcome>();
@@ -267,23 +285,14 @@ const makeNormalizer = (rules: ReadonlyArray<Rule.Any>): Normalizer => {
 			}
 			onPath.set(key, trace.length);
 
-			let applied = false;
-			for (let position = 0; position < items.length; position++) {
-				for (const rule of ordered) {
-					if (rule.match.length === 0 || !matchesAt(rule.match, items, position))
-						continue;
-
-					applied = true;
-					const { next, applications } = replace(rule, items, position);
-					visit(next, [...trace, ...applications]);
-				}
-			}
-			if (!applied && !normals.has(key)) normals.set(key, { items, trace });
+			const available = transitions(items);
+			for (const { next, application } of available) visit(next, [...trace, application]);
+			if (available.length === 0) normals.set(key, { items, trace });
 
 			onPath.delete(key);
 		};
 
-		visit(start.items, start.trace);
+		visit(input, []);
 
 		if (normals.size > 1) {
 			throw new RewriteFailure({
@@ -297,7 +306,7 @@ const makeNormalizer = (rules: ReadonlyArray<Rule.Any>): Normalizer => {
 
 		const [outcome] = normals.values();
 
-		return outcome ?? start;
+		return outcome ?? { items: input, trace: [] };
 	};
 
 	return { normalize };

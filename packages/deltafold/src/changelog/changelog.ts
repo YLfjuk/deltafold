@@ -14,7 +14,7 @@ import type { Package } from "../package.ts";
 import type { GuideItem, Plan, Step } from "../plan.ts";
 import type { Release, Version } from "../version.ts";
 import * as Document from "./document.ts";
-import { asRelease, blocksOf, insert } from "./sections.ts";
+import { asRelease, blocksOf, insertAll } from "./sections.ts";
 
 /**
  * A change section of a release. The first section whose `select` matches wins.
@@ -243,7 +243,7 @@ export const make = <M = never>(options: Options<M> = {}): Changelog<M> => {
 		});
 		if (other !== false && unmatched.length > 0) {
 			result.push(
-				Document.Section("other", {
+				Document.generatedSection("deltafold/other", {
 					title: other.title,
 					children: [changeList(unmatched)],
 				}),
@@ -254,19 +254,22 @@ export const make = <M = never>(options: Options<M> = {}): Changelog<M> => {
 	};
 
 	const releaseSection = (context: Document.ReleaseContext<M>): Document.Section => {
-		let result = asRelease(
+		const base = asRelease(
 			Document.Section(context.version.id, {
 				title: context.version.id,
 				children: changeSections(context.version.changes),
 			}),
 			context.version,
 		);
-		for (const plugin of plugins) {
-			if (plugin.scope !== Document.Release) continue;
-			result = insert(result, plugin.at, blocksOf(plugin.resolve(context)));
-		}
 
-		return result;
+		return insertAll(
+			base,
+			plugins.flatMap((plugin) =>
+				plugin.scope === Document.Release
+					? [{ at: plugin.at, blocks: blocksOf(plugin.resolve(context)) }]
+					: [],
+			),
+		);
 	};
 
 	const requireKnown = (pkg: Package, releases: ReadonlyArray<Release<M>>) => {
@@ -292,7 +295,7 @@ export const make = <M = never>(options: Options<M> = {}): Changelog<M> => {
 				_tag: "Document",
 				kind: "change",
 				children: [
-					Document.Section("unreleased", {
+					Document.generatedSection("deltafold/unreleased", {
 						title: changeOptions.title ?? "Unreleased",
 						children: changeSections(changes),
 					}),
@@ -349,18 +352,24 @@ export const make = <M = never>(options: Options<M> = {}): Changelog<M> => {
 					? []
 					: [{ package: pkg, version, metadata: release.metadata }];
 			});
-			let root = Document.Section("package", {
-				title: pkg.name,
-				children: contexts.map(releaseSection),
-			});
-			for (const plugin of plugins) {
-				if (plugin.scope !== Document.History) continue;
-				root = insert(
-					root,
-					plugin.at,
-					blocksOf(plugin.resolve({ package: pkg, releases: contexts })),
-				);
-			}
+			const root = insertAll(
+				Document.generatedSection("deltafold/package", {
+					title: pkg.name,
+					children: contexts.map(releaseSection),
+				}),
+				plugins.flatMap((plugin) =>
+					plugin.scope === Document.History
+						? [
+								{
+									at: plugin.at,
+									blocks: blocksOf(
+										plugin.resolve({ package: pkg, releases: contexts }),
+									),
+								},
+							]
+						: [],
+				),
+			);
 
 			return { _tag: "Document", kind: "history", children: [root] };
 		},
@@ -391,7 +400,7 @@ export const make = <M = never>(options: Options<M> = {}): Changelog<M> => {
 					: stepSections;
 			if (guideOptions.explain === true && plan.explanations.length > 0) {
 				children.push(
-					Document.Section("explanations", {
+					Document.generatedSection("deltafold/explanations", {
 						title: "Omitted instructions",
 						children: [
 							Document.List(
@@ -422,7 +431,7 @@ export const make = <M = never>(options: Options<M> = {}): Changelog<M> => {
 				_tag: "Document",
 				kind: plan.direction === "downgrade" ? "downgrade" : "upgrade",
 				children: [
-					Document.Section("guide", {
+					Document.generatedSection("deltafold/guide", {
 						title: `${verb}${subject} from ${plan.from.id} to ${plan.to.id}`,
 						children,
 					}),
