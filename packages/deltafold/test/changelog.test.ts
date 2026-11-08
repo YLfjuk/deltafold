@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Result } from "effect";
 
-import { Change, History, Migration, Package, Rule, Version } from "deltafold";
+import { Change, History, Migration, Package, Plan, Rule, Version } from "deltafold";
 import { Changelog, Document } from "deltafold/changelog";
 import * as Html from "deltafold/html";
 import * as Markdown from "deltafold/markdown";
@@ -321,6 +321,14 @@ describe("scenario 13: resolved guides", () => {
 
 		expect(Markdown.render(changelog.upgrade(resolved.success))).toBe(
 			"# Upgrade from 1.0.0 to 1.0.1\n\nNo migration work is needed.\n",
+		);
+	});
+
+	it("renders the same guide for a runtime-coverage plan", () => {
+		const plan = planFor([]);
+
+		expect(Markdown.render(changelog.upgrade(Plan.withRuntimeCoverage(plan)))).toBe(
+			Markdown.render(changelog.upgrade(plan)),
 		);
 	});
 });
