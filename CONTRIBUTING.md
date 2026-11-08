@@ -1,8 +1,9 @@
 # Contributing to deltafold
 
-deltafold is in early development. The [requirements](notes/requirements.md) and
-[decisions](notes/decisions.md) describe what the library must do and why. Open an issue before starting a large change, so the design can be
-discussed first.
+deltafold is in early development. The [requirements](notes/requirements.md)
+and [decisions](notes/decisions.md) describe what the library must do and why.
+Open an issue before starting a large change, so the design can be discussed
+first.
 
 ## Requirements
 

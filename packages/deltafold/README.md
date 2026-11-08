@@ -78,6 +78,7 @@ Some transitions need no work. Declare them with `Migration.noop`, so that
 "no work" never has to be inferred from a missing migration:
 
 ```ts
+const v201 = Version.make("2.0.1", { previous: v2, changes: [] });
 const patch = Migration.noop("2.0.0-to-2.0.1", { from: v2, to: v201 });
 ```
 
@@ -85,6 +86,11 @@ A reverse transition exists only when you declare it. Register the result of
 `Migration.withRevert` in place of the original migration:
 
 ```ts
+const restoreTimeout = RenameKey.make("restore-timeout", {
+	file: "app.json",
+	from: "requestTimeout",
+	to: "timeout",
+});
 const reversible = Migration.withRevert(toV2)`${restoreTimeout}`;
 ```
 
@@ -124,7 +130,8 @@ Moving between release branches needs a migration declared between them.
 ## Run a plan with Promise handlers
 
 Handlers bind to action instances. A precondition that returns `false` skips the
-action and reports the reason. A precondition that throws fails the run.
+action and reports the reason. A precondition that throws fails the run. In this
+example, `renameKey` and `fileExists` stand for your own file access.
 
 ```ts
 import { Executor, Handler } from "deltafold";
@@ -150,6 +157,7 @@ try {
 			console.log(entry.occurrence.id, entry.outcome._tag);
 		}
 	}
+	throw error;
 }
 ```
 
@@ -171,32 +179,54 @@ Pass `dryRun: true` to evaluate preconditions without running any action body.
 A precondition that depends on an earlier action reports `Undetermined`
 because the dry run does not apply that action.
 
-Pass `signal` to cancel. Cancellation interrupts running actions and aborts the
-`signal` passed to Promise callbacks. `timeout` interrupts one action that takes
-too long. Interrupted Promise callbacks that ignore the signal may keep running;
-the report marks them `settled: false` after `settleTimeout`.
+Pass `signal` to cancel. Cancellation stops new actions, interrupts running
+ones, aborts the `signal` passed to Promise callbacks, and rejects with
+`ExecutionInterrupted`. `timeout` interrupts one action that takes too long and
+stops new ones. Both apply to dry-run preconditions too. Interrupted Promise
+callbacks that ignore the signal may keep running; the report marks them
+`settled: false` after `settleTimeout`.
 
 ## Run a plan with Effect handlers
 
 `Handler.effect` keeps the errors and services of its Effect.
-`Handler.promise` can declare services too, and receives them resolved:
+`Handler.promise` can declare services too, and receives them resolved. Either
+handler below can perform `renameTimeout`:
 
 ```ts
-const exportHandler = Handler.effect(renameExport, (payload) =>
+import { Context, Effect } from "effect";
+
+const ConfigFiles = Context.Service<{
+	readonly renameKey: (file: string, from: string, to: string) => Effect.Effect<void>;
+}>("app/ConfigFiles");
+
+const effectHandler = Handler.effect(renameTimeout, ({ file, from, to }) =>
 	Effect.gen(function* () {
-		const editor = yield* ExportEditor;
-		yield* editor.renameKey(payload);
+		const files = yield* ConfigFiles;
+		yield* files.renameKey(file, from, to);
 	}),
 );
 
-const jsonHandler = Handler.promise(
-	renameJson,
-	async (payload, { editor, signal }) => editor.update(payload, { signal }),
-	{ services: { editor: ConfigEditor } },
+const AsyncConfigFiles = Context.Service<{
+	readonly renameKey: (
+		file: string,
+		from: string,
+		to: string,
+		options: { readonly signal: AbortSignal },
+	) => Promise<void>;
+}>("app/AsyncConfigFiles");
+
+const promiseHandler = Handler.promise(
+	renameTimeout,
+	({ file, from, to }, { files, signal }) => files.renameKey(file, from, to, { signal }),
+	{ services: { files: AsyncConfigFiles } },
 );
 
-const execution = Executor.effect(plan, { handlers: [jsonHandler, exportHandler] });
+const execution = Executor.effect(plan, { handlers: [effectHandler] });
 ```
+
+To cancel an Effect execution, interrupt its fiber. Running actions are
+interrupted and Promise callbacks receive an aborted signal; the effect ends as
+interrupted, without a report.
 
 The execution's requirements include the handlers' services. They also include a
 `Handler.Binding` for every action of the history that the array does not
@@ -215,14 +245,18 @@ Replacements can feed other rules. Rules never match across parallel branches
 or around a text-only migration.
 
 ```ts
+import { Rule } from "deltafold";
+
 const cancelRoundTrip = Rule.replace("cancel-timeout-round-trip", {
 	match: [renameTimeout, restoreTimeout],
 	replacement: [],
 });
 ```
 
-`Action.parallel` and `Action.sequence` declare independent branches inside a
-migration. A shortcut offers an alternative to a named sequence of migrations.
+`Action.sequence` groups ordered actions. `Action.parallel` groups independent
+branches, each of which may contain a sequence. A shortcut offers an alternative
+to a named sequence of migrations, and must replace every migration of each hop
+it covers.
 
 ## Render changelogs and guides
 
