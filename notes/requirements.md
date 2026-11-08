@@ -56,8 +56,9 @@ erases release history.
   failure, never "no work".
 - **PLAN-3.** A route follows declared migrations only. Sharing an ancestor does
   not allow a route to go down to that ancestor and back up to another branch.
-- **PLAN-4.** Several migrations between the same two versions complement each
-  other and all run. Alternative routes are distinct paths between the versions.
+- **PLAN-4.** One migration holds all the work of a transition between two
+  versions, and declaring a second one for the same transition is an error.
+  Alternative routes are distinct paths between the versions.
 - **PLAN-5.** When several routes connect the versions, planning fails with
   identifiable candidates unless the consumer selects one, either by identity or
   by an explicit preference that leaves exactly one candidate.

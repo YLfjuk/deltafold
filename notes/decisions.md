@@ -41,13 +41,13 @@ issue, sorted by tag, subject, and message, and resolution fails with
 
 ## Routing
 
-**Complementary edges.** All migrations between the same two versions form one
-edge and run in registration order, each as its own step. Alternatives are
-different version paths or shortcuts. A reverse edge exists only when every
-migration of the forward group has a revert. Otherwise the reverse group would
-silently skip some consumers' work, so a blocker names the migrations without a
-revert. A shortcut that replaces a hop must replace every migration of that hop,
-for the same reason.
+**One migration per transition.** At most one migration side goes from one
+version to another. A second one, including another migration's revert, is a
+`DuplicateEdge` validation issue that asks for the work to be merged. Work for
+several files or formats lives in one migration, and `Migration.instruction`
+keeps its prose per action. Alternatives are different version paths or
+shortcuts. A helper that composes one migration from parts can follow when a
+concrete need appears.
 
 **No detours.** A route never mixes moves toward ancestors with moves toward
 descendants in release ancestry. Explicit cross-branch migrations may appear in
@@ -110,16 +110,16 @@ TypeScript then infers the type predicate. Pass a schema itself rather than
 rejections become `UnexpectedHandlerError`.
 
 **Static coverage.** A plan resolved from a history carries the history's whole
-action union, because the route is chosen at run time. Every action without a
-handler in the array becomes a `Handler.Binding` requirement.
-`Plan.withRuntimeCoverage` marks the plan's coverage as run-time in its type,
-which removes those requirements and keeps the action types. Run-time coverage
-still runs before any action starts.
+action union, because the route is chosen at run time. The executors constrain
+the handler array directly: an action without a handler makes the `handlers`
+option a type error that names the action. `Plan.withRuntimeCoverage` marks the
+plan's coverage as run-time in its type, which removes that constraint and keeps
+the action types. Run-time coverage still runs before any action starts.
 
-**Layer bindings.** `Handler.layer` captures the handlers' services when the
-layer is built. The executor looks bindings up by action identifier, so it cannot
-see a bound handler's error type; their failures arrive as `BoundHandlerError`
-with the original error in `cause`.
+**Handlers come from one array.** Handlers are supplied only through the
+`handlers` array. Their Effect services stay ordinary requirements of the
+execution. Supplying handlers through Effect layers is deferred until a consumer
+needs handler selection through layers.
 
 **Failure and interruption.** A failure stops admission of new actions; running
 actions settle normally. A timeout interrupts only the action that exceeded it,
@@ -268,6 +268,7 @@ These work today but need confirmation before 1.0:
 - Opt-in retry and rollback that keep the original failure and partial report.
 - A logging capability for handlers and adapters, filtered by log level.
 - A durable executor (see the durability trial).
+- Supplying handlers through Effect layers.
 - Explicit dependencies between migrations (`requires`).
 - Runtime payload schemas, validation of imported histories, and serialized
   plans.

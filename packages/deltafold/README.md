@@ -228,12 +228,12 @@ To cancel an Effect execution, interrupt its fiber. Running actions are
 interrupted and Promise callbacks receive an aborted signal; the effect ends as
 interrupted, without a report.
 
-The execution's requirements include the handlers' services. They also include a
-`Handler.Binding` for every action of the history that the array does not
-cover. Provide those with `Handler.layer([...])`, or use
-`Plan.withRuntimeCoverage(plan)` to check coverage only at run time.
-`Executor.runPromise` requires a `services` context or layer that covers the
-requirements.
+The execution's requirements are the handlers' services. `Executor.runPromise`
+requires a `services` context or layer that covers them.
+
+The handler array must cover every action of the history: a missing handler is a
+type error that names the action. Use `Plan.withRuntimeCoverage(plan)` to check
+coverage only at run time, before any action starts.
 
 Integration modules can export their own handler factories. They return the same
 `Handler` values and work with both executors.

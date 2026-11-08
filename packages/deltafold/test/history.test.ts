@@ -153,14 +153,16 @@ describe("scenario 2: branching ancestry", () => {
 	});
 });
 
-describe("scenario 3: complementary migrations and alternative routes", () => {
+describe("scenario 3: one migration per transition and alternative routes", () => {
 	const v1 = Version.make("1.0.0", { changes: [] });
 	const v2 = Version.make("2.0.0", { previous: v1, changes: [timeoutRenamed] });
 	const v3 = Version.make("3.0.0", { previous: v2, changes: [retriesAdded] });
 	const renameJson = RenameKey.make("rename-json", { target: "config.json", from: "a", to: "b" });
 	const renameYaml = RenameKey.make("rename-yaml", { target: "config.yaml", from: "a", to: "b" });
-	const json = Migration.make("json-1-to-2", { from: v1, to: v2 })`${renameJson}`;
-	const yaml = Migration.make("yaml-1-to-2", { from: v1, to: v2 })`${renameYaml}`;
+	const config = Migration.make("config-1-to-2", { from: v1, to: v2 })`
+		${Migration.instruction(renameJson)`Rename the key in config.json.`}
+		${Migration.instruction(renameYaml)`Rename the key in config.yaml.`}
+	`;
 	const retries = Migration.make("2-to-3", { from: v2, to: v3 })`${addRetryLimit}`;
 	const addJsonRetries = AddKey.make("direct-json", { target: "config.json", key: "retries" });
 	const direct = Migration.make("1-to-3", { from: v1, to: v3, cost: 1 })`
@@ -169,21 +171,32 @@ describe("scenario 3: complementary migrations and alternative routes", () => {
 		${addJsonRetries}
 	`;
 
-	it("keeps complementary migrations with identical endpoints together", () => {
-		const history = History.make({ versions: [v1, v2, v3], migrations: [json, yaml, retries] });
+	it("rejects several migrations between the same two versions", () => {
+		const json = Migration.make("json-1-to-2", { from: v1, to: v2 })`${renameJson}`;
+		const yaml = Migration.make("yaml-1-to-2", { from: v1, to: v2 })`${renameYaml}`;
+		const split = History.make({ versions: [v1, v2, v3], migrations: [json, yaml, retries] });
+
+		expect(History.validate(split)).toEqual([
+			{
+				_tag: "DuplicateEdge",
+				subject: "1.0.0 -> 2.0.0",
+				message:
+					'"json-1-to-2" and "yaml-1-to-2" both go from "1.0.0" to "2.0.0". Merge them into one migration.',
+			},
+		]);
+	});
+
+	it("runs every action of the transition's migration", () => {
+		const history = History.make({ versions: [v1, v2, v3], migrations: [config, retries] });
 		const plan = success(History.resolve(history, { from: "1.0.0", to: "3.0.0" }));
 
 		expect(plan.route.id).toBe("1.0.0>2.0.0>3.0.0");
-		expect(plan.steps.map((step) => step.migration.id)).toEqual([
-			"json-1-to-2",
-			"yaml-1-to-2",
-			"2-to-3",
-		]);
+		expect(actionIds(plan)).toEqual(["rename-json", "rename-yaml", "add-retry-limit"]);
 	});
 
 	const history = History.make({
 		versions: [v1, v2, v3],
-		migrations: [json, yaml, retries, direct],
+		migrations: [config, retries, direct],
 	});
 
 	it("reports alternative routes as ambiguous with selectable identifiers", () => {
@@ -194,7 +207,7 @@ describe("scenario 3: complementary migrations and alternative routes", () => {
 		expect(
 			error.candidates.map((candidate) => [candidate.id, candidate.actions, candidate.cost]),
 		).toEqual([
-			["1.0.0>2.0.0>3.0.0", 3, 3],
+			["1.0.0>2.0.0>3.0.0", 3, 2],
 			["1.0.0>3.0.0", 3, 1],
 		]);
 		expect(error.message).toContain("`route` option");
@@ -503,54 +516,11 @@ describe("scenario 6: shortcuts", () => {
 
 		expect(History.validate(invalid).map((issue) => [issue._tag, issue.subject])).toEqual([
 			["InvalidShortcut", "unregistered"],
-			["InvalidShortcut", "unregistered"],
 			["InvalidShortcut", "unrelated"],
 		]);
 		expect(failure(History.resolve(invalid, { from: "2.0.1", to: "2.0.3" }))._tag).toBe(
 			"InvalidHistory",
 		);
-	});
-
-	it("requires a shortcut to replace every complementary migration of a hop", () => {
-		const yaml = Migration.make("yaml-2.0.2", { from: v1, to: v2 })`${addRetryLimit}`;
-		const partial = Shortcut.make("partial", {
-			from: v1,
-			to: v3,
-			replaces: [m2, m3],
-			migrations: [direct],
-		});
-		const complete = Shortcut.make("complete", {
-			from: v1,
-			to: v3,
-			replaces: [yaml, m2, m3],
-			migrations: [direct],
-		});
-		const declare = (shortcut: Shortcut.Any) =>
-			History.make({
-				versions: [v1, v2, v3],
-				migrations: [m2, yaml, m3],
-				shortcuts: [shortcut],
-			});
-
-		expect(History.validate(declare(partial))).toEqual([
-			{
-				_tag: "InvalidShortcut",
-				subject: "partial",
-				message:
-					'Shortcut "partial" replaces only part of the transition from "2.0.1" to "2.0.2". It must also replace "yaml-2.0.2".',
-			},
-		]);
-		expect(
-			actionIds(
-				success(
-					History.resolve(declare(complete), {
-						from: "2.0.1",
-						to: "2.0.3",
-						policy: "prefer-shortcuts",
-					}),
-				),
-			),
-		).toEqual(["add-both"]);
 	});
 });
 
@@ -622,20 +592,6 @@ describe("scenario 7: downgrades", () => {
 			reachable: ["3.0.0"],
 			closest: ["3.0.0"],
 		});
-	});
-
-	it("blocks a reverse transition when a complementary migration has no revert", () => {
-		const yamlOnly = Migration.make("yaml-1-to-2", { from: v1, to: v2 })`${addRetryLimit}`;
-		const incomplete = History.make({ versions: [v1, v2], migrations: [up12, yamlOnly] });
-		const error = failure(History.resolve(incomplete, { from: "2.0.0", to: "1.0.0" }));
-
-		expect(error._tag === "UnsupportedRoute" && error.blockers).toEqual([
-			{
-				from: "2.0.0",
-				to: "1.0.0",
-				reason: 'Migrations "yaml-1-to-2" have no revert, so the reverse transition is incomplete.',
-			},
-		]);
 	});
 });
 
@@ -988,10 +944,10 @@ describe("validation", () => {
 	it("reports conflicting definitions, empty migrations, and unregistered versions together", () => {
 		const conflicting = { ...timeoutRenamed, description: "Something else." };
 		const v3 = Version.make("3.0.0", { previous: v2, changes: [conflicting] });
-		const empty = Migration.make("empty", { from: v1, to: v2 })``;
+		const empty = Migration.make("empty", { from: v2, to: v1 })``;
 		const emptyGroup = Migration.make("empty-group", {
 			from: v1,
-			to: v2,
+			to: v3,
 		})`${Action.sequence([])}`;
 		const sameId = RenameKey.make("rename-timeout", { target: "other", from: "a", to: "b" });
 		const conflictingAction = Migration.make("2-to-3", { from: v2, to: v3 })`${sameId}`;
