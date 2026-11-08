@@ -5,7 +5,7 @@
  *
  * @packageDocumentation
  */
-import { Context, Data, Effect, Layer, Predicate, Schema } from "effect";
+import { Context, Data, Effect, Predicate, Schema } from "effect";
 
 import type * as Action from "./action.ts";
 import { trackPromise } from "./internal/settlement.ts";
@@ -31,22 +31,6 @@ export class UnexpectedHandlerError extends Data.TaggedError("UnexpectedHandlerE
 }> {
 	override get message() {
 		return `Handler for action "${this.actionId}" failed unexpectedly in its ${this.phase}`;
-	}
-}
-
-/**
- * A handler supplied through `Handler.layer` failed. Layer bindings are looked up by
- * action identifier at run time, so their declared error types are not visible to the
- * executor. The original error is kept in `cause`.
- *
- * @since @next
- */
-export class BoundHandlerError extends Data.TaggedError("BoundHandlerError")<{
-	readonly actionId: string;
-	readonly cause: unknown;
-}> {
-	override get message() {
-		return `Handler bound for action "${this.actionId}" failed`;
 	}
 }
 
@@ -281,64 +265,3 @@ export const effect = <A extends Action.Any, E = never, R = never, E2 = never, R
 		skipReason: skipReasonOf(action, options.skipReason),
 	};
 };
-
-/**
- * The Effect service that holds the handler bound to one action identifier.
- *
- * @since @next
- */
-export type Binding<Id extends string> = {
-	readonly _tag: "deltafold/Handler.Binding";
-	readonly actionId: Id;
-};
-
-type BoundHandler = Handler<Action.Any, BoundHandlerError>;
-
-const bindingPrefix = "deltafold/Handler.Binding/";
-
-/**
- * The context key for the handler bound to `actionId`.
- *
- * @since @next
- */
-export const bindingKey = <Id extends string>(actionId: Id) =>
-	Context.Service<Binding<Id>, BoundHandler>(`${bindingPrefix}${actionId}`);
-
-/**
- * Provides handlers as Effect services. The layer requires the handlers' own services
- * and captures them when it is built, so executors see only `Binding` requirements.
- *
- * @since @next
- */
-export const layer = <const H extends ReadonlyArray<Any>>(
-	handlers: H,
-): Layer.Layer<Binding<ActionId<H[number]>>, never, Services<H[number]>> =>
-	Layer.effectContext(
-		Effect.map(Effect.context<Services<H[number]>>(), (context) => {
-			// Each handler adds its own binding. The loop cannot express that the result holds
-			// one binding per element of `H`.
-			// oxlint-disable-next-line typescript/no-unsafe-type-assertion
-			let bindings = Context.empty() as Context.Context<Binding<ActionId<H[number]>>>;
-			const provided: ReadonlyArray<Handler<Action.Any, unknown, Services<H[number]>>> =
-				handlers;
-			for (const handler of provided) {
-				const mapError = Effect.mapError(
-					(cause: unknown) =>
-						new BoundHandlerError({ actionId: handler.action.id, cause }),
-				);
-				const bound: BoundHandler = {
-					[TypeId]: TypeId,
-					action: handler.action,
-					body: mapError(Effect.provideContext(handler.body, context)),
-					precondition:
-						handler.precondition === undefined
-							? undefined
-							: mapError(Effect.provideContext(handler.precondition, context)),
-					skipReason: handler.skipReason,
-				};
-				bindings = Context.add(bindings, bindingKey(handler.action.id), bound);
-			}
-
-			return bindings;
-		}),
-	);

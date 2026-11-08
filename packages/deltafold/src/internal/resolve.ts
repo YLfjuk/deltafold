@@ -31,7 +31,7 @@ import type * as Shortcut from "../shortcut.ts";
 import type { Version } from "../version.ts";
 import { resolveGuide } from "./guide.ts";
 import { itemsOf, occurrencesOf, rewrite, type Item, type MakeOccurrence } from "./rewrite.ts";
-import { actionsOfSteps, hasProse, hopsOf, stepsOf, type Declarations } from "./validate.ts";
+import { actionsOfSteps, hasProse, stepsOf, type Declarations } from "./validate.ts";
 
 /**
  * Route policies for choosing between candidate routes. Each one is opt-in.
@@ -71,11 +71,7 @@ export type Context = {
 	/** Strict ancestors of each version, by identifier. */
 	readonly ancestors: ReadonlyMap<string, ReadonlySet<string>>;
 	readonly edges: ReadonlyArray<Edge>;
-	/** Reasons a reverse edge is missing, keyed by `from>to`. */
-	readonly reverseBlockers: ReadonlyMap<string, string>;
 };
-
-const pairKey = (from: string, to: string) => `${JSON.stringify(from)}>${JSON.stringify(to)}`;
 
 const memberCost = (migration: Migration.Any) => migration.cost ?? 1;
 
@@ -105,61 +101,30 @@ export const makeContext = (declarations: Declarations): Context => {
 		return "cross";
 	};
 
-	// Migrations with the same endpoints are complementary: they form one edge and all run.
-	const groups = new Map<string, { from: Version; to: Version; members: Array<Member> }>();
-	const reverseCandidates = new Map<
-		string,
-		{ reversible: Array<Member>; missing: Array<string> }
-	>();
-	const groupOf = (from: Version, to: Version) => {
-		const key = pairKey(from.id, to.id);
-		const existing = groups.get(key);
-		if (existing !== undefined) return existing;
+	// Validation guarantees at most one migration side per pair of versions.
+	const edges: Array<Edge> = declarations.migrations.flatMap((migration): Array<Edge> => {
+		const forward: Edge = {
+			from: migration.from,
+			to: migration.to,
+			members: [{ migration, direction: "forward" }],
+			shortcut: undefined,
+			cost: memberCost(migration),
+			class: classOf(migration.from.id, migration.to.id),
+		};
+		if (migration.revert === undefined) return [forward];
 
-		const created = { from, to, members: [] };
-		groups.set(key, created);
-
-		return created;
-	};
-	for (const migration of declarations.migrations) {
-		groupOf(migration.from, migration.to).members.push({ migration, direction: "forward" });
-
-		const key = pairKey(migration.to.id, migration.from.id);
-		const reverse = reverseCandidates.get(key) ?? { reversible: [], missing: [] };
-		if (migration.revert === undefined) reverse.missing.push(migration.id);
-		else reverse.reversible.push({ migration, direction: "revert" });
-		reverseCandidates.set(key, reverse);
-	}
-
-	// A reverse edge exists only when every migration of the forward group can be reverted.
-	const reverseBlockers = new Map<string, string>();
-	for (const migration of declarations.migrations) {
-		const key = pairKey(migration.to.id, migration.from.id);
-		const reverse = reverseCandidates.get(key);
-		if (reverse === undefined || reverse.reversible.length === 0) continue;
-		if (reverse.missing.length > 0) {
-			reverseBlockers.set(
-				key,
-				`Migrations ${reverse.missing.map((id) => `"${id}"`).join(", ")} have no revert, so the reverse transition is incomplete.`,
-			);
-			reverseCandidates.delete(key);
-			continue;
-		}
-		const group = groupOf(migration.to, migration.from);
-		for (const member of reverse.reversible) {
-			if (!group.members.includes(member)) group.members.push(member);
-		}
-		reverseCandidates.delete(key);
-	}
-
-	const edges: Array<Edge> = [...groups.values()].map((group) => ({
-		from: group.from,
-		to: group.to,
-		members: group.members,
-		shortcut: undefined,
-		cost: group.members.reduce((total, member) => total + memberCost(member.migration), 0),
-		class: classOf(group.from.id, group.to.id),
-	}));
+		return [
+			forward,
+			{
+				from: migration.to,
+				to: migration.from,
+				members: [{ migration, direction: "revert" }],
+				shortcut: undefined,
+				cost: memberCost(migration),
+				class: classOf(migration.to.id, migration.from.id),
+			},
+		];
+	});
 	for (const shortcut of declarations.shortcuts) {
 		edges.push({
 			from: shortcut.from,
@@ -173,7 +138,7 @@ export const makeContext = (declarations: Declarations): Context => {
 		});
 	}
 
-	return { declarations, versions, ancestors, edges, reverseBlockers };
+	return { declarations, versions, ancestors, edges };
 };
 
 const requestDirection = (context: Context, from: string, to: string): RequestDirection => {
@@ -417,22 +382,13 @@ const summaryOf = (candidate: Candidate): RouteSummary => ({
 	failure: Result.isFailure(candidate.plan) ? candidate.plan.failure.message : undefined,
 });
 
-/** Tokens of one hop. Complementary migrations run as a unit, so their order is ignored. */
-const hopTokens = (members: ReadonlyArray<Member>) =>
-	Arr.sort(
-		members.map((member) => `${member.direction}:${member.migration.id}`),
-		Order.String,
-	);
-
 /** Migration tokens of a route, with shortcut hops expanded to the route they replace. */
 const canonicalTokens = (candidate: Candidate) =>
 	candidate.edges
 		.flatMap((edge) =>
 			edge.shortcut === undefined
-				? hopTokens(edge.members)
-				: hopsOf(edge.shortcut.replaces).flatMap((hop) =>
-						hopTokens(hop.map((migration) => ({ migration, direction: "forward" }))),
-					),
+				? edge.members.map((member) => `${member.direction}:${member.migration.id}`)
+				: edge.shortcut.replaces.map((migration) => `forward:${migration.id}`),
 		)
 		.join(",");
 
@@ -578,9 +534,7 @@ const unsupported = (context: Context, from: string, to: string, direction: Requ
 		blockers.push({
 			from: hopFrom,
 			to: hopTo,
-			reason:
-				context.reverseBlockers.get(pairKey(hopFrom, hopTo)) ??
-				`No migration is declared from "${hopFrom}" to "${hopTo}".`,
+			reason: `No migration is declared from "${hopFrom}" to "${hopTo}".`,
 		});
 	}
 

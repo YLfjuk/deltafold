@@ -20,6 +20,7 @@ export type Issue = {
 		| "ConflictingChange"
 		| "ConflictingAction"
 		| "DuplicateMigration"
+		| "DuplicateEdge"
 		| "SelfMigration"
 		| "EmptyMigration"
 		| "DuplicateOccurrence"
@@ -105,31 +106,11 @@ export const allMigrations = (declarations: Declarations): ReadonlyArray<Migrati
 	return result;
 };
 
-/** Groups consecutive migrations into hops. Complementary migrations share one hop. */
-export const hopsOf = (
-	migrations: ReadonlyArray<Migration.Any>,
-): ReadonlyArray<ReadonlyArray<Migration.Any>> => {
-	const hops: Array<Array<Migration.Any>> = [];
-	for (const migration of migrations) {
-		const hop = hops.at(-1);
-		const head = hop?.[0];
-		if (
-			hop !== undefined &&
-			head?.from.id === migration.from.id &&
-			head.to.id === migration.to.id
-		)
-			hop.push(migration);
-		else hops.push([migration]);
-	}
-
-	return hops;
-};
-
 const isChain = (migrations: ReadonlyArray<Migration.Any>, from: Version, to: Version): boolean => {
 	let current = from.id;
-	for (const [head] of hopsOf(migrations)) {
-		if (head === undefined || head.from.id !== current) return false;
-		current = head.to.id;
+	for (const migration of migrations) {
+		if (migration.from.id !== current) return false;
+		current = migration.to.id;
 	}
 
 	return migrations.length > 0 && current === to.id;
@@ -298,6 +279,35 @@ export const validate = (declarations: Declarations): ReadonlyArray<Issue> => {
 		}
 	}
 
+	// Edges. Each pair of versions has at most one migration side, so a transition's work
+	// lives in one migration.
+	const edgeSides = new Map<
+		string,
+		{ readonly from: string; readonly to: string; readonly labels: Array<string> }
+	>();
+	const addSide = (from: Version, to: Version, label: string) => {
+		const key = JSON.stringify([from.id, to.id]);
+		const side = edgeSides.get(key) ?? { from: from.id, to: to.id, labels: [] };
+		side.labels.push(label);
+		edgeSides.set(key, side);
+	};
+	// A migration registered twice is already a DuplicateMigration issue.
+	for (const migration of new Set(migrationIds.values())) {
+		if (!registered.has(migration)) continue;
+		addSide(migration.from, migration.to, `"${migration.id}"`);
+		if (migration.revert !== undefined)
+			addSide(migration.to, migration.from, `the revert of "${migration.id}"`);
+	}
+	for (const { from, to, labels } of edgeSides.values()) {
+		if (labels.length < 2) continue;
+
+		issue(
+			"DuplicateEdge",
+			`${from} -> ${to}`,
+			`${labels.join(" and ")} both go from "${from}" to "${to}". Merge them into one migration.`,
+		);
+	}
+
 	// Rules.
 	const rules = new Set<string>();
 	for (const rule of declarations.rules) {
@@ -357,22 +367,6 @@ export const validate = (declarations: Declarations): ReadonlyArray<Issue> => {
 				"InvalidShortcut",
 				shortcut.id,
 				`Shortcut "${shortcut.id}" must replace a consecutive route from "${shortcut.from.id}" to "${shortcut.to.id}".`,
-			);
-		}
-		for (const hop of hopsOf(shortcut.replaces)) {
-			const [head] = hop;
-			const left = declarations.migrations.filter(
-				(migration) =>
-					migration.from.id === head?.from.id &&
-					migration.to.id === head.to.id &&
-					!hop.includes(migration),
-			);
-			if (head === undefined || left.length === 0) continue;
-
-			issue(
-				"InvalidShortcut",
-				shortcut.id,
-				`Shortcut "${shortcut.id}" replaces only part of the transition from "${head.from.id}" to "${head.to.id}". It must also replace ${left.map((migration) => `"${migration.id}"`).join(", ")}.`,
 			);
 		}
 		if (!isChain(shortcut.migrations, shortcut.from, shortcut.to)) {

@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it, vi } from "@effect/vitest";
-import { Context, Duration, Effect, Fiber, Layer, Result, Schema } from "effect";
+import { Context, Duration, Effect, Fiber, Result, Schema } from "effect";
 import { TestClock } from "effect/testing";
 
 import { Action, Executor, Handler, History, Migration, Plan, Rule, Version } from "deltafold";
@@ -68,33 +68,20 @@ describe("Executor typing", () => {
 		expectTypeOf<Effect.Services<typeof execution>>().toEqualTypeOf<
 			ConfigEditor | ExportEditor | Context.Service.Identifier<typeof Codemod.SourceFiles>
 		>();
-		type Failure = Executor.Errors<Plan.ActionsOf<typeof plan>, (typeof handlers)[number]>;
+		type Failure = Executor.Errors<(typeof handlers)[number]>;
 		expectTypeOf<Failure>().toEqualTypeOf<
 			Handler.UnexpectedHandlerError | EditFailed | Codemod.TransformRejected
 		>();
 	});
 
-	it("shows statically known missing bindings in the requirements", () => {
-		const execution = Executor.effect(plan, { handlers: [jsonHandler] });
-
-		expectTypeOf<Effect.Services<typeof execution>>().toEqualTypeOf<
-			ConfigEditor | Handler.Binding<"rename-export"> | Handler.Binding<"rename-source">
-		>();
-	});
-
-	it("satisfies bindings with Handler.layer and keeps the handlers' own services", () => {
-		const bindings = Handler.layer([exportHandler, sourceHandler]);
-		expectTypeOf<Layer.Services<typeof bindings>>().toEqualTypeOf<
-			ExportEditor | Context.Service.Identifier<typeof Codemod.SourceFiles>
-		>();
-
-		const execution = Executor.effect(plan, { handlers: [jsonHandler] }).pipe(
-			Effect.provide(bindings),
-		);
-		expectTypeOf<Effect.Services<typeof execution>>().toEqualTypeOf<
-			ConfigEditor | ExportEditor | Context.Service.Identifier<typeof Codemod.SourceFiles>
-		>();
-		expectTypeOf<Effect.Error<typeof execution>>().toMatchTypeOf<{ readonly _tag: string }>();
+	it("rejects a handler array that misses statically known actions", () => {
+		expect.assertions(0);
+		typeOnly(() => {
+			// @ts-expect-error rename-export and rename-source have no handler.
+			Executor.effect(plan, { handlers: [jsonHandler] });
+			// @ts-expect-error rename-export and rename-source have no handler.
+			void Executor.runPromise(plan, { handlers: [jsonHandler], services: Context.empty() });
+		});
 	});
 
 	it("checks runtime-coverage plans only at run time", () => {
@@ -122,11 +109,6 @@ describe("Executor typing", () => {
 				handlers,
 				// @ts-expect-error the supplied services do not include ConfigEditor.
 				services: Context.make(ExportEditor, { renameKey: () => Effect.void }),
-			});
-			void Executor.runPromise(plan, {
-				handlers,
-				// @ts-expect-error bindings for rename-export and rename-source are missing.
-				services: Context.make(ConfigEditor, editor),
 			});
 			void Executor.runPromise(Plan.withRuntimeCoverage(plan), {
 				handlers: [Handler.promise(renameJson, async () => {})],
@@ -558,38 +540,6 @@ describe("Executor behavior", () => {
 		expect(error.message).toContain("may still be running");
 	});
 
-	it("reports settlement for Promise handlers bound through Handler.layer", async () => {
-		const stubborn = touch("stubborn");
-		const controller = new AbortController();
-		const bindings = Handler.layer([
-			Handler.promise(stubborn, () => {
-				controller.abort();
-
-				return new Promise<void>(() => {});
-			}),
-		]);
-		const error: unknown = await Executor.runPromise(
-			Plan.withRuntimeCoverage(planOf(single(stubborn), "2.0.0")),
-			{
-				signal: controller.signal,
-				settleTimeout: "20 millis",
-				services: bindings,
-			},
-		).then(
-			() => undefined,
-			(cause: unknown) => cause,
-		);
-
-		expect(
-			error instanceof Executor.ExecutionInterrupted && error.report.occurrences[0]?.outcome,
-		).toEqual({
-			_tag: "Interrupted",
-			phase: "body",
-			reason: "cancelled",
-			settled: false,
-		});
-	});
-
 	it("rejects Promise execution with the partial report", async () => {
 		const done = touch("done");
 		const fails = touch("fails");
@@ -615,25 +565,6 @@ describe("Executor behavior", () => {
 			fails: "Failed",
 		});
 	});
-
-	it.effect("runs handlers supplied through Handler.layer", () =>
-		Effect.gen(function* () {
-			const events: Array<string> = [];
-			const failing = Handler.effect(renameSource, () => Effect.fail(new EditFailed()));
-			const bindings = Handler.layer([recording(events)(renameExport), failing]);
-			const error = yield* Effect.flip(
-				Executor.effect(plan, { handlers: [recording(events)(renameJson)] }).pipe(
-					Effect.provide(bindings),
-				),
-			);
-
-			expect(events).toEqual(["rename-json", "rename-export"]);
-			expect(error._tag === "ExecutionFailed" && error.failures[0]?.outcome).toMatchObject({
-				_tag: "Failed",
-				error: { _tag: "BoundHandlerError", actionId: "rename-source" },
-			});
-		}),
-	);
 });
 
 describe("Executor admission, cancellation, and settlement", () => {

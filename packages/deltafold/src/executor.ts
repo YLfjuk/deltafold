@@ -183,8 +183,13 @@ export type ExecutionError<A extends Action.Any, E> =
 	| ExecutionFailed<A, E>
 	| ExecutionInterrupted<A, E>;
 
-/** Action identifiers that the handler array leaves to `Handler.layer` bindings. */
-type Uncovered<A extends Action.Any, H, C extends Plan.Coverage> = "runtime" extends C
+/**
+ * Action identifiers of a statically covered plan that no handler in the array
+ * implements.
+ *
+ * @since @next
+ */
+export type Uncovered<A extends Action.Any, H, C extends Plan.Coverage> = "runtime" extends C
 	? never
 	: A extends Action.Any
 		? string extends A["id"]
@@ -194,35 +199,26 @@ type Uncovered<A extends Action.Any, H, C extends Plan.Coverage> = "runtime" ext
 				: A["id"]
 		: never;
 
-type Bindings<Id> = Id extends string ? Handler.Binding<Id> : never;
-
-/** True when some occurrence may be served by a binding looked up at run time. */
-type UsesBindings<A extends Action.Any, H, C extends Plan.Coverage> = "runtime" extends C
-	? true
-	: [Uncovered<A, H, C>] extends [never]
-		? string extends A["id"]
-			? true
-			: false
-		: true;
+/** Rejects a handler array that leaves statically known actions uncovered, naming them. */
+type CoverageCheck<A extends Action.Any, H, C extends Plan.Coverage> = [
+	Uncovered<A, H, C>,
+] extends [never]
+	? unknown
+	: { readonly handlers: `Missing a handler for action "${Uncovered<A, H, C>}"` };
 
 /**
  * Errors an execution can report for its occurrences.
  *
  * @since @next
  */
-export type Errors<A extends Action.Any, H, C extends Plan.Coverage = "static"> =
-	| Handler.Error<H>
-	| (UsesBindings<A, H, C> extends true ? Handler.BoundHandlerError : never);
+export type Errors<H> = Handler.Error<H>;
 
 /**
- * Effect services an execution requires: the handlers' services, plus a
- * `Handler.Binding` for every statically known action the handler array does not cover.
+ * Effect services an execution requires: the services of its handlers.
  *
  * @since @next
  */
-export type Requirements<A extends Action.Any, H, C extends Plan.Coverage = "static"> =
-	| Handler.Services<H>
-	| Bindings<Uncovered<A, H, C>>;
+export type Requirements<H> = Handler.Services<H>;
 
 /** @since @next */
 export type Options<H extends Handler.Any> = {
@@ -254,7 +250,6 @@ const describeReplaces = (occurrence: Occurrence) =>
 const coverage = (
 	plan: Plan.Any,
 	handlers: ReadonlyArray<Handler.Any>,
-	context: Context.Context<never>,
 ): { readonly resolved: Resolved; readonly issues: ReadonlyArray<CoverageIssue> } => {
 	const byAction = new Map<string, Array<Handler.Any>>();
 	for (const handler of handlers) {
@@ -281,12 +276,7 @@ const coverage = (
 			});
 
 		const candidates = byAction.get(occurrence.action.id) ?? [];
-		const [handler] = candidates;
-		const bound =
-			handler === undefined
-				? Context.getOrUndefined(context, Handler.bindingKey(occurrence.action.id))
-				: undefined;
-		const selected = handler ?? bound;
+		const [selected] = candidates;
 		if (candidates.length > 1) issue("Duplicate");
 		else if (selected === undefined) issue("Missing");
 		else if (
@@ -625,17 +615,12 @@ const run = <A extends Action.Any, C extends Plan.Coverage, H extends Handler.An
 	plan: Plan.Plan<A, C>,
 	options: Options<H>,
 	subscribe: Subscribe | undefined,
-): Effect.Effect<
-	Report<A, Errors<A, H, C>>,
-	ExecutionError<A, Errors<A, H, C>>,
-	Requirements<A, H, C>
-> =>
+): Effect.Effect<Report<A, Errors<H>>, ExecutionError<A, Errors<H>>, Requirements<H>> =>
 	// The plan's action union and the handler union determine these types; the
 	// implementation works on erased handlers.
 	// oxlint-disable-next-line typescript/no-unsafe-type-assertion
 	Effect.gen(function* () {
-		const context = yield* Effect.context();
-		const checked = coverage(plan, options.handlers ?? [], context);
+		const checked = coverage(plan, options.handlers ?? []);
 		if (checked.issues.length > 0) {
 			return yield* new HandlerCoverageError({
 				issues: checked.issues,
@@ -652,11 +637,7 @@ const run = <A extends Action.Any, C extends Plan.Coverage, H extends Handler.An
 		return options.dryRun === true
 			? yield* dryRun(plan, checked.resolved, options, subscribe)
 			: yield* execute(plan, checked.resolved, options, subscribe);
-	}) as Effect.Effect<
-		Report<A, Errors<A, H, C>>,
-		ExecutionError<A, Errors<A, H, C>>,
-		Requirements<A, H, C>
-	>;
+	}) as Effect.Effect<Report<A, Errors<H>>, ExecutionError<A, Errors<H>>, Requirements<H>>;
 
 /**
  * Runs a plan as an Effect. Coverage is checked before any precondition or body runs.
@@ -676,20 +657,17 @@ export const effect = <
 	H extends Handler.Any = never,
 >(
 	plan: Plan.Plan<A, C>,
-	options: Options<H> = {},
-): Effect.Effect<
-	Report<A, Errors<A, H, C>>,
-	ExecutionError<A, Errors<A, H, C>>,
-	Requirements<A, H, C>
-> => run(plan, options, undefined);
+	options: Options<H> & CoverageCheck<A, H, C>,
+): Effect.Effect<Report<A, Errors<H>>, ExecutionError<A, Errors<H>>, Requirements<H>> =>
+	run(plan, options, undefined);
 
 type ServicesOption<R> = [R] extends [never]
 	? {
-			/** Optional services, such as `Handler.layer` bindings for run-time coverage plans. */
-			readonly services?: Context.Context<any> | Layer.Layer<any, unknown>;
+			/** Handlers without Effect services need none. */
+			readonly services?: Context.Context<never> | Layer.Layer<never, unknown>;
 		}
 	: {
-			/** Supplies the handlers' Effect services and any `Handler.layer` bindings. */
+			/** Supplies the handlers' Effect services. */
 			readonly services: Context.Context<R> | Layer.Layer<R, unknown>;
 		};
 
@@ -716,8 +694,8 @@ export const runPromise = <
 	H extends Handler.Any = never,
 >(
 	plan: Plan.Plan<A, C>,
-	options: PromiseOptions<H> & ServicesOption<Requirements<A, H, C>>,
-): Promise<Report<A, Errors<A, H, C>>> => {
+	options: PromiseOptions<H> & ServicesOption<Requirements<H>> & CoverageCheck<A, H, C>,
+): Promise<Report<A, Errors<H>>> => {
 	const { signal } = options;
 	let unsubscribe: (() => void) | undefined;
 	const subscribe: Subscribe | undefined =
@@ -745,7 +723,7 @@ export const runPromise = <
 	return Effect.runPromiseExit(
 		// `ServicesOption` requires services that cover every requirement.
 		// oxlint-disable-next-line typescript/no-unsafe-type-assertion
-		provided as Effect.Effect<Report<A, Errors<A, H, C>>, unknown>,
+		provided as Effect.Effect<Report<A, Errors<H>>, unknown>,
 	)
 		.finally(() => unsubscribe?.())
 		.then((exit) => {
