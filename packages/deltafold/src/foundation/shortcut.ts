@@ -1,9 +1,3 @@
-/**
- * Shortcuts are explicit alternative transitions. The author asserts that the shortcut's
- * migrations are equivalent to the canonical route it names.
- *
- * @packageDocumentation
- */
 import { Predicate } from "effect";
 
 import type * as Action from "./action.ts";
@@ -39,7 +33,8 @@ export type Any = Shortcut<any>;
 export type ActionsOf<S> = S extends Shortcut<infer A> ? A : never;
 
 /**
- * Declares a shortcut.
+ * Declares a shortcut. The author asserts that its migrations are equivalent to the
+ * canonical route it replaces; deltafold does not prove it.
  *
  * @example
  * ```ts

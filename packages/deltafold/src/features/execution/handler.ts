@@ -1,10 +1,3 @@
-/**
- * Handlers implement action instances. `Handler.promise` adapts Promise callbacks and
- * `Handler.effect` accepts native Effect callbacks. Both produce the same public
- * `Handler` value, which integrations can also return from their own factories.
- *
- * @packageDocumentation
- */
 import { Context, Data, Effect, Predicate, Schema } from "effect";
 
 import type * as Action from "../../foundation/action.ts";

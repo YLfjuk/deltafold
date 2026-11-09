@@ -1,9 +1,3 @@
-/**
- * Executors run plans with handlers. Both executors accept the same mixed collection of
- * Promise, Effect, and integration-produced handlers.
- *
- * @packageDocumentation
- */
 import {
 	Cause,
 	Context,

@@ -1,10 +1,3 @@
-/**
- * deltafold models version history, resolves migration instructions between versions,
- * and generates changelogs.
- *
- * @packageDocumentation
- */
-
 export * as Action from "./foundation/action.ts";
 export * as Change from "./foundation/change.ts";
 export * as Executor from "./features/execution/executor.ts";

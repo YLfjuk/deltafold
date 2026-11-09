@@ -1,9 +1,3 @@
-/**
- * Plans are resolved, optimized routes between two versions. Every step stays traceable
- * to its action, migration, and the changes the migration addresses.
- *
- * @packageDocumentation
- */
 import type * as Action from "./action.ts";
 import type { Change } from "./change.ts";
 import type { Instruction, Text } from "./instruction.ts";
@@ -177,7 +171,12 @@ export type RequestDirection = "none" | "upgrade" | "downgrade" | "cross-branch"
  */
 export type Coverage = "static" | "runtime";
 
-/** @since @next */
+/**
+ * A resolved, optimized route between two versions. Every step stays traceable to its
+ * migration and the changes that migration addresses.
+ *
+ * @since @next
+ */
 export type Plan<A extends Action.Any = Action.Any, C extends Coverage = "static"> = {
 	readonly _tag: "Plan";
 	readonly from: Version;

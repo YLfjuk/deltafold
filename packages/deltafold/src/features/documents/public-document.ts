@@ -1,8 +1,3 @@
-/**
- * The public `Document` namespace.
- *
- * @packageDocumentation
- */
 export {
 	Body,
 	Code,

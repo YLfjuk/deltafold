@@ -1,9 +1,3 @@
-/**
- * Versions record release membership and ancestry. Several versions can descend from
- * the same predecessor; declaration order and semver order do not change ancestry.
- *
- * @packageDocumentation
- */
 import { Predicate } from "effect";
 
 import type { Change } from "./change.ts";
@@ -12,7 +6,11 @@ import type { Change } from "./change.ts";
 export type Version = {
 	readonly _tag: "Version";
 	readonly id: string;
-	/** The release this version descends from. Absent for a root such as `0.0.0`. */
+	/**
+	 * The release this version descends from. Absent for a root such as `0.0.0`. Only
+	 * this field sets ancestry: several versions can share a predecessor, and declaration
+	 * order and semver order have no effect.
+	 */
 	readonly previous: Version | undefined;
 	/** The changes that shipped in this release. */
 	readonly changes: ReadonlyArray<Change>;

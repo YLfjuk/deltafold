@@ -1,10 +1,3 @@
-/**
- * Format-neutral document values. A small semantic layer adds sections with stable
- * identifiers, insertion points, and automatic heading levels. Renderers lower documents
- * to mdast so existing serializers handle formatting and escaping.
- *
- * @packageDocumentation
- */
 import { Data, Predicate, type Pipeable } from "effect";
 
 import type { Version } from "../../foundation/version.ts";

@@ -1,9 +1,3 @@
-/**
- * Migrations are declared transitions between exact versions. Their tagged templates
- * keep prose and action occurrences as structured content.
- *
- * @packageDocumentation
- */
 import { Predicate } from "effect";
 
 import type * as Action from "./action.ts";

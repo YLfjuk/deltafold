@@ -1,10 +1,3 @@
-/**
- * Rules are author-supplied equivalence assertions that replace consecutive action
- * occurrences during planning. deltafold checks their structure and use; it cannot prove
- * arbitrary consumer behavior equivalent.
- *
- * @packageDocumentation
- */
 import { Predicate } from "effect";
 
 import type * as Action from "./action.ts";
@@ -42,6 +35,10 @@ export type ActionsOf<R> = R extends Rule<infer A> ? A : never;
 
 /**
  * Declares a replacement. Cancellation, composition, and supersession all use it.
+ *
+ * The author asserts that the replacement is equivalent to the matched occurrences.
+ * deltafold checks the rule's structure and where it applies, but it cannot prove the
+ * equivalence.
  *
  * Ordinary rules match consecutive occurrences inside one sequential branch, including
  * across migration boundaries of a route. They never match across parallel branches.

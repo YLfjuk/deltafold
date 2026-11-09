@@ -1,9 +1,3 @@
-/**
- * Packages give a history its identity. Changelog documents and other modules read the
- * package name from here instead of repeating it.
- *
- * @packageDocumentation
- */
 import { Predicate } from "effect";
 
 import type * as Action from "../foundation/action.ts";

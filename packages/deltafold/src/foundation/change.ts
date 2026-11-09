@@ -1,9 +1,3 @@
-/**
- * Changes are human-readable records of logical changes. A change can exist before it is
- * assigned to a release, and does not require an executable migration.
- *
- * @packageDocumentation
- */
 import { Predicate } from "effect";
 
 import { describeValue, dedent, isScalar, type Scalar } from "./template.ts";
@@ -23,7 +17,12 @@ export const Kind = {
 /** @since @next */
 export type Kind = (typeof Kind)[keyof typeof Kind];
 
-/** @since @next */
+/**
+ * A human-readable record of one logical change. A change can exist before it is
+ * assigned to a release, and it does not need an executable migration.
+ *
+ * @since @next
+ */
 export type Change = {
 	readonly _tag: "Change";
 	/** Stable identifier. Editing the description does not change identity. */
