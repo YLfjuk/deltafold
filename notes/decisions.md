@@ -261,8 +261,9 @@ the interactive wizard. `run` belongs to `Cli` because it applies to any
 top-level command, and so that no deltafold function shares a name with
 `effect/cli`'s `Command.run`. Code that composes commands imports `effect/cli`
 under another name, such as `EffectCli`. A tool that migrates several packages
-mounts one command per package, as `<cli> <package> <command>`; the package name
-works as a namespace, and each package keeps its own versions and commands.
+can mount one command per package, for example as `<cli> <package> <command>`,
+where each package keeps its own versions and commands. Composers can arrange
+commands differently.
 `effect/cli` is marked unstable, so the command type follows it.
 
 **Commands.** `validate`, `plan`, `upgrades`, `downgrades`, `guide`, `migrate`
