@@ -25,9 +25,10 @@ export type Handlers<H> =
 export type Options<A extends Action.Any, H extends Handler.Handler<A, any, any>, M> = {
 	/**
 	 * The command name shown in help and suggested commands: the bin name, or the
-	 * subcommand name when the command is mounted under another one.
+	 * subcommand name when the command is mounted under another one. Defaults to the
+	 * package name.
 	 */
-	readonly name: string;
+	readonly name?: string;
 	/** The root command's help summary. */
 	readonly description?: string;
 	/** Enables the `migrate` command. Coverage is checked at run time, before any action. */
@@ -78,11 +79,11 @@ export const make = <
 	M = never,
 >(
 	pkg: Package<A>,
-	options: Options<A, H, M>,
+	options: Options<A, H, M> = {},
 ): Command.Command<string, any, any, CliFailure, Handler.Services<H> | Command.Environment> => {
 	const { handlers, releases } = options;
 	const command: Command.Command<string, any, any, CliFailure, Command.Environment> = commands({
-		name: options.name,
+		name: options.name ?? pkg.name,
 		description:
 			options.description ?? `Plan and run migrations between versions of ${pkg.name}`,
 		package: pkg,

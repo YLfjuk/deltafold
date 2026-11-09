@@ -135,6 +135,19 @@ describe("help and loading", () => {
 		}),
 	);
 
+	it.effect("names the command after the package by default", () =>
+		Effect.gen(function* () {
+			const command = Command.make(widgets);
+			const help = yield* capture(start(command, ["--help"]));
+			const ambiguous = yield* capture(
+				start(command, ["plan", "--from", "1.0.0", "--to", "3.0.0", "--json"]),
+			);
+
+			expect(help.stdout).toContain("@acme/widgets <subcommand>");
+			expect(json(ambiguous.stderr).next[0].argv[0]).toBe("@acme/widgets");
+		}),
+	);
+
 	it.effect("leaves out migrate and changelog when handlers and releases are not supplied", () =>
 		Effect.gen(function* () {
 			const cli = Command.make(widgets, { name: "widgets-inspect" });
