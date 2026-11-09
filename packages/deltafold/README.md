@@ -28,6 +28,7 @@ checking needs DOM or Node.js types for `AbortSignal`.
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | `deltafold`           | `Action`, `Change`, `Version`, `Migration`, `Rule`, `Shortcut`, `History`, `Package`, `Plan`, `Handler`, `Interaction`, `Executor`, `Observer` |
 | `deltafold/changelog` | `Changelog` and `Document` builders                                                                                                            |
+| `deltafold/cli`       | `Cli.make` and `Cli.run`, for a package's own migrator command                                                                                 |
 | `deltafold/markdown`  | `Markdown.render`                                                                                                                              |
 | `deltafold/html`      | `Html.render`                                                                                                                                  |
 
@@ -399,6 +400,81 @@ annotations throw `ReleaseMetadataError`.
 `Document.Title.post`, `Document.Body.pre`, or `Document.Body.post`, once per
 release or once per history. `Html.render` from `deltafold/html` renders the
 same documents as HTML.
+
+## Ship a migrator command
+
+`deltafold/cli` builds a command-line interface for your package from the same
+declarations. Your consumers run it to inspect and apply migrations between your
+versions. It is built on `effect/cli` and needs no platform code; your bin
+supplies the runtime, for example `@effect/platform-node`:
+
+```ts
+#!/usr/bin/env node
+import { NodeRuntime, NodeServices } from "@effect/platform-node";
+import { Effect } from "effect";
+
+import { Cli } from "deltafold/cli";
+import { widgets } from "./history.js";
+
+const cli = Cli.make(widgets, {
+	name: "widgets-migrate",
+	version: "2.0.0",
+	handlers: () => import("./handlers.js").then((module) => module.handlers),
+});
+
+Cli.run(cli).pipe(Effect.provide(NodeServices.layer), NodeRuntime.runMain);
+```
+
+The command has these subcommands:
+
+| Command     | What it does                                                                                  |
+| ----------- | --------------------------------------------------------------------------------------------- |
+| `validate`  | Lists every declaration issue.                                                                |
+| `plan`      | Resolves the route and instructions between `--from` and `--to`. Runs no handlers.            |
+| `upgrades`  | Lists versions reachable by upgrade from `--from`, with their routes. `downgrades` likewise.  |
+| `migrate`   | Runs the plan with your handlers. `--dry-run` only evaluates preconditions. Needs `handlers`. |
+| `guide`     | Renders the upgrade or downgrade guide as Markdown or HTML (`--format`, `--output`).          |
+| `changelog` | Renders the release history, or one `--release`. Needs `releases` metadata.                   |
+
+When several routes connect two versions, the command fails and lists them;
+pass `--route` with one of the listed identifiers, or `--policy`. A missing or
+unknown version never falls back to another one.
+
+Help, `validate`, `plan`, `upgrades`, `downgrades`, `guide`, and `changelog`
+never load handlers or run preconditions. Pass `handlers` as a function that
+imports the handler module, so that only `migrate` loads it. Importing the
+module that declares your package still runs that module's top-level code.
+
+Results go to stdout; progress, diagnostics, and errors go to stderr.
+`--log-level` filters diagnostics only, never results or failures. Effect logs
+from your handlers go to stderr; Promise handlers that write to stdout
+themselves would mix with results. With `--json`, stdout holds one JSON document
+with `schemaVersion: 1`, and a failure that happens before there is a result
+prints one JSON error document on stderr instead, with a stable `reason`,
+structured `data`, and suggested follow-up commands as `argv`. `migrate` always
+prints its report on stdout, including after a failure or cancellation.
+Action payloads are not included in JSON output.
+
+| Exit status | Meaning                                                                               |
+| ----------- | ------------------------------------------------------------------------------------- |
+| 0           | Done, including an empty plan or a dry run whose checks pass.                         |
+| 1           | The history, a handler, or the run failed. Completed actions were not rolled back.    |
+| 2           | Invalid arguments, an unknown version or route, or a route the caller must choose.    |
+| 130         | Interrupted. The report shows which actions completed and which may still be running. |
+
+`cli.command` is an ordinary `effect/cli` command. To ship one tool that
+migrates several related packages, build one CLI per package and mount them as
+subcommands of your own command. deltafold does not order migrations across
+packages; your command decides that order. `effect/cli` is marked unstable in
+Effect 4, so the type of `cli.command` can change with Effect releases.
+
+```ts
+import { Command } from "effect/cli";
+
+const acme = Command.make("acme").pipe(
+	Command.withSubcommands([widgetsCli.command, gadgetsCli.command]),
+);
+```
 
 ## License
 

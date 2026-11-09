@@ -38,6 +38,10 @@
 			"@deltafold/dev.src": "./src/features/documents/index.ts",
 			"default": "./dist/changelog/index.js"
 		},
+		"./cli": {
+			"@deltafold/dev.src": "./src/features/cli/index.ts",
+			"default": "./dist/cli/index.js"
+		},
 		"./html": {
 			"@deltafold/dev.src": "./src/renderers/html.ts",
 			"default": "./dist/html.js"
@@ -52,6 +56,7 @@
 		"exports": {
 			".": "./dist/index.js",
 			"./changelog": "./dist/changelog/index.js",
+			"./cli": "./dist/cli/index.js",
 			"./html": "./dist/html.js",
 			"./markdown": "./dist/markdown.js",
 			"./package.json": "./package.json"

@@ -244,6 +244,54 @@ identifier and throw `ReleaseMetadataError` for duplicate, missing, or unrelated
 annotations. The configured metadata type defines required fields; core imposes
 none.
 
+## Command-line interface
+
+**A toolkit in core, a bin outside it.** `deltafold/cli` builds a package's
+migrator command. It is platform independent and adds no dependency, because it
+uses `effect/cli` from `effect`. The author's bin supplies the platform layer and
+main runner. `@deltafold/cli` ships the `deltafold` bin, which is deltafold's
+own migrator built with the toolkit; its Node.js code lives in
+`src/domains/node`. It uses `@effect/platform-node`, whose required `redis` peer
+is installed with it.
+
+**An ordinary command.** `Cli.make` returns an `effect/cli` command that runs on
+its own with `Cli.run` or mounts under another command. A tool that migrates
+several packages mounts one command per package. `effect/cli` is marked unstable,
+so `cli.command` follows its types. `Cli.run` adds usage-error reporting and
+removes the interactive wizard; a mounted command keeps the parent's usage
+handling.
+
+**Commands.** `validate`, `plan`, `upgrades`, `downgrades`, `guide`, `migrate`
+when handlers are supplied, and `changelog` when release metadata is supplied.
+`--from` and `--to` are always required. `migrate` runs on explicit versions
+without a confirmation flag; `--dry-run` previews. `--route` and `--policy` are
+exclusive. `--action-timeout` is the executor's per-phase timeout, named so that
+it is not mistaken for a total limit. Handlers are passed as a function so only
+`migrate` loads them. The CLI uses run-time coverage, because handlers are
+supplied as data; `Cli.make` still rejects handlers for actions outside the
+package and carries their services in its type.
+
+**Streams and formats.** Results go to stdout, everything else to stderr.
+`--log-level` filters diagnostics only. Effect logs go to stderr. With `--json`,
+stdout holds one document with `schemaVersion: 1`, diagnostics are dropped, and a
+failure before any result prints one error document on stderr with `status`,
+`reason`, `message`, `data`, and `next` (follow-up commands as `argv`, plus a
+display string). `migrate` always prints its report on stdout. Usage errors that
+stop parsing look for `--json` in the arguments. Color follows `--no-color`,
+`NO_COLOR`, `FORCE_COLOR`, and whether the stream is a terminal; `TERM=dumb`
+turns off rich output. Suggested commands use double quotes where they work in
+POSIX shells, PowerShell, and cmd.
+
+**Exit statuses.** 0 for success, 1 for operational failures, 2 for usage errors,
+unknown versions or routes, and ambiguous routes (`action_required`), and 130 for
+interruption. `NodeRuntime` reports SIGTERM as 130 as well. `validate` prints its
+issues as the result and exits 1.
+
+**Cancellation.** `migrate` runs the executor at the Promise boundary with an
+abort signal. Interrupting the CLI fiber aborts it and waits for the partial
+report, which is printed before the fiber ends as interrupted. The `deltafold`
+bin exits at once on a second SIGINT.
+
 ## Durability trial
 
 This records a trial from November 2026 with Effect 4.1.2 on Node.js 24. Later
@@ -284,7 +332,7 @@ are named in the package's `pack.entry`, and the packer writes the matching
 versions, migrations, instructions, rules, shortcuts, templates, and plans.
 `src/features` holds capabilities. Planning covers history validation, route
 resolution, rewrites, and guides. Execution covers handlers, the executor, and
-settlement. Documents covers documents, sections, and changelogs. `package.ts`
+settlement. Documents covers documents, sections, and changelogs. CLI builds a package's migrator command. `package.ts`
 is a single file until it needs more. A helper used by one feature stays in that
 feature. `src/renderers` lowers documents for the `markdown` and `html` entry
 points. Ambient declarations live in `@types` folders.
@@ -350,11 +398,14 @@ These work today but need confirmation before 1.0:
   through the guide and observer events only.
 - Interrupting the fiber of `Executor.effect` produces no report. Observers
   receive a `RunFinished` event without one.
+- Route identifiers contain `>`, `[`, and `]`, which shells interpret. The
+  CLI quotes them in suggested commands; the JSON `argv` is exact.
+- Suggested commands start with the migrator's name. Under a parent command they
+  leave out the parent's path.
+- Promise handlers that write to stdout mix with CLI results.
 
 ## Not yet implemented
 
-- The command-line interface (CLI-1 to CLI-4), deferred until the library has
-  settled.
 - Opt-in retry and rollback that keep the original failure and partial report.
 - A logging capability for handlers and adapters, filtered by log level.
 - A durable executor (see the durability trial).
@@ -362,7 +413,9 @@ These work today but need confirmation before 1.0:
 - Explicit dependencies between migrations (`requires`).
 - Runtime payload schemas, validation of imported histories, and serialized
   plans.
-- A versioned JSON report format and a plan fingerprint.
+- A core-owned versioned JSON format for plans and reports, with payloads, and
+  a plan fingerprint. The CLI's `schemaVersion` 1 documents omit payloads.
+- Machine-readable CLI help and a published schema for the CLI's JSON documents.
 - A preview mode for integration engines, distinct from dry runs.
 - Branch labels in histories and an optional metadata schema.
 
@@ -378,9 +431,8 @@ These work today but need confirmation before 1.0:
   partially failed body?
 - What logging bridge do Promise callbacks receive?
 - Final change-kind vocabulary and downgrade guide naming.
-- CLI packaging: a separate `@deltafold/cli` package, or `deltafold/cli` with
-  `deltafold/cli/node`. TypeScript entry loading, option spellings, and the
-  exit-code taxonomy.
+- Should `--route` also accept a shortcut identifier, so that common route
+  choices need no shell quoting?
 - Whether codemod integrations ship as an official submodule, separate packages,
   or third-party packages.
 - Which runtime versions the published library supports.

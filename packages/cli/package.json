@@ -1,0 +1,54 @@
+{
+	"name": "@deltafold/cli",
+	"version": "0.0.0",
+	"description": "The deltafold command for planning and running migrations between deltafold versions.",
+	"keywords": [
+		"cli",
+		"deltafold",
+		"migration"
+	],
+	"homepage": "https://github.com/YLfjuk/deltafold/tree/main/packages/cli#readme",
+	"bugs": {
+		"url": "https://github.com/YLfjuk/deltafold/issues"
+	},
+	"license": "MIT",
+	"author": "YLfjuk (https://github.com/YLfjuk)",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/YLfjuk/deltafold.git",
+		"directory": "packages/cli"
+	},
+	"bin": {
+		"deltafold": "./dist/bin.mjs"
+	},
+	"files": [
+		"dist"
+	],
+	"type": "module",
+	"sideEffects": false,
+	"publishConfig": {
+		"access": "public"
+	},
+	"scripts": {
+		"build": "vp pack",
+		"typecheck": "tsc --noEmit",
+		"test": "vp test run"
+	},
+	"dependencies": {
+		"@effect/platform-node": "catalog:",
+		"deltafold": "workspace:^"
+	},
+	"devDependencies": {
+		"@types/node": "catalog:",
+		"effect": "catalog:",
+		"publint": "catalog:",
+		"typescript": "catalog:",
+		"vite-plus": "catalog:"
+	},
+	"peerDependencies": {
+		"effect": "catalog:"
+	},
+	"engines": {
+		"node": "^22.18.0 || ^24.11.0 || >=26.0.0"
+	}
+}

@@ -24,6 +24,7 @@ export default defineConfig({
 		entry: {
 			index: "src/index.ts",
 			"changelog/index": "src/features/documents/index.ts",
+			"cli/index": "src/features/cli/index.ts",
 			markdown: "src/renderers/markdown.ts",
 			html: "src/renderers/html.ts",
 		},
