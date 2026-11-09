@@ -1,10 +1,10 @@
 import { describe, expect, expectTypeOf, it } from "@effect/vitest";
 import { Context, Deferred, Effect, Fiber } from "effect";
-import { Command } from "effect/cli";
+import * as EffectCli from "effect/cli";
 
 import { Handler, Version } from "deltafold";
 import { Changelog } from "deltafold/changelog";
-import { Cli } from "deltafold/cli";
+import { Cli, Command } from "deltafold/cli";
 import {
 	addBoth,
 	capture,
@@ -54,9 +54,8 @@ const handlersFor = (calls: Calls, options: { readonly failAddRetries?: boolean 
 
 const migrator = (calls: Calls = [], options: { readonly failAddRetries?: boolean } = {}) => {
 	let loads = 0;
-	const cli = Cli.make(widgets, {
+	const cli = Command.make(widgets, {
 		name: "widgets-migrate",
-		version: "4.0.0",
 		handlers: async () => {
 			loads += 1;
 
@@ -74,17 +73,23 @@ const migrator = (calls: Calls = [], options: { readonly failAddRetries?: boolea
 	return { cli, loads: () => loads };
 };
 
+/** Runs a command as the top-level program with `argv`. */
+const start = <E, R>(
+	command: EffectCli.Command.Command<string, any, any, E, R>,
+	argv: ReadonlyArray<string>,
+) => Cli.run(command, { version: "4.0.0", argv });
+
 const run = (
 	argv: ReadonlyArray<string>,
 	options: Parameters<typeof capture>[1] = {},
 	calls: Calls = [],
-) => capture(Cli.run(migrator(calls).cli, argv), options);
+) => capture(start(migrator(calls).cli, argv), options);
 
 describe("help and loading", () => {
 	it.effect("prints help on stdout without loading handlers", () =>
 		Effect.gen(function* () {
 			const { cli, loads } = migrator();
-			const result = yield* capture(Cli.run(cli, ["--help"]));
+			const result = yield* capture(start(cli, ["--help"]));
 
 			expect(result.code).toBe(0);
 			expect(result.stderr).toBe("");
@@ -124,7 +129,7 @@ describe("help and loading", () => {
 				["guide", "--from", "1.0.0", "--to", "2.0.0"],
 				["changelog"],
 			]) {
-				expect((yield* capture(Cli.run(cli, argv))).code).toBe(0);
+				expect((yield* capture(start(cli, argv))).code).toBe(0);
 			}
 			expect(loads()).toBe(0);
 		}),
@@ -132,10 +137,10 @@ describe("help and loading", () => {
 
 	it.effect("leaves out migrate and changelog when handlers and releases are not supplied", () =>
 		Effect.gen(function* () {
-			const cli = Cli.make(widgets, { name: "widgets-inspect", version: "4.0.0" });
-			const help = yield* capture(Cli.run(cli, ["--help"]));
+			const cli = Command.make(widgets, { name: "widgets-inspect" });
+			const help = yield* capture(start(cli, ["--help"]));
 			const migrate = yield* capture(
-				Cli.run(cli, ["migrate", "--from", "1.0.0", "--to", "2.0.0"]),
+				start(cli, ["migrate", "--from", "1.0.0", "--to", "2.0.0"]),
 			);
 
 			expect(help.stdout).not.toContain("migrate ");
@@ -143,7 +148,7 @@ describe("help and loading", () => {
 			expect(migrate.code).toBe(2);
 			expect(
 				json(
-					yield* capture(Cli.run(cli, ["migrate", "--json"])).pipe(
+					yield* capture(start(cli, ["migrate", "--json"])).pipe(
 						Effect.map((result) => result.stderr),
 					),
 				).reason,
@@ -223,14 +228,14 @@ describe("validate", () => {
 
 	it.effect("prints issues as its result and exits 1", () =>
 		Effect.gen(function* () {
-			const broken = Cli.make(
+			const broken = Command.make(
 				{
 					...widgets,
 					history: { ...widgets.history, versions: [...widgets.history.versions, v1] },
 				},
-				{ name: "broken", version: "0.0.0" },
+				{ name: "broken" },
 			);
-			const result = yield* capture(Cli.run(broken, ["validate", "--json"]));
+			const result = yield* capture(start(broken, ["validate", "--json"]));
 			const document = json(result.stdout);
 
 			expect(result.code).toBe(1);
@@ -409,9 +414,8 @@ describe("upgrades and downgrades", () => {
 const interrupted = (extra: ReadonlyArray<string>) =>
 	Effect.gen(function* () {
 		const started = yield* Deferred.make<void>();
-		const cli = Cli.make(widgets, {
+		const cli = Command.make(widgets, {
 			name: "widgets-migrate",
-			version: "4.0.0",
 			handlers: [
 				Handler.effect(renameTimeout, () =>
 					Effect.andThen(Deferred.succeed(started, undefined), Effect.never),
@@ -420,7 +424,7 @@ const interrupted = (extra: ReadonlyArray<string>) =>
 		});
 		const io = terminal();
 		const fiber = yield* Effect.forkChild(
-			io.provide(Cli.run(cli, ["migrate", "--from", "1.0.0", "--to", "2.0.0", ...extra])),
+			io.provide(start(cli, ["migrate", "--from", "1.0.0", "--to", "2.0.0", ...extra])),
 		);
 		yield* Deferred.await(started);
 		yield* Fiber.interrupt(fiber);
@@ -502,8 +506,8 @@ describe("migrate", () => {
 				"--route",
 				"1.0.0>2.0.0>3.0.0",
 			];
-			const machine = yield* capture(Cli.run(cli, [...argv, "--json"]));
-			const human = yield* capture(Cli.run(cli, argv));
+			const machine = yield* capture(start(cli, [...argv, "--json"]));
+			const human = yield* capture(start(cli, argv));
 			const { report } = json(machine.stdout);
 
 			expect(machine.code).toBe(1);
@@ -524,13 +528,12 @@ describe("migrate", () => {
 	it.effect("reports missing handlers before any precondition runs", () =>
 		Effect.gen(function* () {
 			const calls: Calls = [];
-			const cli = Cli.make(widgets, {
+			const cli = Command.make(widgets, {
 				name: "widgets-migrate",
-				version: "4.0.0",
 				handlers: () => handlersFor(calls).slice(1),
 			});
 			const result = yield* capture(
-				Cli.run(cli, ["migrate", "--from", "1.0.0", "--to", "2.0.0", "--json"]),
+				start(cli, ["migrate", "--from", "1.0.0", "--to", "2.0.0", "--json"]),
 			);
 			const document = json(result.stderr);
 
@@ -548,13 +551,12 @@ describe("migrate", () => {
 
 	it.effect("reports handlers that fail to load", () =>
 		Effect.gen(function* () {
-			const cli = Cli.make(widgets, {
+			const cli = Command.make(widgets, {
 				name: "widgets-migrate",
-				version: "4.0.0",
 				handlers: () => Promise.reject(new Error("Cannot find module './handlers.js'")),
 			});
 			const result = yield* capture(
-				Cli.run(cli, ["migrate", "--from", "1.0.0", "--to", "2.0.0", "--json"]),
+				start(cli, ["migrate", "--from", "1.0.0", "--to", "2.0.0", "--json"]),
 			);
 
 			expect(result.code).toBe(1);
@@ -584,13 +586,12 @@ describe("migrate", () => {
 
 	it.live("stops an action that exceeds --action-timeout", () =>
 		Effect.gen(function* () {
-			const cli = Cli.make(widgets, {
+			const cli = Command.make(widgets, {
 				name: "widgets-migrate",
-				version: "4.0.0",
 				handlers: [Handler.effect(renameTimeout, () => Effect.never)],
 			});
 			const result = yield* capture(
-				Cli.run(cli, [
+				start(cli, [
 					"migrate",
 					"--from",
 					"1.0.0",
@@ -635,13 +636,12 @@ describe("migrate", () => {
 
 	it.effect("keeps handler logs off stdout", () =>
 		Effect.gen(function* () {
-			const cli = Cli.make(widgets, {
+			const cli = Command.make(widgets, {
 				name: "widgets-migrate",
-				version: "4.0.0",
 				handlers: [Handler.effect(renameTimeout, () => Effect.log("renaming"))],
 			});
 			const result = yield* capture(
-				Cli.run(cli, ["migrate", "--from", "1.0.0", "--to", "2.0.0", "--json"]),
+				start(cli, ["migrate", "--from", "1.0.0", "--to", "2.0.0", "--json"]),
 			);
 
 			expect(json(result.stdout).report.status).toBe("completed");
@@ -753,29 +753,32 @@ describe("presentation", () => {
 });
 
 describe("composition", () => {
-	it.effect("mounts several package CLIs under one command", () =>
+	it.effect("mounts several package commands under one command", () =>
 		Effect.gen(function* () {
-			const gadgets = Cli.make(widgets, { name: "gadgets", version: "1.0.0" });
-			const acme = Command.make("acme").pipe(
-				Command.withSubcommands([migrator().cli.command, gadgets.command]),
+			const gadgets = Command.make(widgets, { name: "gadgets" });
+			const acme = EffectCli.Command.make("acme").pipe(
+				EffectCli.Command.withSubcommands([migrator().cli, gadgets]),
 			);
 			const plan = yield* capture(
-				Command.runWith(acme, { version: "1.0.0" })([
-					"widgets-migrate",
-					"plan",
-					"--from",
-					"1.0.0",
-					"--to",
-					"2.0.0",
-					"--json",
-				]),
+				Cli.run(acme, {
+					version: "1.0.0",
+					argv: ["widgets-migrate", "plan", "--from", "1.0.0", "--to", "2.0.0", "--json"],
+				}),
 			);
 			const help = yield* capture(
-				Command.runWith(acme, { version: "1.0.0" })(["gadgets", "plan", "--help"]),
+				Cli.run(acme, { version: "1.0.0", argv: ["gadgets", "plan", "--help"] }),
+			);
+			const unknown = yield* capture(
+				Cli.run(acme, {
+					version: "1.0.0",
+					argv: ["gadgets", "plan", "--frm", "1.0.0", "--json"],
+				}),
 			);
 
 			expect(json(plan.stdout).plan.route).toBe("1.0.0>2.0.0");
 			expect(help.stdout).toContain("acme gadgets plan --from 1.0.0 --to 2.0.0");
+			expect(unknown.code).toBe(2);
+			expect(json(unknown.stderr).reason).toBe("unknown_option");
 		}),
 	);
 });
@@ -786,15 +789,14 @@ describe("types", () => {
 		const foreign = Handler.promise(restoreTimeout, async () => {});
 		typeOnly(() => {
 			// @ts-expect-error restore-timeout is not an action of the widgets history.
-			Cli.make(widgets, { name: "x", version: "0", handlers: [foreign] });
+			Command.make(widgets, { name: "x", handlers: [foreign] });
 		});
 	});
 
 	it("requires the handlers' services from the caller", () => {
 		const Files = Context.Service<{ readonly write: () => Effect.Effect<void> }>("test/Files");
-		const cli = Cli.make(widgets, {
+		const cli = Command.make(widgets, {
 			name: "x",
-			version: "0",
 			handlers: [
 				Handler.effect(renameTimeout, () =>
 					Effect.gen(function* () {
@@ -805,11 +807,11 @@ describe("types", () => {
 			],
 		});
 
-		expectTypeOf(Cli.run(cli)).toEqualTypeOf<
+		expectTypeOf(Cli.run(cli, { version: "0" })).toEqualTypeOf<
 			Effect.Effect<
 				void,
-				Cli.CliFailure,
-				Context.Service.Identifier<typeof Files> | Command.Environment
+				Command.CliFailure,
+				Context.Service.Identifier<typeof Files> | EffectCli.Command.Environment
 			>
 		>();
 	});

@@ -2,13 +2,12 @@
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { Effect } from "effect";
 
-import { Cli } from "deltafold/cli";
+import { Cli, Command } from "deltafold/cli";
 import packageJson from "../../../package.json" with { type: "json" };
 import { deltafold } from "../../history.ts";
 
-const cli = Cli.make(deltafold, {
+const command = Command.make(deltafold, {
 	name: "deltafold",
-	version: packageJson.version,
 	description: "Plan and run migrations between versions of deltafold",
 });
 
@@ -20,4 +19,7 @@ process.on("SIGINT", () => {
 	if (interrupts > 1) process.exit(130);
 });
 
-Cli.run(cli).pipe(Effect.provide(NodeServices.layer), NodeRuntime.runMain);
+Cli.run(command, { version: packageJson.version }).pipe(
+	Effect.provide(NodeServices.layer),
+	NodeRuntime.runMain,
+);

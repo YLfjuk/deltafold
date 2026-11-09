@@ -28,7 +28,7 @@ checking needs DOM or Node.js types for `AbortSignal`.
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | `deltafold`           | `Action`, `Change`, `Version`, `Migration`, `Rule`, `Shortcut`, `History`, `Package`, `Plan`, `Handler`, `Interaction`, `Executor`, `Observer` |
 | `deltafold/changelog` | `Changelog` and `Document` builders                                                                                                            |
-| `deltafold/cli`       | `Cli.make` and `Cli.run`, for a package's own migrator command                                                                                 |
+| `deltafold/cli`       | `Command.make` and `Cli.run`, for a package's own migrator command                                                                             |
 | `deltafold/markdown`  | `Markdown.render`                                                                                                                              |
 | `deltafold/html`      | `Html.render`                                                                                                                                  |
 
@@ -413,19 +413,23 @@ supplies the runtime, for example `@effect/platform-node`:
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { Effect } from "effect";
 
-import { Cli } from "deltafold/cli";
+import { Cli, Command } from "deltafold/cli";
 import { widgets } from "./history.js";
 
-const cli = Cli.make(widgets, {
+const command = Command.make(widgets, {
 	name: "widgets-migrate",
-	version: "2.0.0",
 	handlers: () => import("./handlers.js").then((module) => module.handlers),
 });
 
-Cli.run(cli).pipe(Effect.provide(NodeServices.layer), NodeRuntime.runMain);
+Cli.run(command, { version: "2.0.0" }).pipe(
+	Effect.provide(NodeServices.layer),
+	NodeRuntime.runMain,
+);
 ```
 
-The command has these subcommands:
+`Command.make` returns an ordinary `effect/cli` command. `Cli.run` runs it as the
+program: it reports usage errors, sets exit statuses, and never prompts. The
+command has these subcommands:
 
 | Command     | What it does                                                                                  |
 | ----------- | --------------------------------------------------------------------------------------------- |
@@ -462,18 +466,26 @@ Action payloads are not included in JSON output.
 | 2           | Invalid arguments, an unknown version or route, or a route the caller must choose.    |
 | 130         | Interrupted. The report shows which actions completed and which may still be running. |
 
-`cli.command` is an ordinary `effect/cli` command. To ship one tool that
-migrates several related packages, build one CLI per package and mount them as
-subcommands of your own command. deltafold does not order migrations across
-packages; your command decides that order. `effect/cli` is marked unstable in
-Effect 4, so the type of `cli.command` can change with Effect releases.
+To ship one tool that migrates several related packages, build one command per
+package and mount them as subcommands of your own `effect/cli` command, then run
+that with `Cli.run`. Import `effect/cli` under another name, such as `EffectCli`,
+so that its `Command` does not hide deltafold's. deltafold does not order
+migrations across packages; your command decides that order. `effect/cli` is
+marked unstable in Effect 4, so the command type can change with Effect releases.
 
 ```ts
-import { Command } from "effect/cli";
+import * as EffectCli from "effect/cli";
 
-const acme = Command.make("acme").pipe(
-	Command.withSubcommands([widgetsCli.command, gadgetsCli.command]),
+import { Cli, Command } from "deltafold/cli";
+
+const acme = EffectCli.Command.make("acme").pipe(
+	EffectCli.Command.withSubcommands([
+		Command.make(widgets, { name: "widgets", handlers: widgetHandlers }),
+		Command.make(gadgets, { name: "gadgets", handlers: gadgetHandlers }),
+	]),
 );
+
+Cli.run(acme, { version: "1.0.0" }).pipe(Effect.provide(NodeServices.layer), NodeRuntime.runMain);
 ```
 
 ## License

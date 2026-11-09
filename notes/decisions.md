@@ -254,12 +254,16 @@ own migrator built with the toolkit; its Node.js code lives in
 `src/domains/node`. It uses `@effect/platform-node`, whose required `redis` peer
 is installed with it.
 
-**An ordinary command.** `Cli.make` returns an `effect/cli` command that runs on
-its own with `Cli.run` or mounts under another command. A tool that migrates
-several packages mounts one command per package. `effect/cli` is marked unstable,
-so `cli.command` follows its types. `Cli.run` adds usage-error reporting and
-removes the interactive wizard; a mounted command keeps the parent's usage
-handling.
+**An ordinary command.** `Command.make` returns an `effect/cli` command whose
+requirements include the handlers' services. `Cli.run` runs any command as the
+program, with the version it prints: it adds usage-error reporting and removes
+the interactive wizard. `run` belongs to `Cli` because it applies to any
+top-level command, and so that no deltafold function shares a name with
+`effect/cli`'s `Command.run`. Code that composes commands imports `effect/cli`
+under another name, such as `EffectCli`. A tool that migrates several packages
+mounts one command per package, as `<cli> <package> <command>`; the package name
+works as a namespace, and each package keeps its own versions and commands.
+`effect/cli` is marked unstable, so the command type follows it.
 
 **Commands.** `validate`, `plan`, `upgrades`, `downgrades`, `guide`, `migrate`
 when handlers are supplied, and `changelog` when release metadata is supplied.
@@ -268,7 +272,7 @@ without a confirmation flag; `--dry-run` previews. `--route` and `--policy` are
 exclusive. `--action-timeout` is the executor's per-phase timeout, named so that
 it is not mistaken for a total limit. Handlers are passed as a function so only
 `migrate` loads them. The CLI uses run-time coverage, because handlers are
-supplied as data; `Cli.make` still rejects handlers for actions outside the
+supplied as data; `Command.make` still rejects handlers for actions outside the
 package and carries their services in its type.
 
 **Streams and formats.** Results go to stdout, everything else to stderr.
@@ -433,6 +437,9 @@ These work today but need confirmation before 1.0:
 - Final change-kind vocabulary and downgrade guide naming.
 - Should `--route` also accept a shortcut identifier, so that common route
   choices need no shell quoting?
+- Should deltafold plan coordinated migrations for connected packages that are
+  released together, with ordering across packages, one dry run, and one report?
+  A multi-package command currently runs one package at a time.
 - Whether codemod integrations ship as an official submodule, separate packages,
   or third-party packages.
 - Which runtime versions the published library supports.
