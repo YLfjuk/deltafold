@@ -1,9 +1,3 @@
-/**
- * Renders documents as HTML through mdast-util-to-hast and hast-util-to-html, which
- * handle structure and escaping.
- *
- * @packageDocumentation
- */
 import { toHtml } from "hast-util-to-html";
 import { toHast } from "mdast-util-to-hast";
 

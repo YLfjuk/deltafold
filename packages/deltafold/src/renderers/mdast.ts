@@ -1,7 +1,3 @@
-/**
- * Lowers documents to mdast. Resolves heading levels, checks section identifiers, and
- * drops link URLs with unsafe schemes.
- */
 import type * as Mdast from "mdast";
 import { sanitizeUri } from "micromark-util-sanitize-uri";
 
@@ -103,7 +99,14 @@ const lowerBlocks = (
 		];
 	});
 
-/** Lowers a document to an mdast root. Throws `DocumentError` for unsupported structure. */
+/**
+ * Lowers a document to an mdast root. Untitled sections contribute only their content,
+ * and titled sections get the next heading level unless their title sets one. Link URLs
+ * with a scheme other than http, https, or mailto become empty.
+ *
+ * Throws `DocumentError` when a section identifier repeats within the document or within
+ * one release, or when a heading level falls outside 1 to 6.
+ */
 export const toMdast = (document: Document): Mdast.Root => ({
 	type: "root",
 	children: lowerBlocks(document.children, 1, { ids: new Set(), label: "the document" }),

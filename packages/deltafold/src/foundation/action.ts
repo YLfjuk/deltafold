@@ -1,10 +1,3 @@
-/**
- * Action kinds describe consumer-owned operations. Action instances are concrete
- * instructions with stable identities. Groups declare sequential and parallel structure
- * between instructions.
- *
- * @packageDocumentation
- */
 import { Predicate } from "effect";
 
 import type { Instruction } from "./instruction.ts";

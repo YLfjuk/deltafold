@@ -1,9 +1,3 @@
-/**
- * Renders documents as Markdown through mdast-util-to-markdown, which handles
- * formatting and escaping.
- *
- * @packageDocumentation
- */
 import { toMarkdown } from "mdast-util-to-markdown";
 
 import type { Document } from "../features/documents/document.ts";

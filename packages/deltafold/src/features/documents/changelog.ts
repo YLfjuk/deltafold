@@ -1,10 +1,3 @@
-/**
- * Changelogs build documents from declarations: historical release notes from versions,
- * and resolved upgrade or downgrade guides from plans. `Changelog.make` configures
- * sections and plugins; it holds no package identity.
- *
- * @packageDocumentation
- */
 import { Array as Arr, Data, Order, Result, SemVer } from "effect";
 
 import type * as Action from "../../foundation/action.ts";

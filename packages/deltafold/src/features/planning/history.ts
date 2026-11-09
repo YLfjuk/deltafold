@@ -1,10 +1,3 @@
-/**
- * Histories register versions, migrations, rules, and shortcuts, and resolve plans
- * between versions. Planning needs no handlers or execution services, and never
- * inspects or modifies consumer files.
- *
- * @packageDocumentation
- */
 import { Predicate, Result } from "effect";
 
 import type * as Action from "../../foundation/action.ts";
@@ -116,7 +109,8 @@ const valid = (history: Any): Result.Result<Context, InvalidHistory> => {
 };
 
 /**
- * Resolves an optimized plan between two versions.
+ * Resolves an optimized plan between two versions. Planning needs no handlers or
+ * execution services, and it never reads or modifies consumer files.
  *
  * When several routes connect the versions, resolution fails with `AmbiguousRoute`
  * unless the `route` option selects one or a route `policy` leaves exactly one.
