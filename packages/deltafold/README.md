@@ -427,7 +427,8 @@ Cli.run(command, { version: "2.0.0" }).pipe(
 );
 ```
 
-`Command.make` returns an ordinary `effect/cli` command. `Cli.run` runs it as the
+`Command.make` returns an ordinary `effect/cli` command, named after the package
+unless you pass `name`. `Cli.run` runs it as the
 program: it reports usage errors, sets exit statuses, and never prompts. The
 command has these subcommands:
 

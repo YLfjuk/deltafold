@@ -7,7 +7,6 @@ import packageJson from "../../../package.json" with { type: "json" };
 import { deltafold } from "../../history.ts";
 
 const command = Command.make(deltafold, {
-	name: "deltafold",
 	description: "Plan and run migrations between versions of deltafold",
 });
 
