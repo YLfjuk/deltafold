@@ -23,6 +23,13 @@
 		"skipLibCheck": true,
 		"noEmit": true,
 		"declaration": true,
-		"declarationMap": true
+		"declarationMap": true,
+		"plugins": [
+			{
+				"name": "@effect/language-service",
+				"noExternal": true,
+				"allowedUnstableApis": ["@effect/vitest#it"]
+			}
+		]
 	}
 }
