@@ -1,7 +1,18 @@
+import { Cause } from "effect";
+
 import type { Any as AnyPlan } from "../../foundation/plan.ts";
-import type { Report } from "../execution/executor.ts";
+import type { Outcome, Report } from "../execution/executor.ts";
+import type * as Observer from "../execution/observer.ts";
 import type { Destination, Issue } from "../planning/history.ts";
-import { counts, occurrencesOf, outcome, outcomeError, unsettled } from "./encode.ts";
+import {
+	counts,
+	error as encodeError,
+	occurrencesOf,
+	outcomeError,
+	statusByTag,
+	unsettled,
+	type OutcomeStatus,
+} from "./encode.ts";
 import { failureMark } from "./failure.ts";
 import type { Style } from "./output.ts";
 
@@ -95,7 +106,84 @@ const statusLabels = {
 	"would-skip": "would skip",
 	undetermined: "undetermined",
 	"precondition-failed": "precondition failed",
-} as const;
+} as const satisfies Record<OutcomeStatus, string>;
+
+const labelWidth = Math.max(...Object.values(statusLabels).map((label) => label.length));
+
+/** Detail shared by report outcomes and observer outcome summaries. */
+const commonDetail = (value: Outcome | Observer.OutcomeSummary) => {
+	switch (value._tag) {
+		case "Skipped":
+		case "WouldSkip":
+		case "Undetermined":
+			return `: ${value.reason}`;
+		case "Interrupted":
+			return ` (${value.phase}, ${value.reason})${value.settled ? "" : ": may still be running"}`;
+		default:
+			return "";
+	}
+};
+
+const actionLine = (tag: Outcome["_tag"], occurrence: string, detail: string, style: Style) => {
+	const status = statusByTag[tag];
+	const label = statusLabels[status].padEnd(labelWidth);
+	const colored =
+		status === "completed" || status === "would-execute"
+			? style.green(label)
+			: status === "failed" || status === "precondition-failed"
+				? style.red(label)
+				: status === "interrupted" || status === "undetermined"
+					? style.yellow(label)
+					: label;
+
+	return `  ${colored}  ${occurrence}${detail}`;
+};
+
+const reportDetail = (value: Outcome) => {
+	if (value._tag === "Failed") return ` (${value.phase}): ${outcomeError(value).message}`;
+	if (value._tag === "PreconditionFailed") return `: ${outcomeError(value).message}`;
+
+	return commonDetail(value);
+};
+
+const summaryDetail = (value: Observer.OutcomeSummary) => {
+	const tag =
+		value._tag === "Failed" || value._tag === "PreconditionFailed" ? value.errorTag : undefined;
+	if (value._tag === "Failed") return ` (${value.phase})${tag === undefined ? "" : `: ${tag}`}`;
+	if (value._tag === "PreconditionFailed") return tag === undefined ? "" : `: ${tag}`;
+
+	return commonDetail(value);
+};
+
+/**
+ * Progress lines for an execution event: a header when a step starts, a line when an
+ * action settles. Other events print nothing; the report follows the run.
+ */
+export const progress = (event: Observer.Event, style: Style): ReadonlyArray<string> => {
+	switch (event._tag) {
+		case "StepStarted": {
+			const { step } = event;
+			if (step.kind !== "execute") return [];
+
+			return [style.bold(`Step ${step.id}  ${step.from} ${style.arrow} ${step.to}`)];
+		}
+		case "ActionSettled": {
+			const { actions } = event.progress;
+			const count = style.dim(` [${actions.finished}/${actions.total}]`);
+
+			return [
+				actionLine(
+					event.outcome._tag,
+					event.action.occurrence,
+					summaryDetail(event.outcome),
+					style,
+				) + count,
+			];
+		}
+		default:
+			return [];
+	}
+};
 
 const headline = (value: Report, style: Style) => {
 	const route = `from ${value.from} to ${value.to}`;
@@ -118,34 +206,10 @@ const headline = (value: Report, style: Style) => {
 /** Human report: headline, one line per occurrence, counts, and what was not undone. */
 export const report = (value: Report, style: Style) => {
 	const lines = [headline(value, style)];
-	const labelWidth = Math.max(...Object.values(statusLabels).map((label) => label.length));
 	for (const entry of value.occurrences) {
-		const encoded = outcome(entry.outcome);
-		const label = statusLabels[encoded.status].padEnd(labelWidth);
-		const colored =
-			encoded.status === "completed" || encoded.status === "would-execute"
-				? style.green(label)
-				: encoded.status === "failed" || encoded.status === "precondition-failed"
-					? style.red(label)
-					: encoded.status === "interrupted" || encoded.status === "undetermined"
-						? style.yellow(label)
-						: label;
-		let detail = "";
-		const current = entry.outcome;
-		if (
-			current._tag === "Skipped" ||
-			current._tag === "WouldSkip" ||
-			current._tag === "Undetermined"
-		) {
-			detail = `: ${current.reason}`;
-		} else if (current._tag === "Failed") {
-			detail = ` (${current.phase}): ${outcomeError(current).message}`;
-		} else if (current._tag === "PreconditionFailed") {
-			detail = `: ${outcomeError(current).message}`;
-		} else if (current._tag === "Interrupted") {
-			detail = ` (${current.phase}, ${current.reason})${current.settled ? "" : ": may still be running"}`;
-		}
-		lines.push(`  ${colored}  ${entry.occurrence.id}${detail}`);
+		lines.push(
+			actionLine(entry.outcome._tag, entry.occurrence.id, reportDetail(entry.outcome), style),
+		);
 	}
 	const summary = [...counts(value.occurrences)]
 		.filter(([, count]) => count > 0)
@@ -167,3 +231,11 @@ export const report = (value: Report, style: Style) => {
 
 	return lines;
 };
+
+/** Warnings for observers that failed or were abandoned. Outcomes are unaffected. */
+export const observation = (value: Report, style: Style) =>
+	value.observation.map((entry) =>
+		style.yellow(
+			`Warning: observer ${entry.observer} ${entry.reason === "failed" ? "failed" : "was abandoned"} on ${entry.event} (event ${entry.seq}): ${encodeError(Cause.squash(entry.cause)).message}`,
+		),
+	);

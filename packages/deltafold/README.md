@@ -460,6 +460,12 @@ structured `data`, and suggested follow-up commands as `argv`. `migrate` always
 prints its report on stdout, including after a failure or cancellation.
 Action payloads are not included in JSON output.
 
+`migrate` passes the observers attached to your package with
+`Package.withObserver` to the executor, in attachment order, and then adds
+its own observer that prints each step and action outcome on stderr. With
+`--json` it adds none. An observer failure never changes the outcome: it is
+printed as a warning, and the JSON report lists it under `observation`.
+
 | Exit status | Meaning                                                                               |
 | ----------- | ------------------------------------------------------------------------------------- |
 | 0           | Done, including an empty plan or a dry run whose checks pass.                         |

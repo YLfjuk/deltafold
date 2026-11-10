@@ -292,6 +292,13 @@ unknown versions or routes, and ambiguous routes (`action_required`), and 130 fo
 interruption. `NodeRuntime` reports SIGTERM as 130 as well. `validate` prints its
 issues as the result and exits 1.
 
+**Progress.** `migrate` passes the package's observers to the executor and appends
+an observer that writes step and action progress to stderr through the CLI's
+output, so it follows `--log-level` and is left out with `--json`. It prints
+steps that have actions, unnumbered, because the event step total also counts
+steps without actions. Observer failures are warnings on stderr and plain fields
+in the JSON report; their causes are never serialized whole.
+
 **Cancellation.** `migrate` runs the executor at the Promise boundary with an
 abort signal. Interrupting the CLI fiber aborts it and waits for the partial
 report, which is printed before the fiber ends as interrupted. The `deltafold`
