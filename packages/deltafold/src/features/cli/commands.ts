@@ -13,7 +13,8 @@ import {
 	type Report,
 } from "../execution/executor.ts";
 import type * as Handler from "../execution/handler.ts";
-import type { Package } from "../package.ts";
+import * as Observer from "../execution/observer.ts";
+import type * as Package from "../package.ts";
 import * as History from "../planning/history.ts";
 import type { RoutePolicy } from "../planning/resolve.ts";
 import * as Encode from "./encode.ts";
@@ -32,7 +33,7 @@ import * as Render from "./render.ts";
 export type Definition = {
 	readonly name: string;
 	readonly description: string;
-	readonly package: Package;
+	readonly package: Package.Any;
 	readonly changelog: Changelog<any>;
 	readonly releases: (() => ReadonlyArray<Release<any>>) | undefined;
 	readonly handlers: (() => Promise<ReadonlyArray<Handler.Any>>) | undefined;
@@ -554,9 +555,20 @@ const migrateCommand = (
 					// oxlint-disable-next-line typescript/no-unsafe-type-assertion
 					const services = (yield* Effect.context()) as Context.Context<any>;
 					const controller = new AbortController();
+					// The package's observers run first, in attachment order; the CLI's progress
+					// observer runs last and is left out with --json.
+					const progress = Observer.effect((event) => {
+						const lines = Render.progress(event, output.err);
+
+						return lines.length === 0 ? Effect.void : output.diagnostic(lines);
+					});
+					const observers = output.json
+						? definition.package.observers
+						: [...definition.package.observers, progress];
 					const execute = (): Promise<Settled> =>
 						runPromise(Plan.withRuntimeCoverage(plan), {
 							handlers,
+							observers,
 							dryRun: input.dryRun,
 							signal: controller.signal,
 							services,
@@ -572,15 +584,19 @@ const migrateCommand = (
 						);
 
 					const printReport = (report: Report) =>
-						output.result(
-							output.json
-								? stringify({
-										schemaVersion,
-										package: definition.package.name,
-										report: Encode.report(report),
-									})
-								: Render.report(report, output.out),
-						);
+						Effect.gen(function* () {
+							yield* output.result(
+								output.json
+									? stringify({
+											schemaVersion,
+											package: definition.package.name,
+											report: Encode.report(report, plan),
+										})
+									: Render.report(report, output.out),
+							);
+							const warnings = Render.observation(report, output.err);
+							if (warnings.length > 0) yield* output.diagnostic(warnings, "Warn");
+						});
 
 					const settled = yield* Effect.uninterruptibleMask((restore) =>
 						Effect.gen(function* () {

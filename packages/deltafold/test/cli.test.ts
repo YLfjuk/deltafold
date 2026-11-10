@@ -2,7 +2,7 @@ import { describe, expect, expectTypeOf, it } from "@effect/vitest";
 import { Context, Deferred, Effect, Fiber } from "effect";
 import * as EffectCli from "effect/cli";
 
-import { Handler, Version } from "deltafold";
+import { Handler, Observer, Package, Version } from "deltafold";
 import { Changelog } from "deltafold/changelog";
 import { Cli, Command } from "deltafold/cli";
 import {
@@ -283,6 +283,7 @@ describe("plan", () => {
 			expect(plan.route).toBe("1.0.0>2.0.0");
 			expect(plan.steps).toEqual([
 				{
+					id: "1.0.0-to-2.0.0",
 					migration: "1.0.0-to-2.0.0",
 					direction: "forward",
 					from: "1.0.0",
@@ -292,6 +293,7 @@ describe("plan", () => {
 				},
 			]);
 			expect(plan.occurrences[0]).toMatchObject({
+				step: "1.0.0-to-2.0.0",
 				action: "rename-timeout",
 				kind: "config.rename",
 				origin: { type: "declared" },
@@ -663,6 +665,72 @@ describe("migrate", () => {
 	);
 });
 
+describe("observers", () => {
+	it.effect("forwards the package's observers and prints progress on stderr", () =>
+		Effect.gen(function* () {
+			const seen: Array<string> = [];
+			const observed = widgets.pipe(
+				Package.withObserver(Observer.sync((event) => void seen.push(event._tag))),
+			);
+			const command = Command.make(observed, {
+				name: "widgets-migrate",
+				handlers: () => handlersFor([]),
+			});
+			const argv = ["migrate", "--from", "1.0.0", "--to", "2.0.0"];
+			const machine = yield* capture(start(command, [...argv, "--json"]));
+			const machineEvents = [...seen];
+			const human = yield* capture(start(command, argv));
+
+			expect(machine.code).toBe(0);
+			expect(machine.stderr).toBe("");
+			expect(machineEvents).toEqual([
+				"RunStarted",
+				"StepStarted",
+				"ActionPhaseStarted",
+				"ActionPhaseStarted",
+				"ActionSettled",
+				"StepSettled",
+				"RunFinished",
+			]);
+			expect(human.stderr).toContain("Step 1.0.0-to-2.0.0  1.0.0 -> 2.0.0");
+			expect(human.stderr).toContain("1.0.0-to-2.0.0/rename-timeout [1/1]");
+		}),
+	);
+
+	it.effect("reports observer failures without changing the outcome", () =>
+		Effect.gen(function* () {
+			const observed = widgets.pipe(
+				Package.withObserver(
+					Observer.sync((event) => {
+						if (event._tag === "RunStarted") throw new Error("dashboard offline");
+					}),
+				),
+			);
+			const command = Command.make(observed, { handlers: () => handlersFor([]) });
+			const argv = ["migrate", "--from", "1.0.0", "--to", "2.0.0"];
+			const machine = yield* capture(start(command, [...argv, "--json"]));
+			const human = yield* capture(start(command, argv));
+			const { report } = json(machine.stdout);
+
+			expect(machine.code).toBe(0);
+			expect(report.status).toBe("completed");
+			expect(report.observation).toEqual([
+				{
+					observer: 0,
+					event: "RunStarted",
+					seq: 0,
+					reason: "failed",
+					error: { tag: "Error", message: "dashboard offline", code: null },
+				},
+			]);
+			expect(human.code).toBe(0);
+			expect(human.stderr).toContain(
+				"Warning: observer 0 failed on RunStarted (event 0): dashboard offline",
+			);
+		}),
+	);
+});
+
 describe("documents", () => {
 	it.effect("prints the guide as Markdown", () =>
 		Effect.gen(function* () {
@@ -825,6 +893,30 @@ describe("types", () => {
 				void,
 				Command.CliFailure,
 				Context.Service.Identifier<typeof Files> | EffectCli.Command.Environment
+			>
+		>();
+	});
+
+	it("requires the services of the package's observers", () => {
+		const Telemetry = Context.Service<{ readonly send: (tag: string) => Effect.Effect<void> }>(
+			"test/Telemetry",
+		);
+		const observed = widgets.pipe(
+			Package.withObserver(
+				Observer.effect((event) =>
+					Effect.gen(function* () {
+						const telemetry = yield* Telemetry;
+						yield* telemetry.send(event._tag);
+					}),
+				),
+			),
+		);
+
+		expectTypeOf(Cli.run(Command.make(observed), { version: "0" })).toEqualTypeOf<
+			Effect.Effect<
+				void,
+				Command.CliFailure,
+				Context.Service.Identifier<typeof Telemetry> | EffectCli.Command.Environment
 			>
 		>();
 	});

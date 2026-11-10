@@ -4,6 +4,7 @@ import type * as Action from "../../foundation/action.ts";
 import type { Release } from "../../foundation/version.ts";
 import { make as makeChangelog, type Changelog } from "../documents/changelog.ts";
 import type * as Handler from "../execution/handler.ts";
+import type * as Observer from "../execution/observer.ts";
 import type { Package } from "../package.ts";
 import { commands } from "./commands.ts";
 import { CliFailure, schemaVersion, type Reason } from "./failure.ts";
@@ -50,6 +51,9 @@ export type Options<A extends Action.Any, H extends Handler.Handler<A, any, any>
  * `effect/cli` is marked unstable in Effect 4, so the command's type may change with
  * Effect releases.
  *
+ * `migrate` forwards the package's observers to the executor, in attachment order, and
+ * then adds its own observer that prints progress on stderr (none with `--json`).
+ *
  * Building the command and showing help never load handlers, run preconditions, or touch
  * consumer files. Importing the module that declares the package still runs that module's
  * top-level code.
@@ -75,12 +79,19 @@ export type Options<A extends Action.Any, H extends Handler.Handler<A, any, any>
  */
 export const make = <
 	A extends Action.Any,
+	O extends Observer.Any = never,
 	H extends Handler.Handler<A, any, any> = never,
 	M = never,
 >(
-	pkg: Package<A>,
+	pkg: Package<A, O>,
 	options: Options<A, H, M> = {},
-): Command.Command<string, any, any, CliFailure, Handler.Services<H> | Command.Environment> => {
+): Command.Command<
+	string,
+	any,
+	any,
+	CliFailure,
+	Handler.Services<H> | Observer.Services<O> | Command.Environment
+> => {
 	const { handlers, releases } = options;
 	const command: Command.Command<string, any, any, CliFailure, Command.Environment> = commands({
 		name: options.name ?? pkg.name,

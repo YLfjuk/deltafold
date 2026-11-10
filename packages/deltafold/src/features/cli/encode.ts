@@ -21,8 +21,9 @@ const change = (value: Change) => ({
 	description: value.description,
 });
 
-export const occurrence = (value: Occurrence) => ({
+export const occurrence = (value: Occurrence, step: string | null) => ({
 	id: value.id,
+	step,
 	action: value.action.id,
 	kind: value.action.kind,
 	description: value.action.description,
@@ -44,6 +45,14 @@ export const occurrencesOf = (plan: AnyPlan, step: Step) =>
 		(entry) => entry.migration.id === step.migration.id && entry.direction === step.direction,
 	);
 
+/** The step identifier of each occurrence. */
+const stepIds = (plan: AnyPlan) =>
+	new Map(
+		plan.steps.flatMap((step) =>
+			occurrencesOf(plan, step).map((entry): [string, string] => [entry.id, step.id]),
+		),
+	);
+
 const explanation = (value: Explanation) =>
 	value._tag === "Rewrite"
 		? {
@@ -59,23 +68,30 @@ const explanation = (value: Explanation) =>
 				reason: value.reason,
 			};
 
-export const plan = (value: AnyPlan) => ({
-	from: value.from.id,
-	to: value.to.id,
-	direction: value.direction,
-	route: value.route.id,
-	steps: value.steps.map((step) => ({
-		migration: step.migration.id,
-		direction: step.direction,
-		from: step.from.id,
-		to: step.to.id,
-		omitted: step.omitted,
-		occurrences: occurrencesOf(value, step).map((entry) => entry.id),
-	})),
-	occurrences: value.occurrences.map(occurrence),
-	changes: value.changes.map(change),
-	explanations: value.explanations.map(explanation),
-});
+export const plan = (value: AnyPlan) => {
+	const steps = stepIds(value);
+
+	return {
+		from: value.from.id,
+		to: value.to.id,
+		direction: value.direction,
+		route: value.route.id,
+		steps: value.steps.map((step) => ({
+			id: step.id,
+			migration: step.migration.id,
+			direction: step.direction,
+			from: step.from.id,
+			to: step.to.id,
+			omitted: step.omitted,
+			occurrences: occurrencesOf(value, step).map((entry) => entry.id),
+		})),
+		occurrences: value.occurrences.map((entry) =>
+			occurrence(entry, steps.get(entry.id) ?? null),
+		),
+		changes: value.changes.map(change),
+		explanations: value.explanations.map(explanation),
+	};
+};
 
 export const destination = (value: Destination) => ({
 	version: value.version.id,
@@ -149,6 +165,18 @@ export const outcome = (value: Outcome) => {
 
 export type OutcomeStatus = ReturnType<typeof outcome>["status"];
 
+export const statusByTag = {
+	Completed: "completed",
+	Skipped: "skipped",
+	Failed: "failed",
+	Interrupted: "interrupted",
+	Unattempted: "unattempted",
+	WouldExecute: "would-execute",
+	WouldSkip: "would-skip",
+	Undetermined: "undetermined",
+	PreconditionFailed: "precondition-failed",
+} as const satisfies Record<Outcome["_tag"], OutcomeStatus>;
+
 const statuses: ReadonlyArray<OutcomeStatus> = [
 	"completed",
 	"skipped",
@@ -178,18 +206,30 @@ export const unsettled = (value: Report) =>
 		entry.outcome._tag === "Interrupted" && !entry.outcome.settled ? entry.occurrence.id : [],
 	);
 
-export const report = (value: Report) => ({
-	mode: value.mode,
-	status: value.status,
-	from: value.from,
-	to: value.to,
-	route: value.route,
-	bodiesStarted: value.bodiesStarted,
-	persistence: value.persistence,
-	summary: Object.fromEntries(counts(value.occurrences)),
-	unsettled: unsettled(value),
-	occurrences: value.occurrences.map((entry) => ({
-		...occurrence(entry.occurrence),
-		outcome: outcome(entry.outcome),
-	})),
-});
+/** The report, with observer failures reduced to plain fields. */
+export const report = (value: Report, resolved: AnyPlan) => {
+	const steps = stepIds(resolved);
+
+	return {
+		mode: value.mode,
+		status: value.status,
+		from: value.from,
+		to: value.to,
+		route: value.route,
+		bodiesStarted: value.bodiesStarted,
+		persistence: value.persistence,
+		summary: Object.fromEntries(counts(value.occurrences)),
+		unsettled: unsettled(value),
+		observation: value.observation.map((entry) => ({
+			observer: entry.observer,
+			event: entry.event,
+			seq: entry.seq,
+			reason: entry.reason,
+			error: error(Cause.squash(entry.cause)),
+		})),
+		occurrences: value.occurrences.map((entry) => ({
+			...occurrence(entry.occurrence, steps.get(entry.occurrence.id) ?? null),
+			outcome: outcome(entry.outcome),
+		})),
+	};
+};
