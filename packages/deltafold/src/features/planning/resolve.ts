@@ -15,7 +15,13 @@ import type {
 import type * as Shortcut from "../../foundation/shortcut.ts";
 import type { Version } from "../../foundation/version.ts";
 import { resolveGuide } from "./guide.ts";
-import { declaredOccurrenceId, routeHop, routeShortcut, routeStart } from "./identifiers.ts";
+import {
+	declaredOccurrenceId,
+	routeHop,
+	routeShortcut,
+	routeStart,
+	stepId,
+} from "./identifiers.ts";
 import {
 	AmbiguousRoute,
 	ConflictingRewrites,
@@ -344,6 +350,7 @@ const buildPlan = (
 
 		return {
 			_tag: "Step",
+			id: stepId(member.migration, member.direction),
 			migration: member.migration,
 			direction: member.direction,
 			from: stepFrom,

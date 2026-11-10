@@ -1,7 +1,7 @@
 import { Data, Predicate, type Pipeable } from "effect";
 
 import type { Version } from "../../foundation/version.ts";
-import type { Package } from "../package.ts";
+import type * as Package from "../package.ts";
 
 /** @since 0.0.1 */
 export type Text = { readonly _tag: "Text"; readonly value: string };
@@ -294,14 +294,14 @@ export const History = "history";
 
 /** @since 0.0.1 */
 export type ReleaseContext<M> = {
-	readonly package: Package;
+	readonly package: Package.Any;
 	readonly version: Version;
 	readonly metadata: M;
 };
 
 /** @since 0.0.1 */
 export type HistoryContext<M> = {
-	readonly package: Package;
+	readonly package: Package.Any;
 	readonly releases: ReadonlyArray<ReleaseContext<M>>;
 };
 

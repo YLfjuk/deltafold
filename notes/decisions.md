@@ -219,6 +219,45 @@ preparations are `Undetermined`. Handlers without a prepare phase are
 prepare phases as they do to real runs. A dry run reflects the state that its
 prepare phases saw; a later real run may see different state.
 
+## Observation
+
+**Attachment.** `Package.withObserver` returns a new package with the observer
+appended; the original keeps its observers. The package only carries them. The
+executor's `observers` option takes a plain array, usually `pkg.observers`, and
+the executor has no knowledge of packages. Observers run in array order. The
+observers' Effect services join the execution's requirements.
+
+**Delivery.** The executor waits for every observer before it continues, and
+delivers one event at a time across parallel branches, so each run has one total
+order and the final event arrives before the execution settles. Counters change
+in the same critical section, so progress never decreases. A thrown value, a
+rejection, or an Effect failure is recorded in `report.observation` with the
+observer's position and the event, and that observer still receives later
+events. Observation never changes outcomes or status. Before a cancellation or
+timeout, deliveries have no time limit, so a hanging observer stalls the run.
+After one, each delivery waits at most `settleTimeout` and is then abandoned and
+recorded; a Promise observer's `signal` aborts. When the fiber of
+`Executor.effect` is interrupted, a finalizer sends one `RunFinished` without a
+report, bounded the same way.
+
+**Steps and provenance.** Step progress counts steps that keep actions after
+optimization, plus text-only steps, which settle at once as `manual` because the
+executor does not wait at them. Noop steps and steps whose actions rules removed
+or moved are `omitted`: `RunStarted` lists them, but progress does not count
+them. A replacement runs in the step of the first occurrence it replaced, as
+before. Its `sources` name the declared steps behind it, and that step's
+`absorbs` names the other steps whose work it performs, so a failure there shows
+that a later step's declared work was already attempted. `Plan.Step.id` is the
+migration identifier, followed by `/revert` for a reverse migration.
+
+**Event contents.** Events hold identifiers, descriptions, and outcome tags. A
+failed outcome keeps only the error's string `_tag`; typed errors and causes stay
+in the report. Action descriptions therefore reach observers and must not hold
+secrets. `ActionSettled` arrives once for each occurrence with an outcome, and as
+`Unattempted` for an occurrence whose precondition passed but whose body did not
+start. Handler coverage failures emit no events. `run.id` comes from the
+optional `runId`; observers shared by concurrent runs need it to tell runs apart.
+
 ## Documents
 
 **Semantic layer over mdast.** deltafold owns sections with identifiers,
@@ -369,6 +408,10 @@ These work today but need confirmation before 1.0:
   process loses the wait with the rest of the progress.
 - A skip only skips its own action. An unmet requirement that must block later
   actions has to fail its prepare phase.
+- The executor does not wait at text-only steps. Their instructions reach people
+  through the guide and observer events only.
+- Interrupting the fiber of `Executor.effect` produces no report. Observers
+  receive a `RunFinished` event without one.
 
 ## Not yet implemented
 
@@ -383,6 +426,7 @@ These work today but need confirmation before 1.0:
   plans.
 - A versioned JSON report format and a plan fingerprint.
 - A preview mode for integration engines, distinct from dry runs.
+- Waiting for confirmation at text-only steps before the run continues.
 - Branch labels in histories and an optional metadata schema.
 - A TypeScript codemod that migrates handlers from the removed `when` and
   `skipReason` options to `{ prepare, apply }`. The breaking release that removes
