@@ -17,7 +17,7 @@ export type Item =
 			readonly concurrency: Action.Concurrency;
 			readonly step: number;
 	  }
-	/** A text-only migration: manual work that rules must not match around. */
+	/** A text-only migration: prose instructions that rules must not match around. */
 	| { readonly _tag: "Barrier"; readonly step: number };
 
 export type Application = {

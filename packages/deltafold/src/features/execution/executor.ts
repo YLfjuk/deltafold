@@ -15,6 +15,7 @@ import type * as Action from "../../foundation/action.ts";
 import type * as Plan from "../../foundation/plan.ts";
 import type { Node, Occurrence } from "../../foundation/plan.ts";
 import * as Handler from "./handler.ts";
+import type * as Interaction from "./interaction.ts";
 import { SettlementReference } from "./settlement.ts";
 
 /**
@@ -23,8 +24,20 @@ import { SettlementReference } from "./settlement.ts";
  * @since @next
  */
 export type Outcome<E = unknown> =
-	| { readonly _tag: "Completed" }
+	| { readonly _tag: "Completed"; readonly performer: "automated" }
+	| {
+			readonly _tag: "Completed";
+			readonly performer: "manual";
+			/**
+			 * What supports completion. `asserted`: the person said so and nothing checked
+			 * it. `verified`: the person said so and the handler's `verify` check passed.
+			 * Neither proves how the work was done.
+			 */
+			readonly confirmation: "asserted" | "verified";
+	  }
 	| { readonly _tag: "Skipped"; readonly reason: string }
+	/** The person asked to confirm manual work answered that it is not done. */
+	| { readonly _tag: "Declined" }
 	| {
 			readonly _tag: "Failed";
 			readonly phase: Handler.Phase;
@@ -45,9 +58,19 @@ export type Outcome<E = unknown> =
 	  }
 	/** Not started because execution stopped first. */
 	| { readonly _tag: "Unattempted" }
-	| { readonly _tag: "WouldExecute"; readonly evaluated: boolean }
+	| {
+			readonly _tag: "WouldExecute";
+			readonly evaluated: boolean;
+			/** `manual` occurrences would wait for a person. A dry run never asks. */
+			readonly performer: Handler.Performer;
+	  }
 	| { readonly _tag: "WouldSkip"; readonly reason: string }
-	| { readonly _tag: "Undetermined"; readonly reason: string }
+	| {
+			readonly _tag: "Undetermined";
+			readonly reason: string;
+			/** `manual` occurrences would wait for a person if they execute. */
+			readonly performer: Handler.Performer;
+	  }
 	| {
 			readonly _tag: "PreconditionFailed";
 			readonly error: E | undefined;
@@ -76,7 +99,10 @@ export type Report<A extends Action.Any = Action.Any, E = unknown> = {
 	readonly route: string;
 	/** Every occurrence in plan order. */
 	readonly occurrences: ReadonlyArray<OccurrenceReport<A, E>>;
-	/** Whether any action body started. A started body may have partially changed state. */
+	/**
+	 * Whether any action body started or any person was asked to do manual work. Either
+	 * may have partially changed state.
+	 */
 	readonly bodiesStarted: boolean;
 	/** Progress is not persisted. Rerunning the plan repeats completed actions. */
 	readonly persistence: "none";
@@ -123,10 +149,44 @@ export class HandlerCoverageError<A extends Action.Any = Action.Any> extends Han
 	}
 }
 
+const InteractionUnavailableBase = Data.TaggedError("InteractionUnavailable");
+
+/**
+ * The plan has manual handlers, and the run has no `interaction` to ask a person. The
+ * run fails before any precondition, body, or prompt.
+ *
+ * @since @next
+ */
+export class InteractionUnavailable<
+	A extends Action.Any = Action.Any,
+> extends InteractionUnavailableBase<{
+	/** The occurrences that a manual handler covers, in plan order. */
+	readonly occurrences: ReadonlyArray<Occurrence<A>>;
+	readonly report: Report<A, never>;
+}> {
+	override get message() {
+		return `No interaction is available to confirm manual work for ${this.occurrences
+			.map((occurrence) => `"${occurrence.id}" (${occurrence.action.description})`)
+			.join(
+				", ",
+			)}. Supply the \`interaction\` option, or bind automated handlers to these actions.`;
+	}
+}
+
+const listIds = (entries: ReadonlyArray<OccurrenceReport>) =>
+	entries
+		.map((entry) =>
+			entry.outcome._tag === "Failed"
+				? `"${entry.occurrence.id}" (${entry.outcome.phase})`
+				: `"${entry.occurrence.id}"`,
+		)
+		.join(", ");
+
 const ExecutionFailedBase = Data.TaggedError("ExecutionFailed");
 
 /**
- * An occurrence failed. Execution stopped admitting new actions; started ones settled.
+ * An occurrence failed, or a person declined manual work. Execution stopped admitting
+ * new actions; started ones settled.
  *
  * @since @next
  */
@@ -135,12 +195,23 @@ export class ExecutionFailed<
 	E = unknown,
 > extends ExecutionFailedBase<{
 	readonly failures: ReadonlyArray<OccurrenceReport<A, E>>;
+	/** Manual occurrences that a person declined. */
+	readonly declined: ReadonlyArray<OccurrenceReport<A, E>>;
 	readonly report: Report<A, E>;
 }> {
 	override get message() {
-		return `Execution failed at ${this.failures
-			.map((failure) => `"${failure.occurrence.id}"`)
-			.join(", ")}. Completed actions were not rolled back.`;
+		const parts = [
+			...(this.failures.length === 0
+				? []
+				: [`Execution failed at ${listIds(this.failures)}.`]),
+			...(this.declined.length === 0
+				? []
+				: [
+						`Manual work was declined at ${listIds(this.declined)}, which stopped the run.`,
+					]),
+		];
+
+		return `${parts.join(" ")} Completed actions were not rolled back.`;
 	}
 }
 
@@ -174,6 +245,7 @@ export class ExecutionInterrupted<
 /** @since @next */
 export type ExecutionError<A extends Action.Any, E> =
 	| HandlerCoverageError<A>
+	| InteractionUnavailable<A>
 	| ExecutionFailed<A, E>
 	| ExecutionInterrupted<A, E>;
 
@@ -205,23 +277,32 @@ type CoverageCheck<A extends Action.Any, H, C extends Plan.Coverage> = [
  *
  * @since @next
  */
-export type Errors<H> = Handler.Error<H>;
+export type Errors<H, I = never> = Handler.Error<H> | Interaction.Error<I>;
 
 /**
- * Effect services an execution requires: the services of its handlers.
+ * Effect services an execution requires: the services of its handlers and of its
+ * interaction.
  *
  * @since @next
  */
-export type Requirements<H> = Handler.Services<H>;
+export type Requirements<H, I = never> = Handler.Services<H> | Interaction.Services<I>;
 
 /** @since @next */
-export type Options<H extends Handler.Any> = {
+export type Options<H extends Handler.Any, I extends Interaction.Any = never> = {
 	readonly handlers?: ReadonlyArray<H>;
+	/**
+	 * Asks a person to confirm the work of manual handlers. A run whose plan has manual
+	 * handlers fails with `InteractionUnavailable` before it starts when this is absent.
+	 * A dry run never asks and does not need it.
+	 */
+	readonly interaction?: I;
 	/** Evaluate preconditions without running any action body. */
 	readonly dryRun?: boolean;
 	/**
-	 * Per-occurrence limit for a precondition or body. Exceeding it interrupts that action
-	 * and stops admitting new ones. It applies to dry-run preconditions too.
+	 * Per-occurrence limit for a precondition, body, or verification. Exceeding it
+	 * interrupts that action and stops admitting new ones. It applies to dry-run
+	 * preconditions too. It never limits the wait for a person to confirm manual work;
+	 * cancel the run to end that wait.
 	 */
 	readonly timeout?: Duration.Input;
 	/**
@@ -330,7 +411,10 @@ type PhaseResult<T> =
 	  };
 
 /** Admission state, cancellation, and timeouts shared by real and dry runs. */
-const makeControl = (options: Options<Handler.Any>, subscribe: Subscribe | undefined) =>
+const makeControl = (
+	options: Options<Handler.Any, Interaction.Any>,
+	subscribe: Subscribe | undefined,
+) =>
 	Effect.gen(function* () {
 		const halt: { reason: StopReason | undefined } = { reason: undefined };
 		const cancelled = yield* Deferred.make<"cancelled">();
@@ -339,14 +423,21 @@ const makeControl = (options: Options<Handler.Any>, subscribe: Subscribe | undef
 		const stop = (reason: StopReason) => {
 			halt.reason ??= reason;
 		};
+		// A failure can be the first stop reason, so cancellation is tracked on its own.
+		let cancellationArrived = false;
 		subscribe?.(() => {
+			cancellationArrived = true;
 			stop("cancelled");
 			Deferred.doneUnsafe(cancelled, Exit.succeed("cancelled"));
 		});
 
-		/** Runs one precondition or body, racing it against cancellation and the timeout. */
+		/**
+		 * Runs one phase, racing it against cancellation and the timeout. Waiting for a
+		 * person is `untimed`: only cancellation ends it.
+		 */
 		const runPhase = <T>(
 			work: Effect.Effect<T, unknown, any>,
+			timing: "timed" | "untimed" = "timed",
 		): Effect.Effect<PhaseResult<T>, never, any> =>
 			Effect.gen(function* () {
 				let settled = true;
@@ -361,7 +452,7 @@ const makeControl = (options: Options<Handler.Any>, subscribe: Subscribe | undef
 				const stopSignals: Array<Effect.Effect<"cancelled" | "timeout">> = [
 					Deferred.await(cancelled),
 				];
-				if (options.timeout !== undefined) {
+				if (options.timeout !== undefined && timing === "timed") {
 					stopSignals.push(Effect.as(Effect.sleep(options.timeout), "timeout" as const));
 				}
 				const result = yield* Effect.raceFirst(
@@ -379,7 +470,7 @@ const makeControl = (options: Options<Handler.Any>, subscribe: Subscribe | undef
 				return { _tag: "Interrupted" as const, reason: result.reason, settled };
 			});
 
-		return { halt, stop, runPhase };
+		return { halt, stop, runPhase, isCancelled: () => cancellationArrived };
 	});
 
 const interrupted = <A extends Action.Any>(
@@ -397,13 +488,97 @@ const interrupted = <A extends Action.Any>(
 const execute = (
 	plan: Plan.Any,
 	resolved: Resolved,
-	options: Options<Handler.Any>,
+	options: Options<Handler.Any, Interaction.Any>,
 	subscribe: Subscribe | undefined,
 ): Effect.Effect<Report, ExecutionFailed | ExecutionInterrupted, any> =>
 	Effect.gen(function* () {
 		const outcomes = new Map<string, Outcome>();
-		const { halt, stop, runPhase } = yield* makeControl(options, subscribe);
+		const { halt, stop, runPhase, isCancelled } = yield* makeControl(options, subscribe);
 		let bodiesStarted = false;
+
+		/** Sets the outcome of a phase that did not succeed, and returns its value otherwise. */
+		const settle = <T>(
+			occurrence: Occurrence,
+			phase: Handler.Phase,
+			result: PhaseResult<T>,
+		): Option.Option<T> => {
+			if (result._tag === "Interrupted") {
+				outcomes.set(occurrence.id, {
+					_tag: "Interrupted",
+					phase,
+					reason: result.reason,
+					settled: result.settled,
+				});
+
+				return Option.none();
+			}
+			if (Exit.isFailure(result.exit)) {
+				stop("failure");
+				outcomes.set(occurrence.id, {
+					_tag: "Failed",
+					phase,
+					...failureOf(result.exit.cause),
+				});
+
+				return Option.none();
+			}
+
+			return Option.some(result.exit.value);
+		};
+
+		/** Waits for a person to confirm the work, then runs the handler's verification. */
+		const runManual = (
+			occurrence: Occurrence,
+			handler: Handler.Any,
+			interaction: Interaction.Any,
+		) =>
+			Effect.gen(function* () {
+				// The person may start changing state as soon as they are asked.
+				bodiesStarted = true;
+				const answer = settle(
+					occurrence,
+					"confirmation",
+					yield* runPhase(interaction.confirm({ occurrence }), "untimed"),
+				);
+				if (Option.isNone(answer)) return;
+				if (answer.value === "declined") {
+					stop("failure");
+					outcomes.set(occurrence.id, { _tag: "Declined" });
+
+					return;
+				}
+				if (handler.verification === undefined) {
+					outcomes.set(occurrence.id, {
+						_tag: "Completed",
+						performer: "manual",
+						confirmation: "asserted",
+					});
+
+					return;
+				}
+				// Cancellation that arrived with the confirmation keeps the check from starting.
+				if (isCancelled()) {
+					outcomes.set(occurrence.id, {
+						_tag: "Interrupted",
+						phase: "verification",
+						reason: "cancelled",
+						settled: true,
+					});
+
+					return;
+				}
+				const checked = settle(
+					occurrence,
+					"verification",
+					yield* runPhase(handler.verification),
+				);
+				if (Option.isNone(checked)) return;
+				outcomes.set(occurrence.id, {
+					_tag: "Completed",
+					performer: "manual",
+					confirmation: "verified",
+				});
+			});
 
 		const runOccurrence = (occurrence: Occurrence) =>
 			Effect.gen(function* () {
@@ -413,28 +588,13 @@ const execute = (
 				if (handler === undefined) return;
 
 				if (handler.precondition !== undefined) {
-					const checked = yield* runPhase(handler.precondition);
-					if (checked._tag === "Interrupted") {
-						outcomes.set(occurrence.id, {
-							_tag: "Interrupted",
-							phase: "precondition",
-							reason: checked.reason,
-							settled: checked.settled,
-						});
-
-						return;
-					}
-					if (Exit.isFailure(checked.exit)) {
-						stop("failure");
-						outcomes.set(occurrence.id, {
-							_tag: "Failed",
-							phase: "precondition",
-							...failureOf(checked.exit.cause),
-						});
-
-						return;
-					}
-					if (!checked.exit.value) {
+					const applies = settle(
+						occurrence,
+						"precondition",
+						yield* runPhase(handler.precondition),
+					);
+					if (Option.isNone(applies)) return;
+					if (!applies.value) {
 						outcomes.set(occurrence.id, {
 							_tag: "Skipped",
 							reason: handler.skipReason,
@@ -443,33 +603,24 @@ const execute = (
 						return;
 					}
 					// The occurrence has started, so a sibling failure lets it finish.
-					// Cancellation that arrived during the precondition keeps the body from starting.
-					if (halt.reason === "cancelled") return;
+					// Cancellation that arrived during the precondition keeps the body or the
+					// prompt from starting.
+					if (isCancelled()) return;
+				}
+
+				if (handler.performer === "manual") {
+					// The interaction preflight guarantees one for every manual occurrence.
+					if (options.interaction === undefined) return;
+
+					yield* runManual(occurrence, handler, options.interaction);
+
+					return;
 				}
 
 				bodiesStarted = true;
-				const ran = yield* runPhase(handler.body);
-				if (ran._tag === "Interrupted") {
-					outcomes.set(occurrence.id, {
-						_tag: "Interrupted",
-						phase: "body",
-						reason: ran.reason,
-						settled: ran.settled,
-					});
-
-					return;
-				}
-				if (Exit.isFailure(ran.exit)) {
-					stop("failure");
-					outcomes.set(occurrence.id, {
-						_tag: "Failed",
-						phase: "body",
-						...failureOf(ran.exit.cause),
-					});
-
-					return;
-				}
-				outcomes.set(occurrence.id, { _tag: "Completed" });
+				const ran = settle(occurrence, "body", yield* runPhase(handler.body));
+				if (Option.isNone(ran)) return;
+				outcomes.set(occurrence.id, { _tag: "Completed", performer: "automated" });
 			});
 
 		const runNode = (node: Node): Effect.Effect<void, never, any> => {
@@ -497,6 +648,7 @@ const execute = (
 
 			return yield* new ExecutionFailed({
 				failures: result.occurrences.filter((entry) => entry.outcome._tag === "Failed"),
+				declined: result.occurrences.filter((entry) => entry.outcome._tag === "Declined"),
 				report: result,
 			});
 		}
@@ -507,7 +659,7 @@ const execute = (
 const dryRun = (
 	plan: Plan.Any,
 	resolved: Resolved,
-	options: Options<Handler.Any>,
+	options: Options<Handler.Any, Interaction.Any>,
 	subscribe: Subscribe | undefined,
 ): Effect.Effect<Report, ExecutionInterrupted, any> =>
 	Effect.gen(function* () {
@@ -540,12 +692,17 @@ const dryRun = (
 					outcomes.set(node.id, {
 						_tag: "Undetermined",
 						reason: `Execution would stop at the failed precondition of "${failedAt}".`,
+						performer: handler.performer,
 					});
 
 					return true;
 				}
 				if (handler.precondition === undefined) {
-					outcomes.set(node.id, { _tag: "WouldExecute", evaluated: false });
+					outcomes.set(node.id, {
+						_tag: "WouldExecute",
+						evaluated: false,
+						performer: handler.performer,
+					});
 
 					return true;
 				}
@@ -553,6 +710,7 @@ const dryRun = (
 					outcomes.set(node.id, {
 						_tag: "Undetermined",
 						reason: "The precondition depends on earlier actions that a dry run does not apply.",
+						performer: handler.performer,
 					});
 
 					return true;
@@ -583,7 +741,11 @@ const dryRun = (
 
 					return false;
 				}
-				outcomes.set(node.id, { _tag: "WouldExecute", evaluated: true });
+				outcomes.set(node.id, {
+					_tag: "WouldExecute",
+					evaluated: true,
+					performer: handler.performer,
+				});
 
 				return true;
 			});
@@ -605,11 +767,16 @@ const dryRun = (
 		);
 	});
 
-const run = <A extends Action.Any, C extends Plan.Coverage, H extends Handler.Any>(
+const run = <
+	A extends Action.Any,
+	C extends Plan.Coverage,
+	H extends Handler.Any,
+	I extends Interaction.Any,
+>(
 	plan: Plan.Plan<A, C>,
-	options: Options<H>,
+	options: Options<H, I>,
 	subscribe: Subscribe | undefined,
-): Effect.Effect<Report<A, Errors<H>>, ExecutionError<A, Errors<H>>, Requirements<H>> =>
+): Effect.Effect<Report<A, Errors<H, I>>, ExecutionError<A, Errors<H, I>>, Requirements<H, I>> =>
 	// The plan's action union and the handler union determine these types; the
 	// implementation works on erased handlers.
 	// oxlint-disable-next-line typescript/no-unsafe-type-assertion
@@ -628,13 +795,31 @@ const run = <A extends Action.Any, C extends Plan.Coverage, H extends Handler.An
 			});
 		}
 
-		return options.dryRun === true
-			? yield* dryRun(plan, checked.resolved, options, subscribe)
-			: yield* execute(plan, checked.resolved, options, subscribe);
-	}) as Effect.Effect<Report<A, Errors<H>>, ExecutionError<A, Errors<H>>, Requirements<H>>;
+		if (options.dryRun === true) {
+			return yield* dryRun(plan, checked.resolved, options, subscribe);
+		}
+
+		// Nobody can answer for manual work, so the run must not start and stop halfway.
+		const manual = plan.occurrences.filter(
+			(occurrence) => checked.resolved.get(occurrence.id)?.performer === "manual",
+		);
+		if (manual.length > 0 && options.interaction === undefined) {
+			return yield* new InteractionUnavailable({
+				occurrences: manual,
+				report: report(plan, "execute", "not-started", new Map(), false),
+			});
+		}
+
+		return yield* execute(plan, checked.resolved, options, subscribe);
+	}) as Effect.Effect<
+		Report<A, Errors<H, I>>,
+		ExecutionError<A, Errors<H, I>>,
+		Requirements<H, I>
+	>;
 
 /**
- * Runs a plan as an Effect. Coverage is checked before any precondition or body runs.
+ * Runs a plan as an Effect. Coverage, and the interaction that manual handlers need,
+ * are checked before any precondition or body runs.
  * Steps are sequential barriers; parallel groups run their branches concurrently. On
  * failure, no new action starts, and actions already running settle before the effect
  * fails with the partial report.
@@ -649,34 +834,40 @@ export const effect = <
 	A extends Action.Any,
 	C extends Plan.Coverage,
 	H extends Handler.Any = never,
+	I extends Interaction.Any = never,
 >(
 	plan: Plan.Plan<A, C>,
-	options: Options<H> & CoverageCheck<A, H, C>,
-): Effect.Effect<Report<A, Errors<H>>, ExecutionError<A, Errors<H>>, Requirements<H>> =>
+	options: Options<H, I> & CoverageCheck<A, H, C>,
+): Effect.Effect<Report<A, Errors<H, I>>, ExecutionError<A, Errors<H, I>>, Requirements<H, I>> =>
 	run(plan, options, undefined);
 
 type ServicesOption<R> = [R] extends [never]
 	? {
-			/** Handlers without Effect services need none. */
+			/** Handlers and interactions without Effect services need none. */
 			readonly services?: Context.Context<never> | Layer.Layer<never, unknown>;
 		}
 	: {
-			/** Supplies the handlers' Effect services. */
+			/** Supplies the Effect services of the handlers and the interaction. */
 			readonly services: Context.Context<R> | Layer.Layer<R, unknown>;
 		};
 
 /** @since @next */
-export type PromiseOptions<H extends Handler.Any> = Options<H> & {
+export type PromiseOptions<H extends Handler.Any, I extends Interaction.Any = never> = Options<
+	H,
+	I
+> & {
 	/**
-	 * Explicit cancellation. Aborting stops admission, interrupts running actions, and
-	 * rejects with `ExecutionInterrupted` and the partial report.
+	 * Explicit cancellation. Aborting stops admission, interrupts running actions and
+	 * pending confirmations, and rejects with `ExecutionInterrupted` and the partial
+	 * report.
 	 */
 	readonly signal?: AbortSignal;
 };
 
 /**
  * Runs a plan and returns a Promise. It rejects with `HandlerCoverageError`,
- * `ExecutionFailed`, or `ExecutionInterrupted`, each carrying the partial report.
+ * `InteractionUnavailable`, `ExecutionFailed`, or `ExecutionInterrupted`, each carrying
+ * the partial report.
  * Building a supplied services layer can also reject with the layer's own error,
  * without a report.
  *
@@ -686,10 +877,11 @@ export const runPromise = <
 	A extends Action.Any,
 	C extends Plan.Coverage,
 	H extends Handler.Any = never,
+	I extends Interaction.Any = never,
 >(
 	plan: Plan.Plan<A, C>,
-	options: PromiseOptions<H> & ServicesOption<Requirements<H>> & CoverageCheck<A, H, C>,
-): Promise<Report<A, Errors<H>>> => {
+	options: PromiseOptions<H, I> & ServicesOption<Requirements<H, I>> & CoverageCheck<A, H, C>,
+): Promise<Report<A, Errors<H, I>>> => {
 	const { signal } = options;
 	let unsubscribe: (() => void) | undefined;
 	const subscribe: Subscribe | undefined =
@@ -717,7 +909,7 @@ export const runPromise = <
 	return Effect.runPromiseExit(
 		// `ServicesOption` requires services that cover every requirement.
 		// oxlint-disable-next-line typescript/no-unsafe-type-assertion
-		provided as Effect.Effect<Report<A, Errors<H>>, unknown>,
+		provided as Effect.Effect<Report<A, Errors<H, I>>, unknown>,
 	)
 		.finally(() => unsubscribe?.())
 		.then((exit) => {

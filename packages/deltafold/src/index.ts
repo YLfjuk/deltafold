@@ -2,6 +2,7 @@ export * as Action from "./foundation/action.ts";
 export * as Change from "./foundation/change.ts";
 export * as Executor from "./features/execution/executor.ts";
 export * as Handler from "./features/execution/handler.ts";
+export * as Interaction from "./features/execution/interaction.ts";
 export * as History from "./features/planning/history.ts";
 export * as Migration from "./foundation/migration.ts";
 export * as Package from "./features/package.ts";
