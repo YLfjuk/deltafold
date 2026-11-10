@@ -649,7 +649,7 @@ describe("Manual handlers", () => {
 		const confirmed = touch("confirmed");
 		const controller = new AbortController();
 		let verifiedWork = false;
-		let prompted = () => {};
+		let prompted: (() => void) | undefined;
 		const asked = new Promise<void>((resolve) => {
 			prompted = resolve;
 		});
@@ -685,7 +685,7 @@ describe("Manual handlers", () => {
 					// The sibling fails while the prompt is open. The person then answers as
 					// the run is cancelled.
 					interaction: Interaction.promise(async () => {
-						prompted();
+						prompted?.();
 						for (let tick = 0; tick < 50; tick += 1) await Promise.resolve();
 						controller.abort();
 
