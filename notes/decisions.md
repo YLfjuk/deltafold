@@ -84,7 +84,7 @@ prove that consumer behavior is equivalent. Ordinary rules match consecutive
 occurrences on the route's sequential spine, including across migration
 boundaries, and inside one parallel branch. A parallel pattern matches a whole
 group by its branch structure, which makes a structural rule explicit. A
-text-only migration is manual work, so rules do not match around it.
+text-only migration holds prose instructions, so rules do not match around it.
 
 **Exhaustive rewriting.** The resolver searches one state space for the whole
 route. A state is the full sequence, nested groups included, and each transition
