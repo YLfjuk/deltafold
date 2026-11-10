@@ -649,6 +649,10 @@ describe("Manual handlers", () => {
 		const confirmed = touch("confirmed");
 		const controller = new AbortController();
 		let verifiedWork = false;
+		let prompted = () => {};
+		const asked = new Promise<void>((resolve) => {
+			prompted = resolve;
+		});
 		const error = await rejection(
 			Executor.runPromise(
 				planOf(
@@ -666,7 +670,10 @@ describe("Manual handlers", () => {
 				{
 					signal: controller.signal,
 					handlers: [
-						Handler.effect(fails, () => Effect.fail(new PromptClosed())),
+						Handler.promise(fails, async () => {
+							await asked;
+							throw new Error("disk full");
+						}),
 						Handler.manual(confirmed, {
 							verify: () => {
 								verifiedWork = true;
@@ -675,14 +682,15 @@ describe("Manual handlers", () => {
 							},
 						}),
 					],
-					// The sibling has failed by the time the person answers and cancels.
-					interaction: Interaction.effect(() =>
-						Effect.sync(() => {
-							controller.abort();
+					// The sibling fails while the prompt is open. The person then answers as
+					// the run is cancelled.
+					interaction: Interaction.promise(async () => {
+						prompted();
+						for (let tick = 0; tick < 50; tick += 1) await Promise.resolve();
+						controller.abort();
 
-							return "confirmed" as const;
-						}),
-					),
+						return "confirmed";
+					}),
 				},
 			),
 		);
