@@ -276,11 +276,16 @@ export type ManualOptions<P, S extends ServiceMap, G extends ReadonlyArray<Error
 	readonly verify?: (payload: P, context: PromiseContext<S>) => boolean | PromiseLike<boolean>;
 };
 
+// An optional `verify` key may hold a check, so it counts as declared.
+type VerifyError<O> = "verify" extends keyof O ? VerificationFailed : never;
+
 type ManualErrors<O, G extends ReadonlyArray<ErrorGuard>> =
-	| (O extends { readonly when: unknown } | { readonly verify: unknown }
+	| ("when" extends keyof O
 			? GuardedError<G[number]> | UnexpectedHandlerError
-			: never)
-	| (O extends { readonly verify: unknown } ? VerificationFailed : never);
+			: "verify" extends keyof O
+				? GuardedError<G[number]> | UnexpectedHandlerError
+				: never)
+	| VerifyError<O>;
 
 /**
  * Declares that a person performs the action. The executor asks its `interaction` to
@@ -347,8 +352,6 @@ export type ManualEffectOptions<P, E, R, E2, R2> = {
 	 */
 	readonly verify?: (payload: P) => Effect.Effect<boolean, E2, R2>;
 };
-
-type VerifyError<O> = O extends { readonly verify: unknown } ? VerificationFailed : never;
 
 /**
  * `Handler.manual` with Effect checks, which keep their own errors and services.

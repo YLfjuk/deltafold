@@ -267,8 +267,8 @@ whatever terminal or interface the caller has, and answers `"confirmed"` or
 `"declined"`. `ask` and `hasKey` stand for your own code.
 
 - A confirmed occurrence is `Completed` with `performer: "manual"`. Its
-  `confirmation` is `"asserted"`, or `"verified"` when the handler's optional
-  `verify` check also passed. `verify` runs only after the confirmation. A check
+  `confirmation` is `"asserted"` when the person said so and nothing checked it,
+  or `"verified"` when the handler's optional `verify` check also passed. `verify` runs only after the confirmation. A check
   that returns `false` fails the occurrence with `VerificationFailed`. A passing
   check is evidence that the work is in place, not proof of how it was done.
 - A declined occurrence is `Declined`. The run stops as it does after a failure
@@ -276,15 +276,22 @@ whatever terminal or interface the caller has, and answers `"confirmed"` or
 - `when` works as it does for other handlers: `false` skips the occurrence
   without asking.
 - A run whose plan has manual handlers and no `interaction` rejects with
-  `InteractionUnavailable` before any action starts. An action without a handler
-  is still a coverage error and never becomes manual work.
-- `timeout` does not limit the wait for a person. Abort `signal` to end it; the
-  occurrence is then `Interrupted` in its `confirmation` phase, and the
-  interaction's own `signal` aborts so it can stop asking.
+  `InteractionUnavailable` before any action starts. This is checked at run
+  time, and it counts a manual occurrence even when its `when` would skip it. An
+  action without a handler is still a coverage error and never becomes manual
+  work.
+- `timeout` does not limit the wait for a person. To end the wait, abort the
+  `signal` option of `runPromise`. The occurrence is then `Interrupted` in its
+  `confirmation` phase, and the `signal` that the interaction receives aborts
+  so it can stop asking.
 - A dry run never asks, never runs `verify`, and needs no interaction. It
-  reports `WouldExecute` with `performer: "manual"`.
+  reports `performer: "manual"` on the `WouldExecute` and `Undetermined`
+  outcomes of manual occurrences.
 - Parallel branches can ask at the same time. An interaction that owns one
-  terminal queues its own prompts.
+  terminal queues its own prompts. A failure or a decline in one branch stops
+  new actions, but a person who was already asked can still answer.
+- Progress is not saved. Running the plan again asks again for manual work that
+  was already confirmed.
 
 `Handler.manualEffect` and `Interaction.effect` take Effect checks and an Effect
 interaction, and keep their errors and services.

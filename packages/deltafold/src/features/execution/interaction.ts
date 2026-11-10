@@ -25,19 +25,37 @@ export type Request<A extends Action.Any = Action.Any> = {
 
 /**
  * A Promise interaction rejected with a value that none of its declared error guards
- * recognized, or an interaction answered with something other than `"confirmed"` or
- * `"declined"`.
+ * recognized (`rejected`), or an interaction answered with something other than
+ * `"confirmed"` or `"declined"` (`invalid-answer`). An invalid answer is never kept: it
+ * may be text that the person typed.
  *
  * @since @next
  */
 export class UnexpectedInteractionError extends Data.TaggedError("UnexpectedInteractionError")<{
 	readonly occurrenceId: string;
+	readonly reason: "rejected" | "invalid-answer";
+	/** The rejection. Always `undefined` for an invalid answer. */
 	readonly cause: unknown;
 }> {
 	override get message() {
-		return `The interaction failed unexpectedly while confirming "${this.occurrenceId}"`;
+		return this.reason === "rejected"
+			? `The interaction failed unexpectedly while confirming "${this.occurrenceId}"`
+			: `The interaction answered neither "confirmed" nor "declined" for "${this.occurrenceId}"`;
 	}
 }
+
+const isAnswer = (value: unknown): value is Answer => value === "confirmed" || value === "declined";
+
+const checkAnswer = (request: Request) => (answer: unknown) =>
+	isAnswer(answer)
+		? Effect.succeed(answer)
+		: Effect.fail(
+				new UnexpectedInteractionError({
+					occurrenceId: request.occurrence.id,
+					reason: "invalid-answer",
+					cause: undefined,
+				}),
+			);
 
 const TypeId = "~deltafold/Interaction";
 
@@ -46,7 +64,8 @@ const TypeId = "~deltafold/Interaction";
  * user interface of its own: the consumer running the plan supplies one of these.
  *
  * Parallel branches can ask at the same time. An interaction that owns one terminal
- * serializes its own prompts.
+ * serializes its own prompts. A failure or a decline elsewhere stops new actions but
+ * does not withdraw a request that was already made; only cancellation does.
  *
  * @since @next
  */
@@ -78,8 +97,6 @@ export type Services<I> = I extends Interaction<any, infer R> ? R : never;
 
 /** @since @next */
 export const isInteraction = (value: unknown): value is Any => Predicate.hasProperty(value, TypeId);
-
-const isAnswer = (value: unknown): value is Answer => value === "confirmed" || value === "declined";
 
 /** @since @next */
 export type PromiseOptions<
@@ -119,19 +136,16 @@ export const promise = <
 
 	return {
 		[TypeId]: TypeId,
-		confirm: (request) => {
-			const unexpected = (cause: unknown) =>
-				new UnexpectedInteractionError({ occurrenceId: request.occurrence.id, cause });
-
-			return adapt<unknown, UnexpectedInteractionError>(
+		confirm: (request) =>
+			adapt<unknown, UnexpectedInteractionError>(
 				(context) => confirm(request, context),
-				unexpected,
-			).pipe(
-				Effect.flatMap((answer) =>
-					isAnswer(answer) ? Effect.succeed(answer) : Effect.fail(unexpected(answer)),
-				),
-			);
-		},
+				(cause) =>
+					new UnexpectedInteractionError({
+						occurrenceId: request.occurrence.id,
+						reason: "rejected",
+						cause,
+					}),
+			).pipe(Effect.flatMap(checkAnswer(request))),
 	};
 };
 
@@ -143,19 +157,11 @@ export const promise = <
  */
 export const effect = <E = never, R = never>(
 	confirm: (request: Request) => Effect.Effect<Answer, E, R>,
-): Interaction<E, R> => ({
+): Interaction<E | UnexpectedInteractionError, R> => ({
 	[TypeId]: TypeId,
 	confirm: (request) =>
 		Effect.flatMap(
 			Effect.suspend(() => confirm(request)),
-			(answer) =>
-				isAnswer(answer)
-					? Effect.succeed(answer)
-					: Effect.die(
-							new UnexpectedInteractionError({
-								occurrenceId: request.occurrence.id,
-								cause: answer,
-							}),
-						),
+			checkAnswer(request),
 		),
 });

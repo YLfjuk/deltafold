@@ -844,6 +844,7 @@ describe("Executor dry runs", () => {
 			const undetermined = {
 				_tag: "Undetermined",
 				reason: "The precondition depends on earlier actions that a dry run does not apply.",
+				performer: "automated",
 			};
 
 			expect(events).toEqual(["check:skips", "check:independent"]);

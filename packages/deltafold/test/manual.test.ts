@@ -86,6 +86,9 @@ const rejection = <T>(promise: Promise<T>): Promise<unknown> =>
 
 const typeOnly = (_check: () => void) => {};
 
+const checks = (strict: boolean): Handler.ManualOptions<{ readonly service: string }, {}, []> =>
+	strict ? { verify: () => false } : {};
+
 describe("Manual handler typing", () => {
 	it("keeps a bare manual handler free of errors and services", () => {
 		const handler = Handler.manual(rotate);
@@ -137,6 +140,23 @@ describe("Manual handler typing", () => {
 		expectTypeOf<Handler.Error<typeof bare>>().toEqualTypeOf<never>();
 	});
 
+	it("keeps the errors of checks that annotated or factory-made options may hold", () => {
+		const options: Handler.ManualEffectOptions<
+			{ readonly service: string },
+			never,
+			never,
+			never,
+			never
+		> = { verify: () => Effect.succeed(false) };
+		const annotated = Handler.manualEffect(rotate, options);
+		const produced = Handler.manual(rotate, checks(true));
+
+		expectTypeOf<Handler.Error<typeof annotated>>().toEqualTypeOf<Handler.VerificationFailed>();
+		expectTypeOf<Handler.Error<typeof produced>>().toEqualTypeOf<
+			Handler.UnexpectedHandlerError | Handler.VerificationFailed
+		>();
+	});
+
 	it("adds the interaction's errors and services to an ordinary handler array", () => {
 		const handlers = [
 			Handler.promise(before, async () => {}),
@@ -162,6 +182,9 @@ describe("Manual handler typing", () => {
 			| PromptClosed
 			| Interaction.UnexpectedInteractionError
 		>();
+		expectTypeOf<
+			Interaction.Error<ReturnType<typeof answering>>
+		>().toEqualTypeOf<Interaction.UnexpectedInteractionError>();
 	});
 
 	it("rejects invalid manual declarations", () => {
@@ -621,6 +644,60 @@ describe("Manual handlers", () => {
 		expect(error).toBeInstanceOf(Executor.ExecutionInterrupted);
 	});
 
+	it("does not verify when cancellation follows a sibling failure", async () => {
+		const fails = touch("fails");
+		const confirmed = touch("confirmed");
+		const controller = new AbortController();
+		let verifiedWork = false;
+		const error = await rejection(
+			Executor.runPromise(
+				planOf(
+					History.make({
+						versions: [v1, v2],
+						migrations: [
+							Migration.make("1-to-2", {
+								from: v1,
+								to: v2,
+							})`${Action.parallel([fails, confirmed])}`,
+						],
+					}),
+					"2.0.0",
+				),
+				{
+					signal: controller.signal,
+					handlers: [
+						Handler.effect(fails, () => Effect.fail(new PromptClosed())),
+						Handler.manual(confirmed, {
+							verify: () => {
+								verifiedWork = true;
+
+								return true;
+							},
+						}),
+					],
+					// The sibling has failed by the time the person answers and cancels.
+					interaction: Interaction.effect(() =>
+						Effect.sync(() => {
+							controller.abort();
+
+							return "confirmed" as const;
+						}),
+					),
+				},
+			),
+		);
+
+		expect(verifiedWork).toBe(false);
+		expect(error).toBeInstanceOf(Executor.ExecutionFailed);
+		if (!(error instanceof Executor.ExecutionFailed)) return;
+		expect(outcomes(error.report).fails).toMatchObject({ _tag: "Failed", phase: "body" });
+		// The cancellation can win the race against the answer, or arrive just after it.
+		expect(outcomes(error.report).confirmed).toMatchObject({
+			_tag: "Interrupted",
+			reason: "cancelled",
+		});
+	});
+
 	it.effect("fails the occurrence when the interaction itself fails", () =>
 		Effect.gen(function* () {
 			const handlers = [
@@ -656,28 +733,35 @@ describe("Manual handlers", () => {
 		}),
 	);
 
-	it.effect("never completes on an answer other than a confirmation", () =>
+	it.effect("never completes on, or keeps, an answer other than a confirmation", () =>
 		Effect.gen(function* () {
-			const error = yield* Effect.flip(
-				Executor.effect(plan, {
-					handlers: [
-						Handler.effect(before, () => Effect.void),
-						Handler.manual(rotate),
-						Handler.effect(after, () => Effect.void),
-					],
-					// An untyped caller answers with a truthy value.
-					// oxlint-disable-next-line typescript/no-unsafe-type-assertion
-					interaction: Interaction.promise(async () => true as unknown as "confirmed"),
-				}),
-			);
+			// An untyped caller answers with the text that the person typed.
+			// oxlint-disable-next-line typescript/no-unsafe-type-assertion
+			const typed = "yes, the token is abc123" as Interaction.Answer;
+			const handlers = [
+				Handler.effect(before, () => Effect.void),
+				Handler.manual(rotate),
+				Handler.effect(after, () => Effect.void),
+			];
 
-			expect(error._tag).toBe("ExecutionFailed");
-			if (error._tag !== "ExecutionFailed") return;
-			expect(outcomes(error.report)["rotate-billing-key"]).toMatchObject({
-				_tag: "Failed",
-				phase: "confirmation",
-			});
-			expect(outcomes(error.report).after).toEqual({ _tag: "Unattempted" });
+			for (const interaction of [
+				Interaction.promise(async () => typed),
+				Interaction.effect(() => Effect.succeed(typed)),
+			]) {
+				const error = yield* Effect.flip(Executor.effect(plan, { handlers, interaction }));
+
+				expect(error._tag).toBe("ExecutionFailed");
+				if (error._tag !== "ExecutionFailed") continue;
+				const outcome = outcomes(error.report)["rotate-billing-key"];
+				expect(outcome).toMatchObject({ _tag: "Failed", phase: "confirmation" });
+				expect(outcome?._tag === "Failed" && outcome.error).toMatchObject({
+					_tag: "UnexpectedInteractionError",
+					reason: "invalid-answer",
+					cause: undefined,
+				});
+				expect(JSON.stringify(outcome)).not.toContain("abc123");
+				expect(outcomes(error.report).after).toEqual({ _tag: "Unattempted" });
+			}
 		}),
 	);
 

@@ -29,9 +29,9 @@ export type Outcome<E = unknown> =
 			readonly _tag: "Completed";
 			readonly performer: "manual";
 			/**
-			 * What supports completion: `asserted` is the person's confirmation alone, and
-			 * `verified` means the handler's `verify` check also passed. Neither proves
-			 * how the work was done.
+			 * What supports completion. `asserted`: the person said so and nothing checked
+			 * it. `verified`: the person said so and the handler's `verify` check passed.
+			 * Neither proves how the work was done.
 			 */
 			readonly confirmation: "asserted" | "verified";
 	  }
@@ -65,7 +65,12 @@ export type Outcome<E = unknown> =
 			readonly performer: Handler.Performer;
 	  }
 	| { readonly _tag: "WouldSkip"; readonly reason: string }
-	| { readonly _tag: "Undetermined"; readonly reason: string }
+	| {
+			readonly _tag: "Undetermined";
+			readonly reason: string;
+			/** `manual` occurrences would wait for a person if they execute. */
+			readonly performer: Handler.Performer;
+	  }
 	| {
 			readonly _tag: "PreconditionFailed";
 			readonly error: E | undefined;
@@ -169,7 +174,13 @@ export class InteractionUnavailable<
 }
 
 const listIds = (entries: ReadonlyArray<OccurrenceReport>) =>
-	entries.map((entry) => `"${entry.occurrence.id}"`).join(", ");
+	entries
+		.map((entry) =>
+			entry.outcome._tag === "Failed"
+				? `"${entry.occurrence.id}" (${entry.outcome.phase})`
+				: `"${entry.occurrence.id}"`,
+		)
+		.join(", ");
 
 const ExecutionFailedBase = Data.TaggedError("ExecutionFailed");
 
@@ -195,7 +206,9 @@ export class ExecutionFailed<
 				: [`Execution failed at ${listIds(this.failures)}.`]),
 			...(this.declined.length === 0
 				? []
-				: [`Manual work was declined at ${listIds(this.declined)}.`]),
+				: [
+						`Manual work was declined at ${listIds(this.declined)}, which stopped the run.`,
+					]),
 		];
 
 		return `${parts.join(" ")} Completed actions were not rolled back.`;
@@ -410,7 +423,10 @@ const makeControl = (
 		const stop = (reason: StopReason) => {
 			halt.reason ??= reason;
 		};
+		// A failure can be the first stop reason, so cancellation is tracked on its own.
+		let cancellationArrived = false;
 		subscribe?.(() => {
+			cancellationArrived = true;
 			stop("cancelled");
 			Deferred.doneUnsafe(cancelled, Exit.succeed("cancelled"));
 		});
@@ -454,7 +470,7 @@ const makeControl = (
 				return { _tag: "Interrupted" as const, reason: result.reason, settled };
 			});
 
-		return { halt, stop, runPhase };
+		return { halt, stop, runPhase, isCancelled: () => cancellationArrived };
 	});
 
 const interrupted = <A extends Action.Any>(
@@ -477,7 +493,7 @@ const execute = (
 ): Effect.Effect<Report, ExecutionFailed | ExecutionInterrupted, any> =>
 	Effect.gen(function* () {
 		const outcomes = new Map<string, Outcome>();
-		const { halt, stop, runPhase } = yield* makeControl(options, subscribe);
+		const { halt, stop, runPhase, isCancelled } = yield* makeControl(options, subscribe);
 		let bodiesStarted = false;
 
 		/** Sets the outcome of a phase that did not succeed, and returns its value otherwise. */
@@ -541,7 +557,7 @@ const execute = (
 					return;
 				}
 				// Cancellation that arrived with the confirmation keeps the check from starting.
-				if (halt.reason === "cancelled") {
+				if (isCancelled()) {
 					outcomes.set(occurrence.id, {
 						_tag: "Interrupted",
 						phase: "verification",
@@ -589,7 +605,7 @@ const execute = (
 					// The occurrence has started, so a sibling failure lets it finish.
 					// Cancellation that arrived during the precondition keeps the body or the
 					// prompt from starting.
-					if (halt.reason === "cancelled") return;
+					if (isCancelled()) return;
 				}
 
 				if (handler.performer === "manual") {
@@ -676,6 +692,7 @@ const dryRun = (
 					outcomes.set(node.id, {
 						_tag: "Undetermined",
 						reason: `Execution would stop at the failed precondition of "${failedAt}".`,
+						performer: handler.performer,
 					});
 
 					return true;
@@ -693,6 +710,7 @@ const dryRun = (
 					outcomes.set(node.id, {
 						_tag: "Undetermined",
 						reason: "The precondition depends on earlier actions that a dry run does not apply.",
+						performer: handler.performer,
 					});
 
 					return true;
