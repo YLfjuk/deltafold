@@ -222,7 +222,7 @@ describe("Observer typing", () => {
 });
 
 describe("Execution steps and provenance", () => {
-	it("counts steps with actions and manual steps, and lists omitted steps", async () => {
+	it("counts steps with actions and prose-only steps, and lists omitted steps", async () => {
 		const [rename, restore, kept] = [touch("rename"), touch("restore"), touch("kept")];
 		const history = History.make({
 			versions: [v1, v2, v3, v4, v5],
@@ -237,7 +237,7 @@ describe("Execution steps and provenance", () => {
 			],
 			rules: [Rule.replace("cancel", { match: [rename, restore], replacement: [] })],
 		});
-		const manualHistory = History.make({
+		const proseHistory = History.make({
 			versions: [v1, v2, v3],
 			migrations: [
 				Migration.make("1-to-2", { from: v1, to: v2 })`Rotate your API keys by hand.`,
@@ -267,11 +267,11 @@ describe("Execution steps and provenance", () => {
 		});
 
 		events.length = 0;
-		const manualReport = await Executor.runPromise(planOf(manualHistory, "3.0.0"), {
+		const proseReport = await Executor.runPromise(planOf(proseHistory, "3.0.0"), {
 			handlers: [ok(kept)],
 			observers: [observer],
 		});
-		checkInvariants(events, manualReport);
+		checkInvariants(events, proseReport);
 		expect(tags(events)).toEqual([
 			"RunStarted",
 			"StepStarted:1-to-2",
@@ -282,8 +282,8 @@ describe("Execution steps and provenance", () => {
 			"StepSettled:2-to-3",
 			"RunFinished",
 		]);
-		const manualStep = events[1];
-		expect(manualStep?._tag === "StepStarted" && manualStep.step.kind).toBe("manual");
+		const proseStep = events[1];
+		expect(proseStep?._tag === "StepStarted" && proseStep.step.kind).toBe("prose");
 		expect(events.at(-1)?.progress.steps).toEqual({ total: 2, finished: 2 });
 	});
 

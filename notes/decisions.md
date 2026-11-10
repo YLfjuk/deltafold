@@ -191,10 +191,10 @@ recorded; a Promise observer's `signal` aborts. When the fiber of
 report, bounded the same way.
 
 **Steps and provenance.** Step progress counts steps that keep actions after
-optimization, plus text-only steps, which settle at once as `manual` because the
-executor does not wait at them. Noop steps and steps whose actions rules removed
-or moved are `omitted`: `RunStarted` lists them, but progress does not count
-them. A replacement runs in the step of the first occurrence it replaced, as
+optimization, plus prose-only steps, which settle at once as `prose` because the
+executor runs nothing for them and does not wait at them. Noop steps and steps
+whose actions rules removed or moved are `omitted`: `RunStarted` lists them, but
+progress does not count them. A replacement runs in the step of the first occurrence it replaced, as
 before. Its `sources` name the declared steps behind it, and that step's
 `absorbs` names the other steps whose work it performs, so a failure there shows
 that a later step's declared work was already attempted. `Plan.Step.id` is the
@@ -339,7 +339,7 @@ These work today but need confirmation before 1.0:
   process loses the wait with the rest of the progress.
 - A false precondition only skips its own action. An unmet requirement that must
   block later actions has to fail its precondition.
-- The executor does not wait at text-only steps. Their instructions reach people
+- The executor does not wait at prose-only steps. Their instructions reach people
   through the guide and observer events only.
 - Interrupting the fiber of `Executor.effect` produces no report. Observers
   receive a `RunFinished` event without one.
@@ -357,7 +357,6 @@ These work today but need confirmation before 1.0:
   plans.
 - A versioned JSON report format and a plan fingerprint.
 - A preview mode for integration engines, distinct from dry runs.
-- Waiting for confirmation at text-only steps before the run continues.
 - Branch labels in histories and an optional metadata schema.
 
 ## Open questions
@@ -371,8 +370,6 @@ These work today but need confirmation before 1.0:
 - Which retry and rollback configuration, undo order, and recovery after a
   partially failed body?
 - What logging bridge do Promise callbacks receive?
-- How should a run wait for confirmation at a text-only step: a dedicated
-  executor option, and what status does a declined step produce?
 - Final change-kind vocabulary and downgrade guide naming.
 - CLI packaging: a separate `@deltafold/cli` package, or `deltafold/cli` with
   `deltafold/cli/node`. TypeScript entry loading, option spellings, and the

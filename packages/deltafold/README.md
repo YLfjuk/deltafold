@@ -337,7 +337,7 @@ for each observer at most `settleTimeout`.
 A run emits `RunStarted`, then `StepStarted`, `ActionPhaseStarted` for each
 precondition, body, confirmation, and verification, `ActionSettled` with the outcome, `StepSettled`, and
 finally `RunFinished`. Every event carries progress counted in the optimized
-plan: steps with actions, text-only steps (which the executor does not wait
+plan: steps with actions, prose-only steps (which the executor does not wait
 at), and actions. Steps that rules emptied and noop steps are listed in
 `RunStarted` but not counted. Events carry identifiers and descriptions, never
 payloads or errors; the report keeps the full errors. Pass `runId` to tell runs

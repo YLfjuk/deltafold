@@ -26,7 +26,7 @@ export type Run = {
  * @since @next
  */
 export type Progress = {
-	/** Steps that run: steps with actions, and manual steps. Omitted steps are not counted. */
+	/** Steps with actions and prose-only steps. Omitted steps are not counted. */
 	readonly steps: { readonly total: number; readonly finished: number };
 	readonly actions: {
 		readonly total: number;
@@ -40,7 +40,8 @@ export type Progress = {
  * One step of the route, as observers see it.
  *
  * - `execute`: the step has actions after optimization.
- * - `manual`: the step has instructions but no actions. The executor does not wait at it.
+ * - `prose`: the step has instruction prose but no actions. The executor runs nothing
+ *   for it and does not wait at it.
  * - `omitted`: a noop, or a step whose actions rules removed or moved into another step.
  *
  * @since @next
@@ -62,7 +63,7 @@ export type StepInfo = {
 	 */
 	readonly absorbs: ReadonlyArray<string>;
 } & (
-	| { readonly kind: "execute" | "manual" }
+	| { readonly kind: "execute" | "prose" }
 	| { readonly kind: "omitted"; readonly reason: "noop" | "all-actions-removed" }
 );
 

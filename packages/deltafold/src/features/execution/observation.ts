@@ -55,7 +55,7 @@ const stepInfoOf = (step: Step, index: number, plan: Plan.Any): Observer.StepInf
 		absorbs: [...new Set(occurrences.flatMap(sourcesOf))].filter((id) => id !== step.id),
 	};
 	if (occurrences.length > 0) return { ...base, kind: "execute" };
-	if (!step.omitted) return { ...base, kind: "manual" };
+	if (!step.omitted) return { ...base, kind: "prose" };
 	const omitted = plan.explanations.find(
 		(explanation) =>
 			explanation._tag === "OmittedStep" &&
