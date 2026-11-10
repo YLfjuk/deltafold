@@ -11,6 +11,7 @@ import {
 	History,
 	Interaction,
 	Migration,
+	Observer,
 	Package,
 	Rule,
 	Version,
@@ -218,6 +219,38 @@ describe("README examples", () => {
 		await expect(
 			Executor.runPromise(resolved.success, { handlers: manualHandlers }),
 		).rejects.toBeInstanceOf(Executor.InteractionUnavailable);
+	});
+
+	it("observes a run through the package's observers", async () => {
+		files.set("app.json", { timeout: 5000 });
+		const resolved = History.resolve(history, { from: "1.0.0", to: "2.0.0" });
+		if (Result.isFailure(resolved)) throw resolved.failure;
+		const plan = resolved.success;
+		const lines: Array<string> = [];
+		// Stands in for the global console, which the package's ES2022 types leave out.
+		const console = { error: (line: string) => void lines.push(line) };
+
+		const logged = widgets.pipe(
+			Package.withObserver(Observer.effect((event) => Effect.logDebug(event._tag))),
+		);
+		const observed = logged.pipe(
+			Package.withObserver(
+				Observer.sync((event) => {
+					if (event._tag !== "ActionSettled") return;
+					const { finished, total } = event.progress.actions;
+					console.error(
+						`[${finished}/${total}] ${event.action.description}: ${event.outcome._tag}`,
+					);
+				}),
+			),
+		);
+		const report = await Executor.runPromise(plan, { handlers, observers: observed.observers });
+
+		expect(report.observation).toEqual([]);
+		expect(lines).toEqual([
+			'[1/1] In app.json, rename "timeout" to "requestTimeout": Completed',
+		]);
+		expect(widgets.observers).toEqual([]);
 	});
 
 	it("cancels a round trip with a rule", () => {

@@ -193,7 +193,12 @@ describe("scenario 12: drafts and annotated releases", () => {
 			changes: [timeoutRenamed, retriesAdded],
 		});
 		expect(release100.version).toBe(v100);
-		expect(widgets).toEqual({ _tag: "Package", name: "@acme/widgets", history });
+		expect(widgets).toEqual({
+			_tag: "Package",
+			name: "@acme/widgets",
+			history,
+			observers: [],
+		});
 	});
 });
 

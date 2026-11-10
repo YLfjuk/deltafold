@@ -5,6 +5,7 @@ export * as Handler from "./features/execution/handler.ts";
 export * as Interaction from "./features/execution/interaction.ts";
 export * as History from "./features/planning/history.ts";
 export * as Migration from "./foundation/migration.ts";
+export * as Observer from "./features/execution/observer.ts";
 export * as Package from "./features/package.ts";
 export * as Plan from "./foundation/plan.ts";
 export * as Rule from "./foundation/rule.ts";

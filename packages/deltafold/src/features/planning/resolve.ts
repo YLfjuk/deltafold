@@ -220,10 +220,11 @@ const enumerateRoutes = (
 	return Result.succeed([...routes.values()]);
 };
 
+const stepId = (migration: Migration.Any, direction: Direction) =>
+	direction === "forward" ? migration.id : `${migration.id}/revert`;
+
 const declaredOccurrenceId = (migration: Migration.Any, direction: Direction, action: Action.Any) =>
-	direction === "forward"
-		? `${migration.id}/${action.id}`
-		: `${migration.id}/revert/${action.id}`;
+	`${stepId(migration, direction)}/${action.id}`;
 
 const toNode = (items: ReadonlyArray<Item>): ReadonlyArray<Node> =>
 	items.flatMap((item): ReadonlyArray<Node> => {
@@ -336,6 +337,7 @@ const buildPlan = (
 
 		return {
 			_tag: "Step",
+			id: stepId(member.migration, member.direction),
 			migration: member.migration,
 			direction: member.direction,
 			from: stepFrom,

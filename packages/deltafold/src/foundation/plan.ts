@@ -90,6 +90,11 @@ export type GuideItem<A extends Action.Any = Action.Any> =
  */
 export type Step<A extends Action.Any = Action.Any> = {
 	readonly _tag: "Step";
+	/**
+	 * Identifies the migration side within the route: the migration identifier, followed by
+	 * `/revert` for a reverse migration. Declared occurrence identifiers start with it.
+	 */
+	readonly id: string;
 	readonly migration: Migration.Any;
 	readonly direction: Direction;
 	readonly from: Version;

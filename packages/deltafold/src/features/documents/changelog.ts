@@ -5,7 +5,7 @@ import { isChange, type Change } from "../../foundation/change.ts";
 import type { Prose } from "../../foundation/instruction.ts";
 import type { Coverage, GuideItem, Plan, Step } from "../../foundation/plan.ts";
 import type { Release, Version } from "../../foundation/version.ts";
-import type { Package } from "../package.ts";
+import type * as Package from "../package.ts";
 import * as Document from "./document.ts";
 import { asRelease, blocksOf, insertAll } from "./sections.ts";
 
@@ -62,7 +62,7 @@ export type HistoryOptions<M> = {
 /** @since @next */
 export type GuideOptions = {
 	/** The modeled package, for the guide title. */
-	readonly package?: Package;
+	readonly package?: Package.Any;
 	/** Adds a section that lists omitted instructions and the rules responsible. */
 	readonly explain?: boolean;
 };
@@ -77,13 +77,13 @@ export type Changelog<M> = {
 		options?: { readonly title?: string },
 	) => Document.Document;
 	/** The section for one release. */
-	readonly release: (pkg: Package, release: Release<M>) => Document.Document;
+	readonly release: (pkg: Package.Any, release: Release<M>) => Document.Document;
 	/**
 	 * Release history, titled with the package name. Historical changes stay, including
 	 * reverted ones. Releases are listed newest first by semver when every identifier
 	 * parses, and in reverse registration order otherwise.
 	 */
-	readonly history: (pkg: Package, options: HistoryOptions<M>) => Document.Document;
+	readonly history: (pkg: Package.Any, options: HistoryOptions<M>) => Document.Document;
 	/**
 	 * The resolved instructions of a plan. Cancelled instructions are omitted. Downgrade
 	 * plans are titled as downgrades.
@@ -112,7 +112,7 @@ const paragraphsOf = (text: string): ReadonlyArray<Document.Paragraph> =>
 const changeList = (changes: ReadonlyArray<Change>) =>
 	Document.List(changes.map((change) => paragraphsOf(change.description)));
 
-const knows = (pkg: Package, version: Version) =>
+const knows = (pkg: Package.Any, version: Version) =>
 	pkg.history.versions.some((known) => known.id === version.id);
 
 const releaseOrder = (versions: ReadonlyArray<Version>): ReadonlyArray<Version> => {
@@ -268,7 +268,7 @@ export const make = <M = never>(options: Options<M> = {}): Changelog<M> => {
 		);
 	};
 
-	const requireKnown = (pkg: Package, releases: ReadonlyArray<Release<M>>) => {
+	const requireKnown = (pkg: Package.Any, releases: ReadonlyArray<Release<M>>) => {
 		const unrelated = releases.flatMap((release) =>
 			knows(pkg, release.version) ? [] : [release.version.id],
 		);
