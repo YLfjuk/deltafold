@@ -302,14 +302,14 @@ describe("scenario 4: cancellation across versions", () => {
 
 	it("does not cancel around a text-only migration", () => {
 		const v4 = Version.make("4.0.0", { previous: v3, changes: [] });
-		const manual = Migration.make("2-to-3", {
+		const prose = Migration.make("2-to-3", {
 			from: v2,
 			to: v3,
 		})`Rotate your API keys by hand.`;
 		const later = Migration.make("3-to-4", { from: v3, to: v4 })`${restoreTimeout}`;
 		const blocked = History.make({
 			versions: [v1, v2, v3, v4],
-			migrations: [forward, manual, later],
+			migrations: [forward, prose, later],
 			rules: [cancelRoundTrip],
 		});
 		const plan = success(History.resolve(blocked, { from: "1.0.0", to: "4.0.0" }));
@@ -902,8 +902,8 @@ describe("prose ownership in resolved guides", () => {
 	});
 
 	it("keeps a deliberately text-only migration", () => {
-		const manual = Migration.make("manual", { from: v1, to: v2 })`Back up your database.`;
-		const history = History.make({ versions: [v1, v2], migrations: [manual] });
+		const prose = Migration.make("prose", { from: v1, to: v2 })`Back up your database.`;
+		const history = History.make({ versions: [v1, v2], migrations: [prose] });
 		const plan = success(History.resolve(history, { from: "1.0.0", to: "2.0.0" }));
 
 		expect(plan.steps[0]).toMatchObject({
