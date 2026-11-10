@@ -13,6 +13,8 @@ export * as History from "./features/planning/history.ts";
 /** @since @next */
 export * as Migration from "./foundation/migration.ts";
 /** @since @next */
+export * as Observer from "./features/execution/observer.ts";
+/** @since @next */
 export * as Package from "./features/package.ts";
 /** @since @next */
 export * as Plan from "./foundation/plan.ts";

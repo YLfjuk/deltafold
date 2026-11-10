@@ -31,7 +31,7 @@ deltafold requires `effect` 4 as a peer dependency and a runtime with a global
 `AbortSignal`, such as Node.js 22.18 or later, Deno, Bun, or a browser. Type
 checking needs DOM or Node.js types for `AbortSignal`.
 
-- `deltafold`: declarations, planning, handlers, interactions, and executors.
+- `deltafold`: declarations, planning, handlers, interactions, observers, and executors.
 - `deltafold/changelog`: changelog and document builders.
 - `deltafold/markdown` and `deltafold/html`: renderers for those documents.
 
@@ -279,6 +279,53 @@ whatever terminal or interface the caller has, and answers `"confirmed"` or
 
 `Handler.manualEffect` and `Interaction.effect` take an Effect check and an
 Effect interaction, and keep their errors and services.
+
+## Observe execution
+
+Observers receive a run's events as they happen. Attach them to the package:
+`Package.withObserver` returns a new package and leaves the original unchanged.
+Attaching causes no events. Pass the package's `observers` to the executor.
+
+```ts
+import { Observer } from "deltafold";
+
+// Shared by every run, for example structured logs.
+const logged = widgets.pipe(
+	Package.withObserver(Observer.effect((event) => Effect.logDebug(event._tag))),
+);
+
+// Attached for one run, for example a progress line.
+const observed = logged.pipe(
+	Package.withObserver(
+		Observer.sync((event) => {
+			if (event._tag !== "ActionSettled") return;
+			const { finished, total } = event.progress.actions;
+			console.error(
+				`[${finished}/${total}] ${event.action.description}: ${event.outcome._tag}`,
+			);
+		}),
+	),
+);
+
+await Executor.runPromise(plan, { handlers, observers: observed.observers });
+```
+
+`Observer.sync`, `Observer.promise`, and `Observer.effect` take a callback for
+each event. An Effect observer's services become requirements of the execution.
+Observers run in attachment order, and the executor waits for each one before it
+continues, so events arrive in one order and all of them arrive before the
+execution settles. A failing observer never changes the outcome; the report
+lists it under `observation`. After cancellation or a timeout, the executor waits
+for each observer at most `settleTimeout`.
+
+A run emits `RunStarted`, then `StepStarted`, `ActionPhaseStarted` for each
+precondition, body, confirmation, and verification, `ActionSettled` with the outcome, `StepSettled`, and
+finally `RunFinished`. Every event carries progress counted in the optimized
+plan: steps with actions, text-only steps (which the executor does not wait
+at), and actions. Steps that rules emptied and noop steps are listed in
+`RunStarted` but not counted. Events carry identifiers and descriptions, never
+payloads or errors; the report keeps the full errors. Pass `runId` to tell runs
+apart in an observer shared by concurrent runs.
 
 ## Simplify routes with rules and shortcuts
 
