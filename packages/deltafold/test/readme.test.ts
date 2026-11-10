@@ -9,6 +9,7 @@ import {
 	Executor,
 	Handler,
 	History,
+	Interaction,
 	Migration,
 	Package,
 	Rule,
@@ -179,6 +180,44 @@ describe("README examples", () => {
 
 		expect(report.status).toBe("completed");
 		expect(files.get("app.json")).toEqual({ requestTimeout: 5000 });
+	});
+
+	it("runs the manual handler example", async () => {
+		const resolved = History.resolve(history, { from: "1.0.0", to: "2.0.0" });
+		if (Result.isFailure(resolved)) throw resolved.failure;
+		const hasKey = (file: string, key: string) => key in (files.get(file) ?? {});
+		const asked: Array<string> = [];
+		// The person renames the key by hand before answering.
+		const ask = async (question: string, _options: { signal: AbortSignal }) => {
+			asked.push(question);
+			files.set("app.json", { requestTimeout: 5000 });
+
+			return true;
+		};
+		const manualHandlers = [
+			Handler.manual(renameTimeout, {
+				verify: ({ file, to }) => hasKey(file, to),
+			}),
+		];
+		const interaction = Interaction.promise(async ({ occurrence }, { signal }) =>
+			(await ask(occurrence.action.description, { signal })) ? "confirmed" : "declined",
+		);
+
+		files.set("app.json", { timeout: 5000 });
+		const report = await Executor.runPromise(resolved.success, {
+			handlers: manualHandlers,
+			interaction,
+		});
+
+		expect(asked).toEqual(['In app.json, rename "timeout" to "requestTimeout"']);
+		expect(report.occurrences[0]?.outcome).toEqual({
+			_tag: "Completed",
+			performer: "manual",
+			confirmation: "verified",
+		});
+		await expect(
+			Executor.runPromise(resolved.success, { handlers: manualHandlers }),
+		).rejects.toBeInstanceOf(Executor.InteractionUnavailable);
 	});
 
 	it("cancels a round trip with a rule", () => {

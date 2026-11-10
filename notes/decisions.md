@@ -78,7 +78,7 @@ prove that consumer behavior is equivalent. Ordinary rules match consecutive
 occurrences on the route's sequential spine, including across migration
 boundaries, and inside one parallel branch. A parallel pattern matches a whole
 group by its branch structure, which makes a structural rule explicit. A
-text-only migration is manual work, so rules do not match around it.
+text-only migration holds prose instructions, so rules do not match around it.
 
 **Exhaustive rewriting.** The resolver searches one state space for the whole
 route. A state is the full sequence, nested groups included, and each transition
@@ -129,6 +129,32 @@ arrived does not start. Admission stops as soon as a timeout or cancellation
 fires, before the interrupted work finishes settling. Effect stops waiting for an
 interrupted Promise immediately, so the adapter waits up to `settleTimeout` for
 the Promise itself and the report records whether it settled.
+
+**Manual handlers.** `Handler.manual` binds an action to a person instead of a
+body. Who performs an action is a property of the binding, never of the action,
+so `Action` and `Migration` have no manual marker. The handler carries no
+instruction text: the interaction receives the plan's occurrence, whose
+instruction or description is the text the guide renders. `Handler.manual` takes
+Promise checks and `Handler.manualEffect` takes Effect checks.
+
+**Interaction.** The `interaction` executor option is the only way to answer for
+manual work. Its answers are `"confirmed"` and `"declined"`; any other value
+from a Promise interaction fails the occurrence. The check for a missing
+interaction runs after handler coverage and before any precondition, and counts
+manual occurrences whose precondition might later skip them. When the consumer
+can ask a person is the consumer's decision. Observers report progress and
+cannot answer.
+
+**Manual phases.** A manual occurrence runs `when`, then the `confirmation`
+phase, then `verification` when the handler has a `verify` check. `verify` never
+runs before the confirmation and is never retried. A check that returns `false`
+fails with `VerificationFailed`. A decline stops admission like a failure and
+ends the run as `ExecutionFailed` with status `failed`; the occurrence is
+`Declined`. `bodiesStarted` becomes true when a person is asked. Cancellation
+that arrives with the confirmation keeps `verify` from starting, and the
+occurrence is `Interrupted` in `verification`. After a sibling fails, an
+occurrence whose precondition already passed still asks, as a body would still
+run.
 
 **Cancellation per executor.** `Executor.effect` uses fiber interruption, so
 cancelling it ends the effect as interrupted, without a report.
@@ -268,6 +294,10 @@ These work today but need confirmation before 1.0:
 - Change descriptions are plain text; Markdown in them is escaped.
 - Change kinds are fixed to `added`, `changed`, `removed`, and `fixed`.
 - Merge ancestry and prerelease policy are not modeled.
+- A person's confirmation is not checked unless the handler has a `verify`
+  check, and the report says which of the two supports a completion.
+- A run that waits for a person holds no state outside its process. Stopping the
+  process loses the wait with the rest of the progress.
 - A false precondition only skips its own action. An unmet requirement that must
   block later actions has to fail its precondition.
 

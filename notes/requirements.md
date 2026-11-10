@@ -118,6 +118,20 @@ erases release history.
   failed check stays a failure. Cancellation and timeouts apply to its checks.
 - **EXEC-10.** A run reports that its progress is not saved, and a failed run
   never claims to have undone completed work.
+- **EXEC-11.** A handler can declare that a person performs its action. The same
+  action can have a manual handler in one run and an automated one in another.
+  An action without a handler stays a coverage error, a zero-work transition is
+  not manual work, and prose never implies executable work.
+- **EXEC-12.** Manual work completes only when the person confirms it. The
+  executor has no prompt: the consumer supplies the interaction, which answers
+  confirmed or declined. A run that needs an interaction and has none fails
+  before any work starts. A dry run never asks.
+- **EXEC-13.** The result separates a person's assertion from a passing
+  verification check, and claims neither as proof. A declined action stops the
+  run and is reported as declined, not as a failure or a completion. No
+  free-form input from the person appears in a result.
+- **EXEC-14.** Timeouts never limit the wait for a person. Cancellation ends the
+  wait and tells the interaction to stop asking.
 
 ### Documents
 
