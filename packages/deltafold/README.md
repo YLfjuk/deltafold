@@ -10,6 +10,8 @@ The planner never reads or writes your consumers' files. Handlers that you or
 your consumers supply do the work, and they can be Promise callbacks or native
 Effect programs.
 
+The API is experimental and may change before 1.0.
+
 deltafold is in early development. Expect API changes before 1.0. Behavior that
 is still a prototype choice is listed in the repository's
 [decisions](https://github.com/YLfjuk/deltafold/blob/main/notes/decisions.md).

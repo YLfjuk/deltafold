@@ -279,7 +279,8 @@ These work today but need confirmation before 1.0:
 - Signals are cooperative. A Promise callback that ignores its signal can keep
   changing state after cancellation.
 - Change descriptions are plain text; Markdown in them is escaped.
-- Change kinds are fixed to `added`, `changed`, `removed`, and `fixed`.
+- Change metadata is checked only by TypeScript. deltafold compares it
+  structurally but does not validate it at run time.
 - Merge ancestry and prerelease policy are not modeled.
 - A false precondition only skips its own action. An unmet requirement that must
   block later actions has to fail its precondition.

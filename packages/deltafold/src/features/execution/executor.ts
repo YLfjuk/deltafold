@@ -609,11 +609,8 @@ const run = <A extends Action.Any, C extends Plan.Coverage, H extends Handler.An
 	plan: Plan.Plan<A, C>,
 	options: Options<H>,
 	subscribe: Subscribe | undefined,
-): Effect.Effect<Report<A, Errors<H>>, ExecutionError<A, Errors<H>>, Requirements<H>> =>
-	// The plan's action union and the handler union determine these types; the
-	// implementation works on erased handlers.
-	// oxlint-disable-next-line typescript/no-unsafe-type-assertion
-	Effect.gen(function* () {
+): Effect.Effect<Report<A, Errors<H>>, ExecutionError<A, Errors<H>>, Requirements<H>> => {
+	const program = Effect.gen(function* () {
 		const checked = coverage(plan, options.handlers ?? []);
 		if (checked.issues.length > 0) {
 			return yield* new HandlerCoverageError({
@@ -631,7 +628,17 @@ const run = <A extends Action.Any, C extends Plan.Coverage, H extends Handler.An
 		return options.dryRun === true
 			? yield* dryRun(plan, checked.resolved, options, subscribe)
 			: yield* execute(plan, checked.resolved, options, subscribe);
-	}) as Effect.Effect<Report<A, Errors<H>>, ExecutionError<A, Errors<H>>, Requirements<H>>;
+	});
+
+	// The plan's action union and the handler union determine these types; the
+	// implementation works on erased handlers.
+	// oxlint-disable-next-line typescript/no-unsafe-type-assertion, effecttsgo/unsafe-effect-type-assertion
+	return program as Effect.Effect<
+		Report<A, Errors<H>>,
+		ExecutionError<A, Errors<H>>,
+		Requirements<H>
+	>;
+};
 
 /**
  * Runs a plan as an Effect. Coverage is checked before any precondition or body runs.
@@ -712,11 +719,13 @@ export const runPromise = <
 			? program
 			: Context.isContext(services)
 				? Effect.provideContext(program, services)
-				: Effect.provide(program, services);
+				: // runPromise is the entry point: the caller's layer is built for this one run.
+					// oxlint-disable-next-line effecttsgo/strict-effect-provide
+					Effect.provide(program, services);
 
 	return Effect.runPromiseExit(
 		// `ServicesOption` requires services that cover every requirement.
-		// oxlint-disable-next-line typescript/no-unsafe-type-assertion
+		// oxlint-disable-next-line typescript/no-unsafe-type-assertion, effecttsgo/unsafe-effect-type-assertion
 		provided as Effect.Effect<Report<A, Errors<H>>, unknown>,
 	)
 		.finally(() => unsubscribe?.())

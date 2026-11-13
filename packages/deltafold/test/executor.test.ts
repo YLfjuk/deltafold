@@ -52,7 +52,7 @@ const exportHandler = Handler.effect(renameExport, (payload) =>
 	Effect.gen(function* () {
 		const editor = yield* ExportEditor;
 		yield* editor.renameKey(payload.from, payload.to);
-		if (payload.to === "") yield* new EditFailed();
+		return yield* payload.to === "" ? Effect.fail(new EditFailed()) : Effect.void;
 	}),
 );
 const sourceHandler = Codemod.handler(renameSource, {
@@ -78,7 +78,7 @@ describe("Executor typing", () => {
 		expect.assertions(0);
 		typeOnly(() => {
 			// @ts-expect-error rename-export and rename-source have no handler.
-			Executor.effect(plan, { handlers: [jsonHandler] });
+			void Executor.effect(plan, { handlers: [jsonHandler] });
 			// @ts-expect-error rename-export and rename-source have no handler.
 			void Executor.runPromise(plan, { handlers: [jsonHandler], services: Context.empty() });
 		});
@@ -626,7 +626,7 @@ describe("Executor admission, cancellation, and settlement", () => {
 							peak = Math.max(peak, active);
 							yield* Effect.sleep("100 millis");
 							active -= 1;
-							if (fails) yield* Effect.fail("broken");
+							return yield* fails ? Effect.fail("broken") : Effect.void;
 						}),
 					);
 				const [a, b, c] = [touch("a"), touch("b"), touch("c")];
