@@ -99,9 +99,9 @@ occurrence it replaced, and the guide renders it there.
 
 **Promise adapter.** `Handler.promise` calls `Effect.tryPromise` with a thunk that
 declares its `signal` parameter, because Effect only allocates an
-`AbortController` when the thunk's `length` is non-zero. Declared services are
-resolved before each call. `signal` is reserved and rejected as a service name at
-compile time.
+`AbortController` when the thunk's `length` is non-zero. Callbacks receive
+`{ signal, services }`: declared services are resolved before each call and kept
+apart from built-in fields, so no service name is reserved.
 
 **Error matching.** `errors` accepts schemas and type guards. A guard must
 annotate its parameter, for example `(cause: unknown) => cause instanceof X`;

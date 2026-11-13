@@ -21,7 +21,7 @@ describe("Handler typing", () => {
 	it("infers payloads, services, and declared errors for Promise handlers", () => {
 		const handler = Handler.promise(
 			renameA,
-			async (payload, { signal, editor }) => {
+			async (payload, { signal, services: { editor } }) => {
 				expectTypeOf(payload).toEqualTypeOf<{ target: string; from: string; to: string }>();
 				expectTypeOf(signal).toEqualTypeOf<AbortSignal>();
 				await editor.update(payload.target, signal);
@@ -32,7 +32,7 @@ describe("Handler typing", () => {
 					(cause: unknown): cause is NotFound => cause instanceof NotFound,
 					Conflict,
 				],
-				when: async (payload, { editor }) => {
+				when: async (payload, { services: { editor } }) => {
 					expectTypeOf(editor).toEqualTypeOf<
 						Context.Service.Shape<typeof ConfigEditor>
 					>();
@@ -93,6 +93,23 @@ describe("Handler typing", () => {
 		>();
 	});
 
+	it("keeps services apart from the signal, so any service name works", () => {
+		const handler = Handler.promise(
+			renameA,
+			async (_payload, { signal, services }) => {
+				expectTypeOf(signal).toEqualTypeOf<AbortSignal>();
+				expectTypeOf(services.signal).toEqualTypeOf<
+					Context.Service.Shape<typeof ConfigEditor>
+				>();
+			},
+			{ services: { signal: ConfigEditor } },
+		);
+
+		expectTypeOf<Handler.Services<typeof handler>>().toEqualTypeOf<
+			Context.Service.Identifier<typeof ConfigEditor>
+		>();
+	});
+
 	it("rejects invalid handler declarations", () => {
 		expect.assertions(0);
 
@@ -101,11 +118,6 @@ describe("Handler typing", () => {
 			// @ts-expect-error the payload has no `missing` property.
 			async (payload) => payload.missing,
 		);
-
-		Handler.promise(renameA, async () => {}, {
-			// @ts-expect-error `signal` is reserved for the AbortSignal.
-			services: { signal: ConfigEditor },
-		});
 
 		Handler.promise(renameA, async () => {}, {
 			// @ts-expect-error error guards must be type predicates.
@@ -120,7 +132,7 @@ describe("Handler typing", () => {
 
 		Handler.promise(renameA, async (_payload, context) => {
 			// @ts-expect-error services that were not declared are absent from the context.
-			void context.editor;
+			void context.services.editor;
 		});
 	});
 });

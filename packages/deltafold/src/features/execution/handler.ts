@@ -97,15 +97,15 @@ export type ServiceMap = { readonly [name: string]: Context.Key<any, any> };
 type NoServices = Record<never, never>;
 
 /**
- * The second argument of Promise handler callbacks: the declared services, resolved,
- * and the `AbortSignal` that `Effect.tryPromise` aborts on interruption. `signal` is
- * reserved and cannot name a service.
+ * The second argument of Promise handler callbacks: the `AbortSignal` that
+ * `Effect.tryPromise` aborts on interruption, and the declared services, resolved.
  *
  * @since @next
  */
 export type PromiseContext<S extends ServiceMap = NoServices> = {
-	readonly [K in keyof S]: S[K]["Service"];
-} & { readonly signal: AbortSignal };
+	readonly signal: AbortSignal;
+	readonly services: { readonly [K in keyof S]: S[K]["Service"] };
+};
 
 type ServiceIds<S extends ServiceMap> = ValueOf<{
 	[K in keyof S]: S[K] extends Context.Key<infer I, any> ? I : never;
@@ -125,17 +125,6 @@ type GuardedError<G> = G extends Schema.Top
 	: G extends ((cause: unknown) => cause is infer E)
 		? E
 		: never;
-
-/** Rejects a service named `signal`, which is reserved for the AbortSignal. */
-type ReservedSignal<S> = "signal" extends keyof S
-	? {
-			readonly services: {
-				readonly [K in keyof S]: K extends "signal"
-					? "`signal` is reserved for the AbortSignal"
-					: S[K];
-			};
-		}
-	: unknown;
 
 /** @since @next */
 export type PromiseOptions<P, S extends ServiceMap, G extends ReadonlyArray<ErrorGuard>> = {
@@ -159,14 +148,14 @@ const declaredError =
 
 /**
  * Implements an action with Promise callbacks. The callbacks run lazily through
- * `Effect.tryPromise`, and receive declared services and its `AbortSignal` in their
- * second argument.
+ * `Effect.tryPromise`, and receive its `AbortSignal` and the declared services in
+ * their second argument.
  *
  * @example
  * ```ts
  * Handler.promise(
  * 	updateRemoteConfig,
- * 	async (payload, { signal, editor }) => {
+ * 	async (payload, { signal, services: { editor } }) => {
  * 		await editor.update(payload, { signal });
  * 	},
  * 	{ services: { editor: ConfigEditor } },
@@ -182,7 +171,7 @@ export const promise = <
 >(
 	action: A,
 	run: (payload: A["payload"], context: PromiseContext<S>) => PromiseLike<unknown>,
-	options?: PromiseOptions<A["payload"], S, G> & ReservedSignal<S>,
+	options?: PromiseOptions<A["payload"], S, G>,
 ): Handler<A, GuardedError<G[number]> | UnexpectedHandlerError, ServiceIds<S>> => {
 	const isDeclared = declaredError(options?.errors ?? []);
 	const services: ServiceMap = options?.services ?? {};
@@ -206,7 +195,8 @@ export const promise = <
 			trackPromise((capture) =>
 				Effect.tryPromise({
 					// Declaring `signal` makes Effect.tryPromise allocate an AbortController.
-					try: (signal) => capture(Promise.resolve(callback({ ...resolved, signal }))),
+					try: (signal) =>
+						capture(Promise.resolve(callback({ signal, services: resolved }))),
 					catch: (cause) =>
 						isDeclared(cause)
 							? cause

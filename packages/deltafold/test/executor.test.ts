@@ -46,7 +46,7 @@ const plan = resolved.success;
 // Existing Promise callbacks keep working without refactoring.
 const jsonHandler = Handler.promise(
 	renameJson,
-	async (payload, { editor }) => {
+	async (payload, { services: { editor } }) => {
 		await editor.update(payload.target);
 	},
 	{ services: { editor: ConfigEditor } },
@@ -580,9 +580,13 @@ describe("Executor behavior", () => {
 			migrations: [Migration.make("1-to-2", { from: w1, to: w2 })`${edit}`],
 		});
 		const handlers = [
-			Handler.promise(edit, async (payload, { editor }) => editor.update(payload.name), {
-				services: { editor: ConfigEditor },
-			}),
+			Handler.promise(
+				edit,
+				async (payload, { services: { editor } }) => editor.update(payload.name),
+				{
+					services: { editor: ConfigEditor },
+				},
+			),
 		];
 		const working = Layer.succeed(ConfigEditor, {
 			update: async (target) => {

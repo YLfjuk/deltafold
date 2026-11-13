@@ -30,7 +30,7 @@ export const handler = <A extends Action.Any>(
 ) =>
 	Handler.promise(
 		action,
-		async (payload, { files, signal }) => {
+		async (payload, { signal, services: { files } }) => {
 			for (const file of await files.list(options.include)) {
 				signal.throwIfAborted();
 				await files.rewrite(file, (source) => options.transform(source, payload));
@@ -39,7 +39,8 @@ export const handler = <A extends Action.Any>(
 		{
 			services: { files: SourceFiles },
 			errors: [(cause: unknown) => cause instanceof TransformRejected],
-			when: async (_payload, { files }) => (await files.list(options.include)).length > 0,
+			when: async (_payload, { services: { files } }) =>
+				(await files.list(options.include)).length > 0,
 			skipReason: "No files match the include patterns",
 		},
 	);

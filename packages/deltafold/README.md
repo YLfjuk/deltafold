@@ -218,7 +218,8 @@ const AsyncConfigFiles = Context.Service<{
 
 const promiseHandler = Handler.promise(
 	renameTimeout,
-	({ file, from, to }, { files, signal }) => files.renameKey(file, from, to, { signal }),
+	({ file, from, to }, { signal, services: { files } }) =>
+		files.renameKey(file, from, to, { signal }),
 	{ services: { files: AsyncConfigFiles } },
 );
 
