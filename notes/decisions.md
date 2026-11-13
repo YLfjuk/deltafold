@@ -230,6 +230,11 @@ is a single file until it needs more. A helper used by one feature stays in that
 feature. `src/renderers` lowers documents for the `markdown` and `html` entry
 points. Ambient declarations live in `@types` folders.
 
+**Unstable Effect APIs.** Route planning and validation use `effect/Graph`, and
+release ordering uses `effect/SemVer`. Effect marks both modules unstable. The
+specific functions used are listed in `allowedUnstableApis` in
+`tsconfig.base.json`, so a new unstable API still produces a diagnostic.
+
 **TypeScript 7.** tsdown emits declarations with TypeScript 7 and warns that its
 API is experimental. If declaration output regresses, fall back to TypeScript 6
 for declaration emit.

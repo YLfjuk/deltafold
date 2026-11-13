@@ -29,7 +29,19 @@
 				"name": "@effect/language-service",
 				"diagnostics": false,
 				"noExternal": true,
-				"allowedUnstableApis": ["@effect/vitest#it"]
+				"allowedUnstableApis": [
+					"@effect/vitest#it",
+					"effect/Graph#addEdge",
+					"effect/Graph#addNode",
+					"effect/Graph#directed",
+					"effect/Graph#findCycle",
+					"effect/Graph#getNode",
+					"effect/Graph#NodeIndex",
+					"effect/Graph#simplePaths",
+					"effect/SemVer#Order",
+					"effect/SemVer#parse",
+					"effect/SemVer#parseUnsafe"
+				]
 			}
 		]
 	}
