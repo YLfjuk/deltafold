@@ -73,10 +73,10 @@
 		"micromark-util-sanitize-uri": "2.0.1"
 	},
 	"devDependencies": {
-		"@arethetypeswrong/core": "0.18.5",
+		"@arethetypeswrong/core": "catalog:",
 		"@effect/vitest": "catalog:",
 		"effect": "catalog:",
-		"publint": "0.3.25",
+		"publint": "catalog:",
 		"typescript": "catalog:",
 		"vite-plus": "catalog:"
 	},

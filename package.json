@@ -14,9 +14,9 @@
 		"version": "changeset version"
 	},
 	"devDependencies": {
-		"@changesets/cli": "3.0.3",
+		"@changesets/cli": "catalog:",
 		"@effect/tsgo": "catalog:",
-		"turbo": "2.11.10",
+		"turbo": "catalog:",
 		"typescript": "catalog:",
 		"vite-plus": "catalog:"
 	},
