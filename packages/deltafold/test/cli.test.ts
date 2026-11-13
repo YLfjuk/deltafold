@@ -1,8 +1,8 @@
 import { describe, expect, expectTypeOf, it } from "@effect/vitest";
-import { Context, Deferred, Effect, Fiber } from "effect";
+import { Cause, Context, Deferred, Effect, Exit, Fiber } from "effect";
 import * as EffectCli from "effect/cli";
 
-import { Handler, Observer, Package, Version } from "deltafold";
+import { Action, Handler, History, Migration, Observer, Package, Version } from "deltafold";
 import { Changelog } from "deltafold/changelog";
 import { Cli, Command } from "deltafold/cli";
 import {
@@ -503,6 +503,7 @@ describe("migrate", () => {
 			expect(report.occurrences[0].outcome).toEqual({
 				status: "would-execute",
 				evaluated: true,
+				performer: "automated",
 			});
 		}),
 	);
@@ -661,6 +662,181 @@ describe("migrate", () => {
 
 			expect(json(result.stdout).report.status).toBe("completed");
 			expect(result.stderr).toContain("renaming");
+		}),
+	);
+});
+
+/** The reason of the CLI failure an exit ended with, if any. */
+const failureReason = (exit: Exit.Exit<unknown, unknown>) => {
+	if (Exit.isSuccess(exit)) return undefined;
+	const error = Cause.squash(exit.cause);
+
+	return error instanceof Command.CliFailure ? error.reason : undefined;
+};
+
+const person = { stdinIsTerminal: true, stderrIsTerminal: true } as const;
+
+/** A migrator whose only handler is manual; `checks` records its precondition calls. */
+const manualMigrator = (checks: Calls = []) =>
+	Command.make(widgets, {
+		name: "widgets-migrate",
+		handlers: [
+			Handler.manual(renameTimeout, {
+				when: () => {
+					checks.push("when");
+
+					return true;
+				},
+			}),
+		],
+	});
+
+describe("manual handlers", () => {
+	const argv = ["migrate", "--from", "1.0.0", "--to", "2.0.0"];
+
+	it.effect("asks a person at a terminal and records the confirmation", () =>
+		Effect.gen(function* () {
+			const result = yield* capture(start(manualMigrator(), argv), {
+				...person,
+				input: ["maybe", "constructor", "y"],
+			});
+
+			expect(result.code).toBe(0);
+			expect(result.stderr).toContain("Manual step 1.0.0-to-2.0.0/rename-timeout");
+			expect(result.stderr).toContain('In config, rename "timeout" to "requestTimeout"');
+			expect(result.stderr).toContain("Did you complete it? (y/n) maybe\nAnswer y or n.");
+			expect(result.stderr).toContain(
+				"Did you complete it? (y/n) constructor\nAnswer y or n.",
+			);
+			expect(result.stdout).toContain(
+				"1.0.0-to-2.0.0/rename-timeout (confirmed by a person)",
+			);
+			expect(result.stdout).not.toContain("maybe");
+		}),
+	);
+
+	it.effect("shows the migration's instruction for the action", () =>
+		Effect.gen(function* () {
+			const step = Migration.make("1.0.0-to-2.0.0", { from: v1, to: v2 })`
+				${Migration.instruction(renameTimeout)`Rename the key in every environment's config.`}
+			`;
+			const pkg = Package.make("@acme/instructed", {
+				history: History.make({ versions: [v1, v2], migrations: [step] }),
+			});
+			const command = Command.make(pkg, { handlers: [Handler.manual(renameTimeout)] });
+			const result = yield* capture(start(command, argv), { ...person, input: ["yes"] });
+
+			expect(result.code).toBe(0);
+			expect(result.stderr).toContain("  Rename the key in every environment's config.");
+		}),
+	);
+
+	it.effect("stops the run when the person declines", () =>
+		Effect.gen(function* () {
+			const result = yield* capture(start(manualMigrator(), argv), {
+				...person,
+				input: ["n"],
+			});
+
+			expect(result.code).toBe(1);
+			expect(failureReason(result.exit)).toBe("manual_work_declined");
+			expect(result.stdout).toContain(
+				"Declined manual work stopped the run: 1.0.0-to-2.0.0/rename-timeout.",
+			);
+		}),
+	);
+
+	it.effect("cancels the run at the end of input instead of declining", () =>
+		Effect.gen(function* () {
+			const result = yield* capture(start(manualMigrator(), argv), { ...person, input: [] });
+
+			expect(result.code).toBe(130);
+			expect(result.stdout).toContain(
+				"1.0.0-to-2.0.0/rename-timeout (confirmation, cancelled)",
+			);
+			expect(result.stdout).not.toContain("declined");
+			expect(result.stderr).toContain("Canceled.");
+		}),
+	);
+
+	it.effect("refuses to start without a person at a terminal", () =>
+		Effect.gen(function* () {
+			const checks: Calls = [];
+			const machine = yield* capture(
+				start(manualMigrator(checks), [...argv, "--json"]),
+				person,
+			);
+			const piped = yield* capture(start(manualMigrator(checks), argv), {
+				stdinIsTerminal: false,
+				stderrIsTerminal: true,
+			});
+			const ci = yield* capture(start(manualMigrator(checks), argv), {
+				...person,
+				env: { CI: "true" },
+			});
+			const document = json(machine.stderr);
+
+			expect(machine.code).toBe(2);
+			expect(machine.stdout).toBe("");
+			expect(document).toMatchObject({
+				status: "action_required",
+				reason: "interaction_required",
+			});
+			expect(document.data.occurrences).toEqual([
+				{
+					id: "1.0.0-to-2.0.0/rename-timeout",
+					action: "rename-timeout",
+					kind: "config.rename",
+					description: 'In config, rename "timeout" to "requestTimeout"',
+					migration: "1.0.0-to-2.0.0",
+				},
+			]);
+			expect(document.next[0].argv).toContain("--dry-run");
+			expect(piped.code).toBe(2);
+			expect(ci.code).toBe(2);
+			expect(ci.stderr).toContain("need a person to confirm them in a terminal");
+			expect(checks).toEqual([]);
+		}),
+	);
+
+	it.effect("previews manual work in a dry run without asking", () =>
+		Effect.gen(function* () {
+			const checks: Calls = [];
+			const result = yield* capture(
+				start(manualMigrator(checks), [...argv, "--dry-run", "--json"]),
+			);
+
+			expect(result.code).toBe(0);
+			expect(checks).toEqual(["when"]);
+			expect(json(result.stdout).report.occurrences[0].outcome).toEqual({
+				status: "would-execute",
+				evaluated: true,
+				performer: "manual",
+			});
+		}),
+	);
+
+	it.effect("asks one prompt at a time when branches run in parallel", () =>
+		Effect.gen(function* () {
+			const both = Migration.make("1.0.0-to-2.0.0", { from: v1, to: v2 })`${Action.parallel([
+				renameTimeout,
+				addRetryLimit,
+			])}`;
+			const pkg = Package.make("@acme/parallel", {
+				history: History.make({ versions: [v1, v2], migrations: [both] }),
+			});
+			const command = Command.make(pkg, {
+				handlers: [Handler.manual(renameTimeout), Handler.manual(addRetryLimit)],
+			});
+			const result = yield* capture(start(command, argv), { ...person, input: ["y", "y"] });
+			const first = result.stderr.indexOf("Manual step 1.0.0-to-2.0.0/rename-timeout");
+			const firstAnswer = result.stderr.indexOf("Did you complete it? (y/n) y\n");
+			const second = result.stderr.indexOf("Manual step 1.0.0-to-2.0.0/add-retry-limit");
+
+			expect(result.code).toBe(0);
+			expect(first).toBeGreaterThanOrEqual(0);
+			expect(firstAnswer).toBeGreaterThan(first);
+			expect(second).toBeGreaterThan(firstAnswer);
 		}),
 	);
 });

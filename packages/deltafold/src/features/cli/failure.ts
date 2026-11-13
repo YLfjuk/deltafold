@@ -26,6 +26,8 @@ export type Reason =
 	| "invalid_release_metadata"
 	| "handlers_load_failed"
 	| "handler_coverage"
+	| "interaction_required"
+	| "manual_work_declined"
 	| "execution_failed"
 	| "would_fail"
 	| "timeout"

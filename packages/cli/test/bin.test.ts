@@ -129,6 +129,24 @@ describe("a package migrator bin", () => {
 		});
 	});
 
+	it("refuses manual work without a terminal, before running anything", async () => {
+		const result = await run(
+			widgets,
+			["migrate", "--from", "1.0.0", "--to", "2.0.0", "--json"],
+			{
+				env: { WIDGETS_MODE: "manual" },
+			},
+		);
+
+		expect(result.code).toBe(2);
+		expect(result.stdout).toBe("");
+		expect(json(result.stderr)).toMatchObject({
+			status: "action_required",
+			reason: "interaction_required",
+			data: { occurrences: [{ id: "1.0.0-to-2.0.0/set-timeout" }] },
+		});
+	});
+
 	it("suggests route commands whose argv runs as is", async () => {
 		const ambiguous = await run(widgets, [
 			"plan",

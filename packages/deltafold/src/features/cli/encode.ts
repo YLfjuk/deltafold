@@ -112,9 +112,12 @@ export type EncodedError = {
 	readonly cause?: EncodedError;
 };
 
+/** Errors that wrap an unrecognized rejection, which is kept one level deep. */
+const wrappers = new Set(["UnexpectedHandlerError", "UnexpectedInteractionError"]);
+
 /**
- * Reduces a failure to its tag, message, and Node.js-style `code`, without stacks. An
- * unexpected handler error keeps one level of its cause.
+ * Reduces a failure to its tag, message, and Node.js-style `code`, without stacks or other
+ * fields. A wrapper of an unrecognized rejection keeps one reduced level of its cause.
  */
 export const error = (value: unknown): EncodedError => {
 	const tag =
@@ -123,10 +126,10 @@ export const error = (value: unknown): EncodedError => {
 		(value === null ? "null" : typeof value);
 	const message = stringField(value, "message") ?? String(value);
 	const base = { tag, message, code: stringField(value, "code") ?? null };
-	if (tag !== "UnexpectedHandlerError" || typeof value !== "object" || value === null)
-		return base;
+	if (!wrappers.has(tag) || typeof value !== "object" || value === null) return base;
+	const cause: unknown = Reflect.get(value, "cause");
 
-	return { ...base, cause: error(Reflect.get(value, "cause")) };
+	return cause === undefined ? base : { ...base, cause: error(cause) };
 };
 
 /** The failure of an outcome: its typed error, or the squashed cause for defects. */
@@ -138,7 +141,15 @@ export const outcomeError = (value: {
 export const outcome = (value: Outcome) => {
 	switch (value._tag) {
 		case "Completed":
-			return { status: "completed" as const };
+			return value.performer === "manual"
+				? {
+						status: "completed" as const,
+						performer: value.performer,
+						confirmation: value.confirmation,
+					}
+				: { status: "completed" as const, performer: value.performer };
+		case "Declined":
+			return { status: "declined" as const };
 		case "Skipped":
 			return { status: "skipped" as const, reason: value.reason };
 		case "Failed":
@@ -153,11 +164,19 @@ export const outcome = (value: Outcome) => {
 		case "Unattempted":
 			return { status: "unattempted" as const };
 		case "WouldExecute":
-			return { status: "would-execute" as const, evaluated: value.evaluated };
+			return {
+				status: "would-execute" as const,
+				evaluated: value.evaluated,
+				performer: value.performer,
+			};
 		case "WouldSkip":
 			return { status: "would-skip" as const, reason: value.reason };
 		case "Undetermined":
-			return { status: "undetermined" as const, reason: value.reason };
+			return {
+				status: "undetermined" as const,
+				reason: value.reason,
+				performer: value.performer,
+			};
 	}
 
 	return { status: "precondition-failed" as const, error: outcomeError(value) };
@@ -167,6 +186,7 @@ export type OutcomeStatus = ReturnType<typeof outcome>["status"];
 
 export const statusByTag = {
 	Completed: "completed",
+	Declined: "declined",
 	Skipped: "skipped",
 	Failed: "failed",
 	Interrupted: "interrupted",
@@ -179,6 +199,7 @@ export const statusByTag = {
 
 const statuses: ReadonlyArray<OutcomeStatus> = [
 	"completed",
+	"declined",
 	"skipped",
 	"failed",
 	"interrupted",

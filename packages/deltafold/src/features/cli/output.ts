@@ -51,11 +51,18 @@ export class Output extends Context.Service<
 	Output,
 	{
 		readonly json: boolean;
+		/**
+		 * Whether a person can answer prompts: stdin and stderr are terminals, `--json` is
+		 * not set, and `CI` is not set.
+		 */
+		readonly interactive: boolean;
 		readonly out: Style;
 		readonly err: Style;
 		/** Writes lines of the command's result to stdout. */
 		readonly result: (lines: string | ReadonlyArray<string>) => Effect.Effect<void>;
-		/** Writes lines to stderr regardless of the log level, for failures. */
+		/** Writes text to stderr without ending the line, for prompts. */
+		readonly prompt: (text: string) => Effect.Effect<void>;
+		/** Writes lines to stderr regardless of the log level, for failures and prompts. */
 		readonly failure: (lines: string | ReadonlyArray<string>) => Effect.Effect<void>;
 		/**
 		 * Writes lines to stderr when the minimum log level admits `level`. With `--json`,
@@ -74,6 +81,7 @@ const environment = Config.all({
 	noColor: Config.option(Config.String("NO_COLOR")),
 	forceColor: Config.option(Config.String("FORCE_COLOR")),
 	term: Config.option(Config.String("TERM")),
+	ci: Config.option(Config.String("CI")),
 });
 
 const toText = (lines: string | ReadonlyArray<string>) =>
@@ -102,21 +110,31 @@ export const make = Effect.gen(function* () {
 
 		return makeStyle(rich, color);
 	};
+	const stderrIsTerminal = yield* stdio.stderrIsTerminal;
 	const out = styleFor(yield* stdio.stdoutIsTerminal);
-	const err = styleFor(yield* stdio.stderrIsTerminal);
+	const err = styleFor(stderrIsTerminal);
+	const ci = Option.match(env.ci, {
+		onNone: () => false,
+		onSome: (value) => value !== "" && value !== "0" && value.toLowerCase() !== "false",
+	});
+	const interactive = !json && !ci && stderrIsTerminal && (yield* stdio.stdinIsTerminal);
 
 	// A closed stream (for example `| head`) ends output quietly instead of failing.
-	const write = (stream: "stdout" | "stderr", lines: string | ReadonlyArray<string>) =>
-		Stream.make(toText(lines)).pipe(
+	const writeText = (stream: "stdout" | "stderr", text: string) =>
+		Stream.make(text).pipe(
 			Stream.run(stream === "stdout" ? stdio.stdout() : stdio.stderr()),
 			Effect.ignore,
 		);
+	const write = (stream: "stdout" | "stderr", lines: string | ReadonlyArray<string>) =>
+		writeText(stream, toText(lines));
 
 	return Output.of({
 		json,
+		interactive,
 		out,
 		err,
 		result: (lines) => write("stdout", lines),
+		prompt: (text) => writeText("stderr", text),
 		failure: (lines) => write("stderr", lines),
 		diagnostic: (lines, level = "Info") =>
 			Effect.gen(function* () {

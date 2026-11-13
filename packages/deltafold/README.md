@@ -466,6 +466,22 @@ its own observer that prints each step and action outcome on stderr. With
 `--json` it adds none. An observer failure never changes the outcome: it is
 printed as a warning, and the JSON report lists it under `observation`.
 
+Actions with a manual handler (`Handler.manual`) need a person to confirm the
+work. `migrate` asks on the terminal, showing each action's instruction:
+
+```text
+Manual step 1.0.0-to-2.0.0/update-dns
+  Point the DNS record at the new host.
+Did you complete it? (y/n) y
+```
+
+It asks only when stdin and stderr are terminals, `--json` is not set, and `CI`
+is not set, one prompt at a time. Otherwise a run with manual actions does not
+start: the command exits 2 with `interaction_required` and lists them. Answering
+`n` declines the work and stops the run. Ctrl+C or the end of input cancels the
+run instead. `--dry-run` never asks, and reports which actions would need a
+person.
+
 | Exit status | Meaning                                                                               |
 | ----------- | ------------------------------------------------------------------------------------- |
 | 0           | Done, including an empty plan or a dry run whose checks pass.                         |

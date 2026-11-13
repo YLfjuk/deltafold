@@ -299,7 +299,7 @@ steps that have actions, unnumbered, because the event step total also counts
 steps without actions. Observer failures are warnings on stderr and plain fields
 in the JSON report; their causes are never serialized whole.
 
-**Manual handlers (planned).** Once core supports `Handler.manual`, `migrate`
+**Manual handlers.** `migrate`
 supplies an interaction only when stdin and stderr are terminals, `--json` is not
 set, and `CI` is not set. Without one, core refuses to start a run that has
 manual occurrences, and the CLI exits 2 with `interaction_required`, listing them
@@ -310,7 +310,14 @@ input on stderr: it shows the occurrence and its instruction, and asks
 else asks again. `n` declines. Ctrl+C or the end of input cancels the run and
 never counts as a decline. Prompts from parallel branches are asked one at a
 time, and progress lines wait while a prompt is open. Text-only instructions are
-not manual work and are never prompted for.
+not manual work and are never prompted for. At the end of input, the CLI aborts
+the run before it stops waiting for the answer, so the confirmation is recorded
+as interrupted; the run then ends as cancelled (130). A run stopped only by
+declined work fails with `manual_work_declined`. A prompt that was already
+waiting is still asked after another branch fails or declines, because started
+work settles. JSON outcomes carry `performer` and, for completed manual work,
+`confirmation` (`asserted` or `verified`), and never the answer text, payloads,
+or causes.
 
 **Cancellation.** `migrate` runs the executor at the Promise boundary with an
 abort signal. Interrupting the CLI fiber aborts it and waits for the partial
