@@ -98,12 +98,22 @@ export const destination = (value: Destination) => ({
 	routes: value.routes,
 });
 
-const stringField = (value: unknown, key: string) => {
-	if (typeof value !== "object" || value === null || !(key in value)) return undefined;
-	const field: unknown = Reflect.get(value, key);
-
-	return typeof field === "string" ? field : undefined;
+/** Runs a projection that may throw on hostile values, such as getters or proxies. */
+const attempt = <A>(project: () => A, fallback: A): A => {
+	try {
+		return project();
+	} catch {
+		return fallback;
+	}
 };
+
+const stringField = (value: unknown, key: string) =>
+	attempt(() => {
+		if (typeof value !== "object" || value === null || !(key in value)) return undefined;
+		const field: unknown = Reflect.get(value, key);
+
+		return typeof field === "string" ? field : undefined;
+	}, undefined);
 
 export type EncodedError = {
 	readonly tag: string;
@@ -118,16 +128,18 @@ const wrappers = new Set(["UnexpectedHandlerError", "UnexpectedInteractionError"
 /**
  * Reduces a failure to its tag, message, and Node.js-style `code`, without stacks or other
  * fields. A wrapper of an unrecognized rejection keeps one reduced level of its cause.
+ * Never throws: a value that cannot be read or converted is reported as unprintable.
  */
 export const error = (value: unknown): EncodedError => {
 	const tag =
 		stringField(value, "_tag") ??
 		stringField(value, "name") ??
 		(value === null ? "null" : typeof value);
-	const message = stringField(value, "message") ?? String(value);
+	const message =
+		stringField(value, "message") ?? attempt(() => String(value), "Unprintable value");
 	const base = { tag, message, code: stringField(value, "code") ?? null };
 	if (!wrappers.has(tag) || typeof value !== "object" || value === null) return base;
-	const cause: unknown = Reflect.get(value, "cause");
+	const cause: unknown = attempt(() => Reflect.get(value, "cause"), undefined);
 
 	return cause === undefined ? base : { ...base, cause: error(cause) };
 };

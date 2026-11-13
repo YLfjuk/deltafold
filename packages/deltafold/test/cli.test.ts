@@ -630,6 +630,72 @@ describe("migrate", () => {
 		}),
 	);
 
+	it.effect("keeps execution limits in suggested route commands", () =>
+		Effect.gen(function* () {
+			const result = yield* run([
+				"migrate",
+				"--from",
+				"1.0.0",
+				"--to",
+				"3.0.0",
+				"--action-timeout",
+				"1s",
+				"--settle-timeout",
+				"500ms",
+				"--json",
+			]);
+			const { argv } = json(result.stderr).next[0];
+
+			expect(result.code).toBe(2);
+			expect(argv).toEqual(
+				expect.arrayContaining(["--action-timeout", "1000ms", "--settle-timeout", "500ms"]),
+			);
+		}),
+	);
+
+	it.live("prints the failed run's report when an interruption follows a failure", () =>
+		Effect.gen(function* () {
+			const failed = yield* Deferred.make<void>();
+			const both = Migration.make("1.0.0-to-2.0.0", { from: v1, to: v2 })`${Action.parallel([
+				renameTimeout,
+				addRetryLimit,
+			])}`;
+			const pkg = Package.make("@acme/parallel", {
+				history: History.make({ versions: [v1, v2], migrations: [both] }),
+			}).pipe(
+				Package.withObserver(
+					Observer.effect((event) =>
+						event._tag === "ActionSettled" && event.outcome._tag === "Failed"
+							? Deferred.succeed(failed, undefined)
+							: Effect.void,
+					),
+				),
+			);
+			const command = Command.make(pkg, {
+				handlers: [
+					Handler.effect(renameTimeout, () => Effect.never),
+					Handler.promise(addRetryLimit, async () => {
+						throw new Error("disk full");
+					}),
+				],
+			});
+			const io = terminal();
+			const fiber = yield* Effect.forkChild(
+				io.provide(
+					start(command, ["migrate", "--from", "1.0.0", "--to", "2.0.0", "--json"]),
+				),
+			);
+			yield* Deferred.await(failed);
+			yield* Fiber.interrupt(fiber);
+			const exit = yield* Fiber.await(fiber);
+			const { report } = json(io.stdout());
+
+			expect(exitCode(exit)).toBe(130);
+			expect(report.status).toBe("failed");
+			expect(report.summary).toMatchObject({ failed: 1, interrupted: 1 });
+		}),
+	);
+
 	it.live("prints the partial report when interrupted and exits as interrupted", () =>
 		Effect.gen(function* () {
 			const machine = yield* interrupted(["--json"]);
@@ -905,6 +971,29 @@ describe("observers", () => {
 			);
 		}),
 	);
+
+	it.effect("reports failure values that cannot be printed", () =>
+		Effect.gen(function* () {
+			const observed = widgets.pipe(
+				Package.withObserver(Observer.effect(() => Effect.fail(Object.create(null)))),
+			);
+			const command = Command.make(observed, { handlers: () => handlersFor([]) });
+			const argv = ["migrate", "--from", "1.0.0", "--to", "2.0.0"];
+			const machine = yield* capture(start(command, [...argv, "--json"]));
+			const human = yield* capture(start(command, argv));
+
+			expect(machine.code).toBe(0);
+			expect(json(machine.stdout).report.observation[0].error).toEqual({
+				tag: "object",
+				message: "Unprintable value",
+				code: null,
+			});
+			expect(human.code).toBe(0);
+			expect(human.stderr).toContain(
+				"Warning: observer 0 failed on RunStarted (event 0): Unprintable value",
+			);
+		}),
+	);
 });
 
 describe("documents", () => {
@@ -953,6 +1042,26 @@ describe("documents", () => {
 			expect(json(release.stdout).document.content).toContain("2.0.0");
 			expect(missing.code).toBe(2);
 			expect(json(missing.stderr).reason).toBe("unknown_version");
+		}),
+	);
+});
+
+describe("release metadata", () => {
+	it.effect("reports a release metadata loader that throws", () =>
+		Effect.gen(function* () {
+			const command = Command.make(widgets, {
+				releases: () => {
+					throw new Error("metadata unavailable");
+				},
+			});
+			const result = yield* capture(start(command, ["changelog", "--json"]));
+
+			expect(result.code).toBe(1);
+			expect(result.stdout).toBe("");
+			expect(json(result.stderr)).toMatchObject({
+				reason: "invalid_release_metadata",
+				data: { error: { message: "metadata unavailable" } },
+			});
 		}),
 	);
 });
