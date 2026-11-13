@@ -16,6 +16,8 @@ import type * as Plan from "../../foundation/plan.ts";
 import type { Node, Occurrence } from "../../foundation/plan.ts";
 import * as Handler from "./handler.ts";
 import type * as Interaction from "./interaction.ts";
+import { makeEmitter, type Emitter } from "./observation.ts";
+import type * as Observer from "./observer.ts";
 import { SettlementReference } from "./settlement.ts";
 
 /**
@@ -106,6 +108,8 @@ export type Report<A extends Action.Any = Action.Any, E = unknown> = {
 	readonly bodiesStarted: boolean;
 	/** Progress is not persisted. Rerunning the plan repeats completed actions. */
 	readonly persistence: "none";
+	/** Observers that failed or were abandoned. Never affects outcomes or status. */
+	readonly observation: ReadonlyArray<Observer.ObservationFailure>;
 };
 
 /**
@@ -280,15 +284,22 @@ type CoverageCheck<A extends Action.Any, H, C extends Plan.Coverage> = [
 export type Errors<H, I = never> = Handler.Error<H> | Interaction.Error<I>;
 
 /**
- * Effect services an execution requires: the services of its handlers and of its
- * interaction.
+ * Effect services an execution requires: the services of its handlers, its
+ * interaction, and its observers.
  *
  * @since @next
  */
-export type Requirements<H, I = never> = Handler.Services<H> | Interaction.Services<I>;
+export type Requirements<H, I = never, O = never> =
+	| Handler.Services<H>
+	| Interaction.Services<I>
+	| Observer.Services<O>;
 
 /** @since @next */
-export type Options<H extends Handler.Any, I extends Interaction.Any = never> = {
+export type Options<
+	H extends Handler.Any,
+	I extends Interaction.Any = never,
+	O extends Observer.Any = never,
+> = {
 	readonly handlers?: ReadonlyArray<H>;
 	/**
 	 * Asks a person to confirm the work of manual handlers. A run whose plan has manual
@@ -296,6 +307,15 @@ export type Options<H extends Handler.Any, I extends Interaction.Any = never> = 
 	 * A dry run never asks and does not need it.
 	 */
 	readonly interaction?: I;
+	/**
+	 * Receive the run's events, in array order. Pass `pkg.observers` to forward the
+	 * observers attached to a package. The executor waits for each observer before it
+	 * continues; an observer failure is recorded in `report.observation` and never changes
+	 * the outcome.
+	 */
+	readonly observers?: ReadonlyArray<O>;
+	/** Identifies the run in observer events. */
+	readonly runId?: string;
 	/** Evaluate preconditions without running any action body. */
 	readonly dryRun?: boolean;
 	/**
@@ -371,6 +391,7 @@ const report = <A extends Action.Any, E>(
 	status: Report["status"],
 	outcomes: ReadonlyMap<string, Outcome<E>>,
 	bodiesStarted: boolean,
+	observation: ReadonlyArray<Observer.ObservationFailure> = [],
 ): Report<A, E> => ({
 	_tag: "Report",
 	mode,
@@ -384,6 +405,7 @@ const report = <A extends Action.Any, E>(
 	})),
 	bodiesStarted,
 	persistence: "none",
+	observation: [...observation],
 });
 
 const failureOf = <E>(cause: Cause.Cause<E>) => ({
@@ -411,17 +433,19 @@ type PhaseResult<T> =
 	  };
 
 /** Admission state, cancellation, and timeouts shared by real and dry runs. */
-const makeControl = (
-	options: Options<Handler.Any, Interaction.Any>,
-	subscribe: Subscribe | undefined,
-) =>
+type AnyOptions = Options<Handler.Any, Interaction.Any, Observer.Any>;
+
+const makeControl = (options: AnyOptions, subscribe: Subscribe | undefined) =>
 	Effect.gen(function* () {
 		const halt: { reason: StopReason | undefined } = { reason: undefined };
 		const cancelled = yield* Deferred.make<"cancelled">();
+		/** Completes on cancellation or a timeout. Observer deliveries are bounded from then on. */
+		const stopped = yield* Deferred.make<void>();
 		const settleTimeout = options.settleTimeout ?? Duration.seconds(5);
 
 		const stop = (reason: StopReason) => {
 			halt.reason ??= reason;
+			if (reason !== "failure") Deferred.doneUnsafe(stopped, Exit.void);
 		};
 		// A failure can be the first stop reason, so cancellation is tracked on its own.
 		let cancellationArrived = false;
@@ -470,313 +494,404 @@ const makeControl = (
 				return { _tag: "Interrupted" as const, reason: result.reason, settled };
 			});
 
-		return { halt, stop, runPhase, isCancelled: () => cancellationArrived };
+		return {
+			halt,
+			stop,
+			runPhase,
+			isCancelled: () => cancellationArrived,
+			stopped,
+			settleTimeout,
+		};
 	});
 
-const interrupted = <A extends Action.Any>(
-	plan: Plan.Plan<A, Plan.Coverage>,
+/** Sets up control and observation, and reports fiber interruption to observers. */
+const withRun = <T, E>(
+	plan: Plan.Any,
 	mode: Report["mode"],
-	reason: "cancelled" | "timeout",
-	outcomes: ReadonlyMap<string, Outcome>,
-	bodiesStarted: boolean,
-) =>
-	new ExecutionInterrupted({
-		reason,
-		report: report(plan, mode, "interrupted", outcomes, bodiesStarted),
+	options: AnyOptions,
+	subscribe: Subscribe | undefined,
+	body: (
+		control: Effect.Success<ReturnType<typeof makeControl>>,
+		emitter: Emitter,
+		outcomes: Map<string, Outcome>,
+	) => Effect.Effect<T, E, any>,
+): Effect.Effect<T, E, any> =>
+	Effect.gen(function* () {
+		const outcomes = new Map<string, Outcome>();
+		const control = yield* makeControl(options, subscribe);
+		const emitter = yield* makeEmitter({
+			plan,
+			mode,
+			runId: options.runId,
+			observers: options.observers ?? [],
+			outcomes,
+			stopped: control.stopped,
+			grace: control.settleTimeout,
+		});
+
+		return yield* Effect.onInterrupt(
+			body(control, emitter, outcomes),
+			() => emitter.interrupted,
+		);
 	});
 
 const execute = (
 	plan: Plan.Any,
 	resolved: Resolved,
-	options: Options<Handler.Any, Interaction.Any>,
+	options: AnyOptions,
 	subscribe: Subscribe | undefined,
 ): Effect.Effect<Report, ExecutionFailed | ExecutionInterrupted, any> =>
-	Effect.gen(function* () {
-		const outcomes = new Map<string, Outcome>();
-		const { halt, stop, runPhase, isCancelled } = yield* makeControl(options, subscribe);
-		let bodiesStarted = false;
+	withRun(plan, "execute", options, subscribe, (control, emitter, outcomes) =>
+		Effect.gen(function* () {
+			const { halt, stop, runPhase, isCancelled } = control;
+			let bodiesStarted = false;
 
-		/** Sets the outcome of a phase that did not succeed, and returns its value otherwise. */
-		const settle = <T>(
-			occurrence: Occurrence,
-			phase: Handler.Phase,
-			result: PhaseResult<T>,
-		): Option.Option<T> => {
-			if (result._tag === "Interrupted") {
-				outcomes.set(occurrence.id, {
-					_tag: "Interrupted",
-					phase,
-					reason: result.reason,
-					settled: result.settled,
+			/**
+			 * Records the occurrence's final outcome and tells observers. Without an outcome, the
+			 * occurrence started but stops here, and observers see it as unattempted.
+			 */
+			const finish = (occurrence: Occurrence, outcome: Outcome | undefined) => {
+				if (outcome !== undefined) outcomes.set(occurrence.id, outcome);
+
+				return emitter.settled(occurrence);
+			};
+
+			/** Runs one phase. Finishes the occurrence if the phase did not succeed. */
+			const phase = <T>(
+				occurrence: Occurrence,
+				name: Handler.Phase,
+				work: Effect.Effect<T, unknown, any>,
+				timing: "timed" | "untimed" = "timed",
+			): Effect.Effect<Option.Option<T>, never, any> =>
+				Effect.gen(function* () {
+					yield* emitter.phaseStarted(occurrence, name);
+					const result = yield* runPhase(work, timing);
+					if (result._tag === "Interrupted") {
+						yield* finish(occurrence, {
+							_tag: "Interrupted",
+							phase: name,
+							reason: result.reason,
+							settled: result.settled,
+						});
+
+						return Option.none();
+					}
+					if (Exit.isFailure(result.exit)) {
+						stop("failure");
+						yield* finish(occurrence, {
+							_tag: "Failed",
+							phase: name,
+							...failureOf(result.exit.cause),
+						});
+
+						return Option.none();
+					}
+
+					return Option.some(result.exit.value);
 				});
 
-				return Option.none();
-			}
-			if (Exit.isFailure(result.exit)) {
-				stop("failure");
-				outcomes.set(occurrence.id, {
-					_tag: "Failed",
-					phase,
-					...failureOf(result.exit.cause),
-				});
-
-				return Option.none();
-			}
-
-			return Option.some(result.exit.value);
-		};
-
-		/** Waits for a person to confirm the work, then runs the handler's verification. */
-		const runManual = (
-			occurrence: Occurrence,
-			handler: Handler.Any,
-			interaction: Interaction.Any,
-		) =>
-			Effect.gen(function* () {
-				// The person may start changing state as soon as they are asked.
-				bodiesStarted = true;
-				const answer = settle(
-					occurrence,
-					"confirmation",
-					yield* runPhase(interaction.confirm({ occurrence }), "untimed"),
-				);
-				if (Option.isNone(answer)) return;
-				if (answer.value === "declined") {
-					stop("failure");
-					outcomes.set(occurrence.id, { _tag: "Declined" });
-
-					return;
-				}
-				if (handler.verification === undefined) {
-					outcomes.set(occurrence.id, {
-						_tag: "Completed",
-						performer: "manual",
-						confirmation: "asserted",
-					});
-
-					return;
-				}
-				// Cancellation that arrived with the confirmation keeps the check from starting.
-				if (isCancelled()) {
-					outcomes.set(occurrence.id, {
-						_tag: "Interrupted",
-						phase: "verification",
-						reason: "cancelled",
-						settled: true,
-					});
-
-					return;
-				}
-				const checked = settle(
-					occurrence,
-					"verification",
-					yield* runPhase(handler.verification),
-				);
-				if (Option.isNone(checked)) return;
-				outcomes.set(occurrence.id, {
-					_tag: "Completed",
-					performer: "manual",
-					confirmation: "verified",
-				});
-			});
-
-		const runOccurrence = (occurrence: Occurrence) =>
-			Effect.gen(function* () {
-				if (halt.reason !== undefined) return;
-
-				const handler = resolved.get(occurrence.id);
-				if (handler === undefined) return;
-
-				if (handler.precondition !== undefined) {
-					const applies = settle(
+			/** Waits for a person to confirm the work, then runs the handler's verification. */
+			const runManual = (
+				occurrence: Occurrence,
+				handler: Handler.Any,
+				interaction: Interaction.Any,
+			) =>
+				Effect.gen(function* () {
+					// The person may start changing state as soon as they are asked.
+					bodiesStarted = true;
+					const answer = yield* phase(
 						occurrence,
-						"precondition",
-						yield* runPhase(handler.precondition),
+						"confirmation",
+						interaction.confirm({ occurrence }),
+						"untimed",
 					);
-					if (Option.isNone(applies)) return;
-					if (!applies.value) {
-						outcomes.set(occurrence.id, {
-							_tag: "Skipped",
-							reason: handler.skipReason,
+					if (Option.isNone(answer)) return;
+					if (answer.value === "declined") {
+						stop("failure");
+						yield* finish(occurrence, { _tag: "Declined" });
+
+						return;
+					}
+					if (handler.verification === undefined) {
+						yield* finish(occurrence, {
+							_tag: "Completed",
+							performer: "manual",
+							confirmation: "asserted",
 						});
 
 						return;
 					}
-					// The occurrence has started, so a sibling failure lets it finish.
-					// Cancellation that arrived during the precondition keeps the body or the
-					// prompt from starting.
-					if (isCancelled()) return;
+					// Cancellation that arrived with the confirmation keeps the check from starting.
+					if (isCancelled()) {
+						yield* finish(occurrence, {
+							_tag: "Interrupted",
+							phase: "verification",
+							reason: "cancelled",
+							settled: true,
+						});
+
+						return;
+					}
+					const checked = yield* phase(occurrence, "verification", handler.verification);
+					if (Option.isNone(checked)) return;
+					yield* finish(occurrence, {
+						_tag: "Completed",
+						performer: "manual",
+						confirmation: "verified",
+					});
+				});
+
+			const runOccurrence = (occurrence: Occurrence) =>
+				Effect.gen(function* () {
+					if (halt.reason !== undefined) return;
+
+					const handler = resolved.get(occurrence.id);
+					if (handler === undefined) return;
+
+					if (handler.precondition !== undefined) {
+						const applies = yield* phase(
+							occurrence,
+							"precondition",
+							handler.precondition,
+						);
+						if (Option.isNone(applies)) return;
+						if (!applies.value) {
+							yield* finish(occurrence, {
+								_tag: "Skipped",
+								reason: handler.skipReason,
+							});
+
+							return;
+						}
+						// The occurrence has started, so a sibling failure lets it finish.
+						// Cancellation that arrived during the precondition keeps the body or the
+						// prompt from starting.
+						if (isCancelled()) {
+							yield* finish(occurrence, undefined);
+
+							return;
+						}
+					}
+
+					if (handler.performer === "manual") {
+						// The interaction preflight guarantees one for every manual occurrence.
+						if (options.interaction === undefined) {
+							yield* finish(occurrence, undefined);
+
+							return;
+						}
+
+						yield* runManual(occurrence, handler, options.interaction);
+
+						return;
+					}
+
+					bodiesStarted = true;
+					const ran = yield* phase(occurrence, "body", handler.body);
+					if (Option.isNone(ran)) return;
+					yield* finish(occurrence, { _tag: "Completed", performer: "automated" });
+				});
+
+			const runNode = (node: Node): Effect.Effect<void, never, any> => {
+				switch (node._tag) {
+					case "Occurrence":
+						return runOccurrence(node);
+					case "Sequence":
+						return Effect.forEach(node.children, runNode, { discard: true });
 				}
 
-				if (handler.performer === "manual") {
-					// The interaction preflight guarantees one for every manual occurrence.
-					if (options.interaction === undefined) return;
+				// Sibling failures stop admission through `halt`; they never interrupt branches.
+				return forEachBranch(node.branches, node.concurrency, runNode);
+			};
 
-					yield* runManual(occurrence, handler, options.interaction);
-
-					return;
-				}
-
-				bodiesStarted = true;
-				const ran = settle(occurrence, "body", yield* runPhase(handler.body));
-				if (Option.isNone(ran)) return;
-				outcomes.set(occurrence.id, { _tag: "Completed", performer: "automated" });
-			});
-
-		const runNode = (node: Node): Effect.Effect<void, never, any> => {
-			switch (node._tag) {
-				case "Occurrence":
-					return runOccurrence(node);
-				case "Sequence":
-					return Effect.forEach(node.children, runNode, { discard: true });
+			yield* emitter.runStarted;
+			for (const step of plan.steps) {
+				// Migration steps are barriers: a step starts only after the previous one settled.
+				if (halt.reason !== undefined) break;
+				if (step.omitted) continue;
+				yield* emitter.stepStarted(step);
+				yield* runNode(step.node);
+				yield* emitter.stepSettled(step);
 			}
 
-			// Sibling failures stop admission through `halt`; they never interrupt branches.
-			return forEachBranch(node.branches, node.concurrency, runNode);
-		};
+			const reason = halt.reason;
+			const status =
+				reason === undefined
+					? "completed"
+					: reason === "failure"
+						? "failed"
+						: "interrupted";
+			yield* emitter.runFinished(status);
+			const result = report(
+				plan,
+				"execute",
+				status,
+				outcomes,
+				bodiesStarted,
+				emitter.failures,
+			);
+			if (reason === undefined) return result;
+			if (reason === "failure") {
+				return yield* new ExecutionFailed({
+					failures: result.occurrences.filter((entry) => entry.outcome._tag === "Failed"),
+					declined: result.occurrences.filter(
+						(entry) => entry.outcome._tag === "Declined",
+					),
+					report: result,
+				});
+			}
 
-		for (const step of plan.steps) {
-			// Migration steps are barriers: a step starts only after the previous one settled.
-			if (halt.reason !== undefined) break;
-			yield* runNode(step.node);
-		}
-
-		if (halt.reason === undefined)
-			return report(plan, "execute", "completed", outcomes, bodiesStarted);
-		if (halt.reason === "failure") {
-			const result = report(plan, "execute", "failed", outcomes, bodiesStarted);
-
-			return yield* new ExecutionFailed({
-				failures: result.occurrences.filter((entry) => entry.outcome._tag === "Failed"),
-				declined: result.occurrences.filter((entry) => entry.outcome._tag === "Declined"),
-				report: result,
-			});
-		}
-
-		return yield* interrupted(plan, "execute", halt.reason, outcomes, bodiesStarted);
-	});
+			return yield* new ExecutionInterrupted({ reason, report: result });
+		}),
+	);
 
 const dryRun = (
 	plan: Plan.Any,
 	resolved: Resolved,
-	options: Options<Handler.Any, Interaction.Any>,
+	options: AnyOptions,
 	subscribe: Subscribe | undefined,
 ): Effect.Effect<Report, ExecutionInterrupted, any> =>
-	Effect.gen(function* () {
-		const outcomes = new Map<string, Outcome>();
-		const { halt, runPhase } = yield* makeControl(options, subscribe);
-		let failedAt: string | undefined;
+	withRun(plan, "dry-run", options, subscribe, (control, emitter, outcomes) =>
+		Effect.gen(function* () {
+			const { halt, runPhase } = control;
+			let failedAt: string | undefined;
 
-		/** Returns whether the node would or might change state. */
-		const visit = (node: Node, dirty: boolean): Effect.Effect<boolean, never, any> =>
-			Effect.gen(function* () {
-				if (node._tag === "Sequence") {
-					let current = dirty;
-					for (const child of node.children) current = yield* visit(child, current);
+			const settle = (occurrence: Occurrence, outcome: Outcome) => {
+				outcomes.set(occurrence.id, outcome);
 
-					return current;
-				}
-				if (node._tag === "Parallel") {
-					// Branches are independent: each starts from the state before the group.
-					// They are evaluated one at a time so the report is deterministic.
-					let changed = dirty;
-					for (const branch of node.branches)
-						changed = (yield* visit(branch, dirty)) || changed;
+				return emitter.settled(occurrence);
+			};
 
-					return changed;
-				}
+			/** Returns whether the node would or might change state. */
+			const visit = (node: Node, dirty: boolean): Effect.Effect<boolean, never, any> =>
+				Effect.gen(function* () {
+					if (node._tag === "Sequence") {
+						let current = dirty;
+						for (const child of node.children) current = yield* visit(child, current);
 
-				const handler = resolved.get(node.id);
-				if (handler === undefined || halt.reason !== undefined) return dirty;
-				if (failedAt !== undefined) {
-					outcomes.set(node.id, {
-						_tag: "Undetermined",
-						reason: `Execution would stop at the failed precondition of "${failedAt}".`,
-						performer: handler.performer,
-					});
+						return current;
+					}
+					if (node._tag === "Parallel") {
+						// Branches are independent: each starts from the state before the group.
+						// They are evaluated one at a time so the report is deterministic.
+						let changed = dirty;
+						for (const branch of node.branches)
+							changed = (yield* visit(branch, dirty)) || changed;
 
-					return true;
-				}
-				if (handler.precondition === undefined) {
-					outcomes.set(node.id, {
+						return changed;
+					}
+
+					const handler = resolved.get(node.id);
+					if (handler === undefined || halt.reason !== undefined) return dirty;
+					if (failedAt !== undefined) {
+						yield* settle(node, {
+							_tag: "Undetermined",
+							reason: `Execution would stop at the failed precondition of "${failedAt}".`,
+							performer: handler.performer,
+						});
+
+						return true;
+					}
+					if (handler.precondition === undefined) {
+						yield* settle(node, {
+							_tag: "WouldExecute",
+							evaluated: false,
+							performer: handler.performer,
+						});
+
+						return true;
+					}
+					if (dirty) {
+						yield* settle(node, {
+							_tag: "Undetermined",
+							reason: "The precondition depends on earlier actions that a dry run does not apply.",
+							performer: handler.performer,
+						});
+
+						return true;
+					}
+
+					yield* emitter.phaseStarted(node, "precondition");
+					const checked = yield* runPhase(handler.precondition);
+					if (checked._tag === "Interrupted") {
+						yield* settle(node, {
+							_tag: "Interrupted",
+							phase: "precondition",
+							reason: checked.reason,
+							settled: checked.settled,
+						});
+
+						return true;
+					}
+					if (Exit.isFailure(checked.exit)) {
+						failedAt = node.id;
+						yield* settle(node, {
+							_tag: "PreconditionFailed",
+							...failureOf(checked.exit.cause),
+						});
+
+						return true;
+					}
+					if (!checked.exit.value) {
+						yield* settle(node, { _tag: "WouldSkip", reason: handler.skipReason });
+
+						return false;
+					}
+					yield* settle(node, {
 						_tag: "WouldExecute",
-						evaluated: false,
+						evaluated: true,
 						performer: handler.performer,
 					});
 
 					return true;
-				}
-				if (dirty) {
-					outcomes.set(node.id, {
-						_tag: "Undetermined",
-						reason: "The precondition depends on earlier actions that a dry run does not apply.",
-						performer: handler.performer,
-					});
-
-					return true;
-				}
-
-				const checked = yield* runPhase(handler.precondition);
-				if (checked._tag === "Interrupted") {
-					outcomes.set(node.id, {
-						_tag: "Interrupted",
-						phase: "precondition",
-						reason: checked.reason,
-						settled: checked.settled,
-					});
-
-					return true;
-				}
-				if (Exit.isFailure(checked.exit)) {
-					failedAt = node.id;
-					outcomes.set(node.id, {
-						_tag: "PreconditionFailed",
-						...failureOf(checked.exit.cause),
-					});
-
-					return true;
-				}
-				if (!checked.exit.value) {
-					outcomes.set(node.id, { _tag: "WouldSkip", reason: handler.skipReason });
-
-					return false;
-				}
-				outcomes.set(node.id, {
-					_tag: "WouldExecute",
-					evaluated: true,
-					performer: handler.performer,
 				});
 
-				return true;
-			});
+			yield* emitter.runStarted;
+			// Later migrations conservatively depend on every earlier migration.
+			let dirty = false;
+			for (const step of plan.steps) {
+				if (halt.reason !== undefined) break;
+				if (step.omitted) continue;
+				yield* emitter.stepStarted(step);
+				dirty = yield* visit(step.node, dirty);
+				yield* emitter.stepSettled(step);
+			}
 
-		// Later migrations conservatively depend on every earlier migration.
-		let dirty = false;
-		for (const step of plan.steps) dirty = yield* visit(step.node, dirty);
+			const reason = halt.reason;
+			if (reason === "cancelled" || reason === "timeout") {
+				yield* emitter.runFinished("interrupted");
 
-		if (halt.reason === "cancelled" || halt.reason === "timeout") {
-			return yield* interrupted(plan, "dry-run", halt.reason, outcomes, false);
-		}
+				return yield* new ExecutionInterrupted({
+					reason,
+					report: report(
+						plan,
+						"dry-run",
+						"interrupted",
+						outcomes,
+						false,
+						emitter.failures,
+					),
+				});
+			}
 
-		return report(
-			plan,
-			"dry-run",
-			failedAt === undefined ? "would-complete" : "would-fail",
-			outcomes,
-			false,
-		);
-	});
+			const status = failedAt === undefined ? "would-complete" : "would-fail";
+			yield* emitter.runFinished(status);
+
+			return report(plan, "dry-run", status, outcomes, false, emitter.failures);
+		}),
+	);
 
 const run = <
 	A extends Action.Any,
 	C extends Plan.Coverage,
 	H extends Handler.Any,
 	I extends Interaction.Any,
+	O extends Observer.Any,
 >(
 	plan: Plan.Plan<A, C>,
-	options: Options<H, I>,
+	options: Options<H, I, O>,
 	subscribe: Subscribe | undefined,
-): Effect.Effect<Report<A, Errors<H, I>>, ExecutionError<A, Errors<H, I>>, Requirements<H, I>> =>
+): Effect.Effect<Report<A, Errors<H, I>>, ExecutionError<A, Errors<H, I>>, Requirements<H, I, O>> =>
 	// The plan's action union and the handler union determine these types; the
 	// implementation works on erased handlers.
 	// oxlint-disable-next-line typescript/no-unsafe-type-assertion
@@ -814,7 +929,7 @@ const run = <
 	}) as Effect.Effect<
 		Report<A, Errors<H, I>>,
 		ExecutionError<A, Errors<H, I>>,
-		Requirements<H, I>
+		Requirements<H, I, O>
 	>;
 
 /**
@@ -826,7 +941,8 @@ const run = <
  *
  * To cancel, interrupt the fiber. Interruption reaches running actions and aborts the
  * signal passed to Promise callbacks. The effect then ends as interrupted, without a
- * report.
+ * report. Observers receive a final `RunFinished` event without a report, delivered
+ * within `settleTimeout`.
  *
  * @since @next
  */
@@ -835,27 +951,29 @@ export const effect = <
 	C extends Plan.Coverage,
 	H extends Handler.Any = never,
 	I extends Interaction.Any = never,
+	O extends Observer.Any = never,
 >(
 	plan: Plan.Plan<A, C>,
-	options: Options<H, I> & CoverageCheck<A, H, C>,
-): Effect.Effect<Report<A, Errors<H, I>>, ExecutionError<A, Errors<H, I>>, Requirements<H, I>> =>
+	options: Options<H, I, O> & CoverageCheck<A, H, C>,
+): Effect.Effect<Report<A, Errors<H, I>>, ExecutionError<A, Errors<H, I>>, Requirements<H, I, O>> =>
 	run(plan, options, undefined);
 
 type ServicesOption<R> = [R] extends [never]
 	? {
-			/** Handlers and interactions without Effect services need none. */
+			/** Handlers, interactions, and observers without Effect services need none. */
 			readonly services?: Context.Context<never> | Layer.Layer<never, unknown>;
 		}
 	: {
-			/** Supplies the Effect services of the handlers and the interaction. */
+			/** Supplies the Effect services of the handlers, the interaction, and the observers. */
 			readonly services: Context.Context<R> | Layer.Layer<R, unknown>;
 		};
 
 /** @since @next */
-export type PromiseOptions<H extends Handler.Any, I extends Interaction.Any = never> = Options<
-	H,
-	I
-> & {
+export type PromiseOptions<
+	H extends Handler.Any,
+	I extends Interaction.Any = never,
+	O extends Observer.Any = never,
+> = Options<H, I, O> & {
 	/**
 	 * Explicit cancellation. Aborting stops admission, interrupts running actions and
 	 * pending confirmations, and rejects with `ExecutionInterrupted` and the partial
@@ -878,9 +996,12 @@ export const runPromise = <
 	C extends Plan.Coverage,
 	H extends Handler.Any = never,
 	I extends Interaction.Any = never,
+	O extends Observer.Any = never,
 >(
 	plan: Plan.Plan<A, C>,
-	options: PromiseOptions<H, I> & ServicesOption<Requirements<H, I>> & CoverageCheck<A, H, C>,
+	options: PromiseOptions<H, I, O> &
+		ServicesOption<Requirements<H, I, O>> &
+		CoverageCheck<A, H, C>,
 ): Promise<Report<A, Errors<H, I>>> => {
 	const { signal } = options;
 	let unsubscribe: (() => void) | undefined;

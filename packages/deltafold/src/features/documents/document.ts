@@ -1,7 +1,7 @@
 import { Data, Predicate, type Pipeable } from "effect";
 
 import type { Version } from "../../foundation/version.ts";
-import type { Package } from "../package.ts";
+import type * as Package from "../package.ts";
 import { pipeable } from "./pipeable.ts";
 
 /** @since @next */
@@ -291,14 +291,14 @@ export const History = "history";
 
 /** @since @next */
 export type ReleaseContext<M> = {
-	readonly package: Package;
+	readonly package: Package.Any;
 	readonly version: Version;
 	readonly metadata: M;
 };
 
 /** @since @next */
 export type HistoryContext<M> = {
-	readonly package: Package;
+	readonly package: Package.Any;
 	readonly releases: ReadonlyArray<ReleaseContext<M>>;
 };
 

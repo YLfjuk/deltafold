@@ -132,6 +132,13 @@ erases release history.
   free-form input from the person appears in a result.
 - **EXEC-14.** Timeouts never limit the wait for a person. Cancellation ends the
   wait and tells the interaction to stop asking.
+- **EXEC-15.** Consumers can observe a run as it happens: its steps, each
+  action's phases and outcome, and progress counted in the optimized plan's
+  steps and actions. A dry run reports only what it evaluates. Observation never
+  changes outcomes, and a failing observer never fails the run.
+- **EXEC-16.** Observers can be attached to a package, and attaching one never
+  starts work or emits events. The consumer passes them to the executor
+  explicitly, alongside observers of its own.
 
 ### Documents
 
