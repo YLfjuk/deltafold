@@ -32,17 +32,19 @@ export const widgets = Package.make("@acme/widgets", {
 });
 
 // WIDGETS_MODE=slow makes the first action wait for cancellation; WIDGETS_MODE=fail makes
-// the second action fail.
+// the second action fail; WIDGETS_MODE=manual makes a person perform the first action.
 const mode = process.env["WIDGETS_MODE"];
 
 export const handlers = [
-	Handler.promise(timeoutAction, async (_payload, { signal }) => {
-		if (mode !== "slow") return;
-		process.stderr.write("started\n");
-		await new Promise<void>((resolve) =>
-			signal.addEventListener("abort", () => resolve(), { once: true }),
-		);
-	}),
+	mode === "manual"
+		? Handler.manual(timeoutAction)
+		: Handler.promise(timeoutAction, async (_payload, { signal }) => {
+				if (mode !== "slow") return;
+				process.stderr.write("started\n");
+				await new Promise<void>((resolve) =>
+					signal.addEventListener("abort", () => resolve(), { once: true }),
+				);
+			}),
 	Handler.promise(retriesAction, async () => {
 		if (mode === "fail") throw new Error("disk full");
 	}),

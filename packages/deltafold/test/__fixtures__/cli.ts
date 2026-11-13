@@ -88,8 +88,11 @@ const consoleTo = (stdout: Array<string>, stderr: Array<string>): Console.Consol
 
 export type Terminal = {
 	readonly env?: Readonly<Record<string, string>>;
+	readonly stdinIsTerminal?: boolean;
 	readonly stdoutIsTerminal?: boolean;
 	readonly stderrIsTerminal?: boolean;
+	/** Lines a person types, in order. Reading past them is the end of input. */
+	readonly input?: ReadonlyArray<string>;
 };
 
 /** The exit code that the platform's main runner reports for an exit. */
@@ -110,6 +113,7 @@ export const terminal = (options: Terminal = {}) => {
 	const stdout: Array<string> = [];
 	const stderr: Array<string> = [];
 	const files = new Map<string, string>();
+	const typed = [...(options.input ?? [])];
 	const layer = Layer.mergeAll(
 		FileSystem.layerNoop({
 			writeFileString: (path, data) =>
@@ -121,6 +125,7 @@ export const terminal = (options: Terminal = {}) => {
 		Stdio.layerTest({
 			stdout: collect(stdout),
 			stderr: collect(stderr),
+			stdinIsTerminal: Effect.succeed(options.stdinIsTerminal ?? false),
 			stdoutIsTerminal: Effect.succeed(options.stdoutIsTerminal ?? false),
 			stderrIsTerminal: Effect.succeed(options.stderrIsTerminal ?? false),
 		}),
@@ -131,7 +136,21 @@ export const terminal = (options: Terminal = {}) => {
 				rows: Effect.succeed(40),
 				size: Effect.die("unused"),
 				readInput: Effect.die("unused"),
-				readLine: Effect.die("unused"),
+				// Yields before answering, so that unserialized prompts would interleave, and
+				// echoes the line to stderr as a terminal does.
+				readLine: Effect.suspend(() => {
+					const line = typed.shift();
+
+					return line === undefined
+						? Effect.fail(new Terminal.QuitError({}))
+						: Effect.as(
+								Effect.andThen(
+									Effect.yieldNow,
+									Effect.sync(() => stderr.push(`${line}\n`)),
+								),
+								line,
+							);
+				}),
 				display: () => Effect.void,
 			}),
 		),

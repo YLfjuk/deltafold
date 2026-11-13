@@ -98,6 +98,7 @@ export const destinations = (
 
 const statusLabels = {
 	completed: "completed",
+	declined: "declined",
 	skipped: "skipped",
 	failed: "failed",
 	interrupted: "interrupted",
@@ -110,12 +111,24 @@ const statusLabels = {
 
 const labelWidth = Math.max(...Object.values(statusLabels).map((label) => label.length));
 
+const needsConfirmation = (performer: "automated" | "manual") =>
+	performer === "manual" ? " (needs a person to confirm)" : "";
+
 /** Detail shared by report outcomes and observer outcome summaries. */
 const commonDetail = (value: Outcome | Observer.OutcomeSummary) => {
 	switch (value._tag) {
+		case "Completed":
+			return value.performer === "manual"
+				? value.confirmation === "verified"
+					? " (confirmed by a person, verified)"
+					: " (confirmed by a person)"
+				: "";
+		case "WouldExecute":
+			return needsConfirmation(value.performer);
+		case "Undetermined":
+			return `: ${value.reason}${needsConfirmation(value.performer)}`;
 		case "Skipped":
 		case "WouldSkip":
-		case "Undetermined":
 			return `: ${value.reason}`;
 		case "Interrupted":
 			return ` (${value.phase}, ${value.reason})${value.settled ? "" : ": may still be running"}`;
@@ -130,7 +143,7 @@ const actionLine = (tag: Outcome["_tag"], occurrence: string, detail: string, st
 	const colored =
 		status === "completed" || status === "would-execute"
 			? style.green(label)
-			: status === "failed" || status === "precondition-failed"
+			: status === "failed" || status === "precondition-failed" || status === "declined"
 				? style.red(label)
 				: status === "interrupted" || status === "undetermined"
 					? style.yellow(label)
@@ -222,6 +235,12 @@ export const report = (value: Report, style: Style) => {
 				`${plural(pending.length, "interrupted action")} had not stopped and may still be running.`,
 			),
 		);
+	}
+	const declined = value.occurrences.flatMap((entry) =>
+		entry.outcome._tag === "Declined" ? entry.occurrence.id : [],
+	);
+	if (declined.length > 0) {
+		lines.push(style.red(`Declined manual work stopped the run: ${declined.join(", ")}.`));
 	}
 	if (value.mode === "execute" && value.status !== "completed" && value.bodiesStarted) {
 		lines.push(

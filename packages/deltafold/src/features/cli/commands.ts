@@ -9,6 +9,7 @@ import {
 	ExecutionFailed,
 	ExecutionInterrupted,
 	HandlerCoverageError,
+	InteractionUnavailable,
 	runPromise,
 	type Report,
 } from "../execution/executor.ts";
@@ -19,6 +20,7 @@ import * as History from "../planning/history.ts";
 import type { RoutePolicy } from "../planning/resolve.ts";
 import * as Encode from "./encode.ts";
 import {
+	capped,
 	CliFailure,
 	fail,
 	invocation,
@@ -27,6 +29,7 @@ import {
 	schemaVersion,
 } from "./failure.ts";
 import { Json, make as makeOutput, NoColor, Output, stringify } from "./output.ts";
+import * as Prompt from "./prompt.ts";
 import * as Render from "./render.ts";
 
 /** What the command tree needs from `Cli.make`, with handler types erased. */
@@ -555,12 +558,19 @@ const migrateCommand = (
 					// oxlint-disable-next-line typescript/no-unsafe-type-assertion
 					const services = (yield* Effect.context()) as Context.Context<any>;
 					const controller = new AbortController();
+					// Manual work is confirmed only by a person at a terminal. Without one, the
+					// executor refuses to start a run that has manual handlers. A dry run never asks.
+					const terminal = yield* Prompt.make(output, () => controller.abort());
+					const interaction =
+						output.interactive && !input.dryRun
+							? { interaction: terminal.interaction }
+							: {};
 					// The package's observers run first, in attachment order; the CLI's progress
-					// observer runs last and is left out with --json.
+					// observer runs last, waits while a prompt is open, and is left out with --json.
 					const progress = Observer.effect((event) => {
 						const lines = Render.progress(event, output.err);
 
-						return lines.length === 0 ? Effect.void : output.diagnostic(lines);
+						return lines.length === 0 ? Effect.void : terminal.progress(lines);
 					});
 					const observers = output.json
 						? definition.package.observers
@@ -569,6 +579,7 @@ const migrateCommand = (
 						runPromise(Plan.withRuntimeCoverage(plan), {
 							handlers,
 							observers,
+							...interaction,
 							dryRun: input.dryRun,
 							signal: controller.signal,
 							services,
@@ -635,6 +646,39 @@ const migrateCommand = (
 					}
 
 					const { error } = settled;
+					if (error instanceof InteractionUnavailable) {
+						return yield* fail(name, {
+							reason: "interaction_required",
+							message: `${Render.plural(error.occurrences.length, "manual action")} need a person to confirm them in a terminal`,
+							status: "action_required",
+							exitCode: 2,
+							details: [
+								...capped(error.occurrences.map((occurrence) => occurrence.id)),
+								"Run migrate in a terminal, without --json and outside CI. Nothing ran.",
+							],
+							data: {
+								occurrences: error.occurrences.map((occurrence) => ({
+									id: occurrence.id,
+									action: occurrence.action.id,
+									kind: occurrence.action.kind,
+									description: occurrence.action.description,
+									migration: occurrence.migration.id,
+								})),
+							},
+							next: [
+								{
+									purpose: "dry-run",
+									label: "Check preconditions without running actions",
+									args: [
+										...selectionArgs("migrate", input),
+										"--route",
+										plan.route.id,
+										"--dry-run",
+									],
+								},
+							],
+						});
+					}
 					if (error instanceof HandlerCoverageError) {
 						return yield* fail(name, {
 							reason: "handler_coverage",
@@ -662,16 +706,26 @@ const migrateCommand = (
 						yield* printReport(error.report);
 
 						return yield* new CliFailure({
-							reason: "execution_failed",
+							reason:
+								error.failures.length === 0 && error.declined.length > 0
+									? "manual_work_declined"
+									: "execution_failed",
 							message: error.message,
 							exitCode: 1,
 						});
 					}
 					if (error instanceof ExecutionInterrupted) {
 						yield* printReport(error.report);
+						if (error.reason === "cancelled") {
+							// The CLI cancelled the run itself, at the end of input to a prompt. It
+							// ends like any other cancellation.
+							yield* output.diagnostic("Canceled.", "Warn");
+
+							return yield* Effect.interrupt;
+						}
 
 						return yield* new CliFailure({
-							reason: error.reason === "timeout" ? "timeout" : "execution_failed",
+							reason: "timeout",
 							message: error.message,
 							exitCode: 1,
 						});
