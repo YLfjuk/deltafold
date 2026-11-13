@@ -658,7 +658,8 @@ export type Destination = {
 	readonly routes: ReadonlyArray<string>;
 	/**
 	 * Present when more routes exist than route search explores. `routes` then lists the
-	 * routes found, cheapest first, and resolving needs an explicit `route`.
+	 * routes found, cheapest first, and `History.resolve` to this destination fails with
+	 * `TooManyRoutes`.
 	 */
 	readonly overLimit?: true;
 };
