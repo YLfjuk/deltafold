@@ -35,7 +35,8 @@ export type Outcome<E = unknown> =
 	| {
 			readonly _tag: "Interrupted";
 			readonly phase: Handler.Phase;
-			readonly reason: "cancelled" | "timeout";
+			/** `handler`: an Effect handler interrupted itself. */
+			readonly reason: InterruptReason;
 			/**
 			 * Whether the interrupted work is known to have stopped. An interrupted Promise
 			 * that has not settled within the grace period may still be changing external
@@ -147,7 +148,22 @@ export class ExecutionFailed<
 const ExecutionInterruptedBase = Data.TaggedError("ExecutionInterrupted");
 
 /**
- * Explicit cancellation or a configured timeout stopped execution.
+ * Why an execution or an occurrence was interrupted: explicit cancellation, a configured
+ * timeout, or an Effect handler that interrupted itself.
+ *
+ * @since @next
+ */
+export type InterruptReason = "cancelled" | "timeout" | "handler";
+
+const interruptedBy: Record<InterruptReason, string> = {
+	cancelled: "cancelled",
+	timeout: "stopped by a timeout",
+	handler: "interrupted by a handler",
+};
+
+/**
+ * Explicit cancellation, a configured timeout, or a handler's own interruption stopped
+ * execution.
  *
  * @since @next
  */
@@ -155,7 +171,7 @@ export class ExecutionInterrupted<
 	A extends Action.Any = Action.Any,
 	E = unknown,
 > extends ExecutionInterruptedBase<{
-	readonly reason: "cancelled" | "timeout";
+	readonly reason: InterruptReason;
 	readonly report: Report<A, E>;
 }> {
 	override get message() {
@@ -167,7 +183,7 @@ export class ExecutionInterrupted<
 				? ""
 				: ` ${pending.length} interrupted action(s) had not settled and may still be running.`;
 
-		return `Execution was ${this.reason === "cancelled" ? "cancelled" : "stopped by a timeout"}.${suffix}`;
+		return `Execution was ${interruptedBy[this.reason]}.${suffix}`;
 	}
 }
 
@@ -322,7 +338,7 @@ const forEachBranch = <R>(
 /** Registers a callback that cancels the execution. Only `runPromise` uses it. */
 type Subscribe = (cancel: () => void) => void;
 
-type StopReason = "failure" | "cancelled" | "timeout";
+type StopReason = "failure" | InterruptReason;
 
 type PhaseResult<T, E> =
 	| { readonly _tag: "Done"; readonly exit: Exit.Exit<T, E> }
@@ -390,7 +406,7 @@ const makeControl = (options: ControlOptions, subscribe: Subscribe | undefined) 
 const interrupted = <A extends Action.Any, E>(
 	plan: Plan.Plan<A, Plan.Coverage>,
 	mode: Report["mode"],
-	reason: "cancelled" | "timeout",
+	reason: InterruptReason,
 	outcomes: ReadonlyMap<string, Outcome<E>>,
 	bodiesStarted: boolean,
 ) =>
@@ -429,6 +445,20 @@ const execute = <A extends Action.Any, E, R>(
 
 						return;
 					}
+					if (
+						Exit.isFailure(checked.exit) &&
+						Cause.hasInterruptsOnly(checked.exit.cause)
+					) {
+						stop("handler");
+						outcomes.set(occurrence.id, {
+							_tag: "Interrupted",
+							phase: "precondition",
+							reason: "handler",
+							settled: true,
+						});
+
+						return;
+					}
 					if (Exit.isFailure(checked.exit)) {
 						stop("failure");
 						outcomes.set(occurrence.id, {
@@ -460,6 +490,17 @@ const execute = <A extends Action.Any, E, R>(
 						phase: "body",
 						reason: ran.reason,
 						settled: ran.settled,
+					});
+
+					return;
+				}
+				if (Exit.isFailure(ran.exit) && Cause.hasInterruptsOnly(ran.exit.cause)) {
+					stop("handler");
+					outcomes.set(occurrence.id, {
+						_tag: "Interrupted",
+						phase: "body",
+						reason: "handler",
+						settled: true,
 					});
 
 					return;
@@ -517,7 +558,7 @@ const dryRun = <A extends Action.Any, E, R>(
 ): Effect.Effect<Report<A, E>, ExecutionInterrupted<A, E>, R> =>
 	Effect.gen(function* () {
 		const outcomes = new Map<string, Outcome<E>>();
-		const { halt, runPhase } = yield* makeControl(options, subscribe);
+		const { halt, stop, runPhase } = yield* makeControl(options, subscribe);
 		let failedAt: string | undefined;
 
 		/** Returns whether the node would or might change state. */
@@ -574,6 +615,17 @@ const dryRun = <A extends Action.Any, E, R>(
 
 					return true;
 				}
+				if (Exit.isFailure(checked.exit) && Cause.hasInterruptsOnly(checked.exit.cause)) {
+					stop("handler");
+					outcomes.set(node.id, {
+						_tag: "Interrupted",
+						phase: "precondition",
+						reason: "handler",
+						settled: true,
+					});
+
+					return true;
+				}
 				if (Exit.isFailure(checked.exit)) {
 					failedAt = node.id;
 					outcomes.set(node.id, {
@@ -597,7 +649,7 @@ const dryRun = <A extends Action.Any, E, R>(
 		let dirty = false;
 		for (const step of plan.steps) dirty = yield* visit(step.node, dirty);
 
-		if (halt.reason === "cancelled" || halt.reason === "timeout") {
+		if (halt.reason !== undefined && halt.reason !== "failure") {
 			return yield* interrupted(plan, "dry-run", halt.reason, outcomes, false);
 		}
 

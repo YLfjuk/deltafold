@@ -1,5 +1,16 @@
 import { describe, expect, expectTypeOf, it, vi } from "@effect/vitest";
-import { Context, Duration, Effect, Fiber, Layer, Result, Schema } from "effect";
+import {
+	Cause,
+	Context,
+	Duration,
+	Effect,
+	Exit,
+	Fiber,
+	Layer,
+	Option,
+	Result,
+	Schema,
+} from "effect";
 import { TestClock } from "effect/testing";
 
 import { Action, Executor, Handler, History, Migration, Plan, Rule, Version } from "deltafold";
@@ -952,6 +963,81 @@ describe("Executor admission, cancellation, and settlement", () => {
 			settled: false,
 		});
 	});
+});
+
+const errorOf = <A, E>(exit: Exit.Exit<A, E>) =>
+	Option.getOrUndefined(Exit.isFailure(exit) ? Cause.findErrorOption(exit.cause) : Option.none());
+
+describe("Executor and a handler's own interruption", () => {
+	const first = touch("first");
+	const later = touch("later");
+	const history = History.make({
+		versions: [w1, w2],
+		migrations: [Migration.make("1-to-2", { from: w1, to: w2 })`${first}${later}`],
+	});
+	const interruptedPlan = Plan.withRuntimeCoverage(planOf(history, "2.0.0"));
+
+	it.effect("reports an interrupting body as interrupted, not failed", () =>
+		Effect.gen(function* () {
+			const exit = yield* Effect.exit(
+				Executor.effect(interruptedPlan, {
+					handlers: [
+						Handler.effect(first, () => Effect.interrupt),
+						Handler.effect(later, () => Effect.void),
+					],
+				}),
+			);
+			const error = errorOf(exit);
+
+			expect(error).toBeInstanceOf(Executor.ExecutionInterrupted);
+			expect(error).toMatchObject({
+				reason: "handler",
+				message: "Execution was interrupted by a handler.",
+			});
+			expect(
+				error instanceof Executor.ExecutionInterrupted && outcomes(error.report),
+			).toEqual({
+				first: "Interrupted",
+				later: "Unattempted",
+			});
+			expect(
+				error instanceof Executor.ExecutionInterrupted &&
+					error.report.occurrences[0]?.outcome,
+			).toEqual({ _tag: "Interrupted", phase: "body", reason: "handler", settled: true });
+		}),
+	);
+
+	it.effect("reports an interrupting precondition as interrupted in real and dry runs", () =>
+		Effect.gen(function* () {
+			const handlers = [
+				Handler.effect(first, () => Effect.void, { when: () => Effect.interrupt }),
+				Handler.effect(later, () => Effect.void),
+			];
+			for (const dryRun of [false, true]) {
+				const exit = yield* Effect.exit(
+					Executor.effect(interruptedPlan, { handlers, dryRun }),
+				);
+				const error = errorOf(exit);
+
+				expect(error).toBeInstanceOf(Executor.ExecutionInterrupted);
+				expect(
+					error instanceof Executor.ExecutionInterrupted && error.report,
+				).toMatchObject({
+					mode: dryRun ? "dry-run" : "execute",
+					status: "interrupted",
+				});
+				expect(
+					error instanceof Executor.ExecutionInterrupted &&
+						error.report.occurrences[0]?.outcome,
+				).toEqual({
+					_tag: "Interrupted",
+					phase: "precondition",
+					reason: "handler",
+					settled: true,
+				});
+			}
+		}),
+	);
 });
 
 describe("Executor dry runs", () => {
