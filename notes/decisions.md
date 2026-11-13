@@ -200,12 +200,19 @@ before. Its `sources` name the declared steps behind it, and that step's
 that a later step's declared work was already attempted. `Plan.Step.id` is the
 migration identifier, followed by `/revert` for a reverse migration.
 
-**Event contents.** Events hold identifiers, descriptions, and outcome tags. A
-failed outcome keeps only the error's string `_tag`; typed errors and causes stay
-in the report. Action descriptions therefore reach observers and must not hold
-secrets. `ActionSettled` arrives once for each occurrence with an outcome, and as
-`Unattempted` for an occurrence whose precondition passed but whose body did not
-start. Handler coverage failures emit no events. `run.id` comes from the
+**Event contents.** Events hold identifiers, descriptions, and outcome tags. Each
+outcome summary copies its fields explicitly, so a field added to the report's
+outcome reaches observers only after review. A failed outcome keeps only the
+error's string `_tag`; typed errors and causes stay in the report. Manual outcomes
+keep their performer and confirmation, which hold no input from the person.
+Action descriptions reach observers and must not hold secrets. `ActionSettled`
+arrives once for each occurrence with an outcome, and as `Unattempted` for an
+occurrence whose precondition passed but whose body or prompt did not start.
+Handler coverage failures and `InteractionUnavailable` emit no events.
+
+**Manual work.** The `confirmation` phase of `ActionPhaseStarted` is the signal
+that a run is waiting for a person; no separate prompt events exist. Observers
+receive events only and cannot answer a confirmation. `run.id` comes from the
 optional `runId`; observers shared by concurrent runs need it to tell runs apart.
 
 ## Documents

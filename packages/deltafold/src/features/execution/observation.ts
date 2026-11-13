@@ -127,9 +127,9 @@ const summaryOf = (outcome: Outcome): Observer.OutcomeSummary => {
 			return { _tag: "WouldSkip", reason: outcome.reason };
 		case "Undetermined":
 			return { _tag: "Undetermined", reason: outcome.reason, performer: outcome.performer };
-		case "PreconditionFailed":
-			return { _tag: "PreconditionFailed", errorTag: errorTagOf(outcome.error) };
 	}
+
+	return { _tag: "PreconditionFailed", errorTag: errorTagOf(outcome.error) };
 };
 
 const emptyCounts = (): { -readonly [K in keyof Observer.Counts]: number } => ({

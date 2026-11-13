@@ -529,7 +529,10 @@ const withRun = <T, E>(
 			grace: control.settleTimeout,
 		});
 
-		return yield* Effect.onInterrupt(body(control, emitter, outcomes), () => emitter.interrupted);
+		return yield* Effect.onInterrupt(
+			body(control, emitter, outcomes),
+			() => emitter.interrupted,
+		);
 	});
 
 const execute = (
@@ -646,10 +649,17 @@ const execute = (
 					if (handler === undefined) return;
 
 					if (handler.precondition !== undefined) {
-						const applies = yield* phase(occurrence, "precondition", handler.precondition);
+						const applies = yield* phase(
+							occurrence,
+							"precondition",
+							handler.precondition,
+						);
 						if (Option.isNone(applies)) return;
 						if (!applies.value) {
-							yield* finish(occurrence, { _tag: "Skipped", reason: handler.skipReason });
+							yield* finish(occurrence, {
+								_tag: "Skipped",
+								reason: handler.skipReason,
+							});
 
 							return;
 						}
@@ -706,14 +716,27 @@ const execute = (
 
 			const reason = halt.reason;
 			const status =
-				reason === undefined ? "completed" : reason === "failure" ? "failed" : "interrupted";
+				reason === undefined
+					? "completed"
+					: reason === "failure"
+						? "failed"
+						: "interrupted";
 			yield* emitter.runFinished(status);
-			const result = report(plan, "execute", status, outcomes, bodiesStarted, emitter.failures);
+			const result = report(
+				plan,
+				"execute",
+				status,
+				outcomes,
+				bodiesStarted,
+				emitter.failures,
+			);
 			if (reason === undefined) return result;
 			if (reason === "failure") {
 				return yield* new ExecutionFailed({
 					failures: result.occurrences.filter((entry) => entry.outcome._tag === "Failed"),
-					declined: result.occurrences.filter((entry) => entry.outcome._tag === "Declined"),
+					declined: result.occurrences.filter(
+						(entry) => entry.outcome._tag === "Declined",
+					),
 					report: result,
 				});
 			}
@@ -840,7 +863,14 @@ const dryRun = (
 
 				return yield* new ExecutionInterrupted({
 					reason,
-					report: report(plan, "dry-run", "interrupted", outcomes, false, emitter.failures),
+					report: report(
+						plan,
+						"dry-run",
+						"interrupted",
+						outcomes,
+						false,
+						emitter.failures,
+					),
 				});
 			}
 
@@ -861,11 +891,7 @@ const run = <
 	plan: Plan.Plan<A, C>,
 	options: Options<H, I, O>,
 	subscribe: Subscribe | undefined,
-): Effect.Effect<
-	Report<A, Errors<H, I>>,
-	ExecutionError<A, Errors<H, I>>,
-	Requirements<H, I, O>
-> =>
+): Effect.Effect<Report<A, Errors<H, I>>, ExecutionError<A, Errors<H, I>>, Requirements<H, I, O>> =>
 	// The plan's action union and the handler union determine these types; the
 	// implementation works on erased handlers.
 	// oxlint-disable-next-line typescript/no-unsafe-type-assertion
@@ -929,11 +955,7 @@ export const effect = <
 >(
 	plan: Plan.Plan<A, C>,
 	options: Options<H, I, O> & CoverageCheck<A, H, C>,
-): Effect.Effect<
-	Report<A, Errors<H, I>>,
-	ExecutionError<A, Errors<H, I>>,
-	Requirements<H, I, O>
-> =>
+): Effect.Effect<Report<A, Errors<H, I>>, ExecutionError<A, Errors<H, I>>, Requirements<H, I, O>> =>
 	run(plan, options, undefined);
 
 type ServicesOption<R> = [R] extends [never]

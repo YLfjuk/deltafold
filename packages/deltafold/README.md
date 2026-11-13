@@ -24,12 +24,12 @@ deltafold requires `effect` 4 as a peer dependency and a runtime with a global
 `AbortSignal`, such as Node.js 22.18 or later, Deno, Bun, or a browser. Type
 checking needs DOM or Node.js types for `AbortSignal`.
 
-| Entry point           | Contents                                                                                                                           |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Entry point           | Contents                                                                                                                                       |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | `deltafold`           | `Action`, `Change`, `Version`, `Migration`, `Rule`, `Shortcut`, `History`, `Package`, `Plan`, `Handler`, `Interaction`, `Executor`, `Observer` |
-| `deltafold/changelog` | `Changelog` and `Document` builders                                                                                                |
-| `deltafold/markdown`  | `Markdown.render`                                                                                                                  |
-| `deltafold/html`      | `Html.render`                                                                                                                      |
+| `deltafold/changelog` | `Changelog` and `Document` builders                                                                                                            |
+| `deltafold/markdown`  | `Markdown.render`                                                                                                                              |
+| `deltafold/html`      | `Html.render`                                                                                                                                  |
 
 ## Declare a history
 
@@ -342,6 +342,12 @@ at), and actions. Steps that rules emptied and noop steps are listed in
 `RunStarted` but not counted. Events carry identifiers and descriptions, never
 payloads or errors; the report keeps the full errors. Pass `runId` to tell runs
 apart in an observer shared by concurrent runs.
+
+A manual occurrence's `confirmation` phase lasts while the run waits for a
+person, so a progress display can show that it is waiting. Its outcome reports
+the performer and, once confirmed, whether the work was `asserted` or
+`verified`; a decline settles as `Declined`. Observers cannot answer for the
+person. A run that fails with `InteractionUnavailable` emits no events.
 
 ## Simplify routes with rules and shortcuts
 
