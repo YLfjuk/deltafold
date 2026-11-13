@@ -138,7 +138,10 @@ export type Hop =
 			readonly _tag: "Migrations";
 			readonly from: Version;
 			readonly to: Version;
-			/** Complementary migrations with these endpoints, in registration order. */
+			/**
+			 * The migration side that moves between these versions. Validation allows one
+			 * side per transition, so this holds exactly one entry.
+			 */
 			readonly migrations: ReadonlyArray<{
 				readonly migration: Migration.Any;
 				readonly direction: Direction;
