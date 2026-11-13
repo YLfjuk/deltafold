@@ -23,9 +23,12 @@ erases release history.
 
 ### Declarations
 
-- **DECL-1.** A change has a stable identity, a kind, a breaking flag, and a
-  description. It can record that it reverts earlier changes or backports
-  another change. Editing its description keeps its identity.
+- **DECL-1.** A change has a stable identity, a description, and metadata whose
+  fields and meaning the consumer defines. The core stores change metadata but
+  never interprets it. A change can record that it reverts earlier changes or
+  backports another change. Editing its description keeps its identity.
+- **DECL-1a.** Changes declared through one shared definition must all have the
+  metadata shape that definition requires.
 - **DECL-2.** An action kind defines a payload and how to describe an action of
   that kind. Actions have stable identities, and one kind can have many
   independently handled actions.
@@ -123,9 +126,10 @@ erases release history.
 
 - **DOC-1.** The same declarations produce documents for unreleased changes, one
   release, a package's history, and the guide for a resolved plan.
-- **DOC-2.** Changes are grouped into configurable sections. Empty sections are
-  omitted, and unmatched changes appear in a catch-all section unless it is
-  disabled.
+- **DOC-2.** Changes are grouped into configurable sections that select changes
+  by their metadata. Empty sections are omitted, and unmatched changes appear in
+  a catch-all section unless it is disabled. Without configured sections, a
+  release lists all of its changes in one section.
 - **DOC-3.** A history keeps every historical change, including reverted ones, and
   is titled with the package name. A guide omits instructions that optimization
   removed, keeps shared and prose-only instructions, and can explain the

@@ -1,7 +1,7 @@
 import { Array as Arr, Data, Order, Result, SemVer } from "effect";
 
 import type * as Action from "../../foundation/action.ts";
-import { isChange, type Change } from "../../foundation/change.ts";
+import * as Change from "../../foundation/change.ts";
 import type { Prose } from "../../foundation/instruction.ts";
 import type { Coverage, GuideItem, Plan, Step } from "../../foundation/plan.ts";
 import type { Release, Version } from "../../foundation/version.ts";
@@ -10,7 +10,8 @@ import * as Document from "./document.ts";
 import { asRelease, blocksOf, insertAll } from "./sections.ts";
 
 /**
- * A change section of a release. The first section whose `select` matches wins.
+ * A change section of a release. The first section whose `select` matches wins. Selectors
+ * read the metadata that the consumer declared on each change.
  *
  * @since @next
  */
@@ -18,27 +19,14 @@ export type SectionDefinition = {
 	readonly _tag: "ChangelogSection";
 	readonly id: string;
 	readonly title: string;
-	readonly select: (change: Change) => boolean;
+	readonly select: (change: Change.Change) => boolean;
 };
 
 /** @since @next */
 export const section = (
 	id: string,
-	options: { readonly title: string; readonly select: (change: Change) => boolean },
+	options: { readonly title: string; readonly select: (change: Change.Change) => boolean },
 ): SectionDefinition => ({ _tag: "ChangelogSection", id, ...options });
-
-/**
- * The sections used when `Changelog.make` receives none.
- *
- * @since @next
- */
-export const defaultSections: ReadonlyArray<SectionDefinition> = [
-	section("breaking", { title: "Breaking changes", select: (change) => change.breaking }),
-	section("added", { title: "Features", select: (change) => change.kind === "added" }),
-	section("changed", { title: "Changes", select: (change) => change.kind === "changed" }),
-	section("removed", { title: "Removals", select: (change) => change.kind === "removed" }),
-	section("fixed", { title: "Fixes", select: (change) => change.kind === "fixed" }),
-];
 
 /**
  * Release metadata does not match the package history.
@@ -73,7 +61,7 @@ export type Changelog<M> = {
 	readonly plugins: ReadonlyArray<Document.Plugin<M>>;
 	/** A document for changes that are not assigned to a release yet. */
 	readonly change: (
-		change: Change | ReadonlyArray<Change>,
+		change: Change.Any | ReadonlyArray<Change.Any>,
 		options?: { readonly title?: string },
 	) => Document.Document;
 	/** The section for one release. */
@@ -98,7 +86,10 @@ export type Changelog<M> = {
 export type Options<M> = {
 	readonly sections?: ReadonlyArray<SectionDefinition>;
 	readonly plugins?: ReadonlyArray<Document.Plugin<M>>;
-	/** The section for unmatched changes, or `false` to leave them out. */
+	/**
+	 * The section for changes that no section selects, or `false` to leave them out. Its
+	 * title defaults to "Changes" without `sections` and to "Other changes" with them.
+	 */
 	readonly other?: { readonly title: string } | false;
 };
 
@@ -109,7 +100,7 @@ const paragraphsOf = (text: string): ReadonlyArray<Document.Paragraph> =>
 		.filter((part) => part !== "")
 		.map((part) => Document.Paragraph(part));
 
-const changeList = (changes: ReadonlyArray<Change>) =>
+const changeList = (changes: ReadonlyArray<Change.Any>) =>
 	Document.List(changes.map((change) => paragraphsOf(change.description)));
 
 const knows = (pkg: Package, version: Version) =>
@@ -192,14 +183,21 @@ const stepId = (step: Step) =>
 	step.direction === "forward" ? step.migration.id : `${step.migration.id}/revert`;
 
 /**
- * Configures sections and plugins for changelog documents.
+ * Configures sections and plugins for changelog documents. Without `sections`, a release
+ * lists all of its changes in one "Changes" section.
  *
  * @example
  * ```ts
  * const changelog = Changelog.make<ReleaseMetadata>({
  * 	sections: [
- * 		Changelog.section("breaking", { title: "Breaking changes", select: (change) => change.breaking }),
- * 		Changelog.section("fixes", { title: "Fixes", select: (change) => change.kind === "fixed" }),
+ * 		Changelog.section("breaking", {
+ * 			title: "Breaking changes",
+ * 			select: (change) => change.metadata.breaking === true,
+ * 		}),
+ * 		Changelog.section("fixes", {
+ * 			title: "Fixes",
+ * 			select: (change) => change.metadata.kind === "fixed",
+ * 		}),
  * 	],
  * 	plugins: [contributorsPlugin],
  * });
@@ -209,13 +207,15 @@ const stepId = (step: Step) =>
  * @since @next
  */
 export const make = <M = never>(options: Options<M> = {}): Changelog<M> => {
-	const sections = options.sections ?? defaultSections;
+	const sections = options.sections ?? [];
 	const plugins = options.plugins ?? [];
-	const other = options.other === undefined ? { title: "Other changes" } : options.other;
+	const other = options.other ?? { title: sections.length === 0 ? "Changes" : "Other changes" };
 
-	const changeSections = (changes: ReadonlyArray<Change>): ReadonlyArray<Document.Section> => {
-		const grouped = new Map<string, Array<Change>>();
-		const unmatched: Array<Change> = [];
+	const changeSections = (
+		changes: ReadonlyArray<Change.Any>,
+	): ReadonlyArray<Document.Section> => {
+		const grouped = new Map<string, Array<Change.Any>>();
+		const unmatched: Array<Change.Any> = [];
 		for (const change of changes) {
 			const match = sections.find((definition) => definition.select(change));
 			if (match === undefined) {
@@ -285,7 +285,7 @@ export const make = <M = never>(options: Options<M> = {}): Changelog<M> => {
 		sections,
 		plugins,
 		change: (input, changeOptions = {}) => {
-			const changes = isChange(input) ? [input] : input;
+			const changes = Arr.ensure(input);
 
 			return {
 				_tag: "Document",

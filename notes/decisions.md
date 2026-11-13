@@ -17,6 +17,19 @@ definition. Handlers bind to action instances, never to change records.
 same change records. A matching change identifier never deduplicates action
 execution.
 
+**Headless changes.** A change carries consumer-defined `metadata`, such as a
+classification, a breaking flag, or a version bump. deltafold stores and
+compares it but assigns it no meaning. `Change.make(id)` declares a change
+without metadata, `Change.make(id, metadata)` infers the metadata type, and
+`Change.define<Metadata>()` returns a factory that requires one metadata type.
+Relationships (`reverts`, `backportOf`) are a separate argument, so they never
+collide with metadata field names. Changelog sections select changes through
+their metadata, and the default changelog lists all changes in one "Changes"
+section. Release logic stays outside the core: reading bumps, choosing a
+version, finding pending changes, assigning them to a release, and publishing.
+The core models membership (`Version.changes`), migration coverage
+(`Migration.addresses`), and ancestry (`previous`).
+
 **No route is not no work.** A missing route fails as `UnsupportedRoute`.
 `Migration.noop` is the only way to declare a supported zero-work transition. A
 migration with no prose and no actions, including one whose groups are all
@@ -297,7 +310,9 @@ These work today but need confirmation before 1.0:
 - Which retry and rollback configuration, undo order, and recovery after a
   partially failed body?
 - What logging bridge do Promise callbacks receive?
-- Final change-kind vocabulary and downgrade guide naming.
+- Whether to ship optional change classification presets, such as changelog
+  sections that read conventional metadata fields, and which fields they use.
+- Downgrade guide naming.
 - CLI packaging: a separate `@deltafold/cli` package, or `deltafold/cli` with
   `deltafold/cli/node`. TypeScript entry loading, option spellings, and the
   exit-code taxonomy.

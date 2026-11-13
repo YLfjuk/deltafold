@@ -42,10 +42,9 @@ const renameTimeout = RenameKey.make("rename-timeout", {
 	to: "requestTimeout",
 });
 
-const timeoutRenamed = Change.make("2026-11-06.rename-timeout", {
-	kind: "changed",
-	breaking: true,
-})`
+const WidgetsChange = Change.define<{ readonly breaking: boolean }>();
+
+const timeoutRenamed = WidgetsChange.make("2026-11-06.rename-timeout", { breaking: true })`
 	Rename the timeout option to requestTimeout.
 `;
 
@@ -202,7 +201,14 @@ describe("README examples", () => {
 	it("renders the guide and the changelog", () => {
 		const resolved = History.resolve(history, { from: "1.0.0", to: "2.0.0" });
 		if (Result.isFailure(resolved)) throw resolved.failure;
-		const changelog = Changelog.make<{ readonly date: string }>();
+		const changelog = Changelog.make<{ readonly date: string }>({
+			sections: [
+				Changelog.section("breaking", {
+					title: "Breaking changes",
+					select: (change) => change.metadata.breaking === true,
+				}),
+			],
+		});
 
 		expect(Markdown.render(changelog.upgrade(resolved.success, { package: widgets }))).toBe(
 			"# Upgrade @acme/widgets from 1.0.0 to 2.0.0\n\n## 1.0.0 to 2.0.0\n\nRename the timeout option. Its value stays in milliseconds.\n",

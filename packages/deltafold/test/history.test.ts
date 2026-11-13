@@ -915,9 +915,9 @@ describe("prose ownership in resolved guides", () => {
 
 describe("template prose", () => {
 	it("removes indentation after a first line on the opening backtick and surrounding blank lines", () => {
-		const inline = Change.make("inline", { kind: "changed" })`Rename the option.
+		const inline = Change.make("inline")`Rename the option.
 			Then restart the service.`;
-		const padded = Change.make("padded", { kind: "changed" })`
+		const padded = Change.make("padded")`
 
 			Rename the option.
 

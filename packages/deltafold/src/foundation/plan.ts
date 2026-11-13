@@ -1,5 +1,5 @@
 import type * as Action from "./action.ts";
-import type { Change } from "./change.ts";
+import type * as Change from "./change.ts";
 import type { Instruction, Text } from "./instruction.ts";
 import type * as Migration from "./migration.ts";
 import type * as Rule from "./rule.ts";
@@ -187,7 +187,7 @@ export type Plan<A extends Action.Any = Action.Any, C extends Coverage = "static
 	/** Occurrences in plan order. */
 	readonly occurrences: ReadonlyArray<Occurrence<A>>;
 	/** The changes addressed by the route's migrations. */
-	readonly changes: ReadonlyArray<Change>;
+	readonly changes: ReadonlyArray<Change.Any>;
 	readonly explanations: ReadonlyArray<Explanation>;
 	/**
 	 * Whether executors check handler coverage only at run time. Plans resolved from a

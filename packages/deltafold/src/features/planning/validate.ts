@@ -1,7 +1,7 @@
 import { Array as Arr, Equal, Graph, Option, Order } from "effect";
 
 import type * as Action from "../../foundation/action.ts";
-import type { Change } from "../../foundation/change.ts";
+import type * as Change from "../../foundation/change.ts";
 import type * as Migration from "../../foundation/migration.ts";
 import type * as Rule from "../../foundation/rule.ts";
 import type * as Shortcut from "../../foundation/shortcut.ts";
@@ -69,11 +69,10 @@ export const stepsOf = (content: Migration.Content): ReadonlyArray<Action.Step> 
 	);
 
 /** Whether two definitions with the same identifier describe the same change. */
-const sameDefinition = (self: Change, that: Change): boolean =>
+const sameDefinition = (self: Change.Any, that: Change.Any): boolean =>
 	self === that ||
 	(self.id === that.id &&
-		self.kind === that.kind &&
-		self.breaking === that.breaking &&
+		Equal.equals(self.metadata, that.metadata) &&
 		self.description === that.description &&
 		self.backportOf?.id === that.backportOf?.id &&
 		self.reverts.length === that.reverts.length &&
@@ -170,8 +169,8 @@ export const validate = (declarations: Declarations): ReadonlyArray<Issue> => {
 	}
 
 	// Change definitions.
-	const changes = new Map<string, Change>();
-	const visitChange = (change: Change) => {
+	const changes = new Map<string, Change.Any>();
+	const visitChange = (change: Change.Any) => {
 		const known = changes.get(change.id);
 		if (known !== undefined) {
 			if (!sameDefinition(known, change)) {

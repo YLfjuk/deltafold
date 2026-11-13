@@ -50,10 +50,9 @@ const renameTimeout = RenameKey.make("rename-timeout", {
 	to: "requestTimeout",
 });
 
-const timeoutRenamed = Change.make("2026-11-06.rename-timeout", {
-	kind: "changed",
-	breaking: true,
-})`
+const WidgetsChange = Change.define<{ readonly breaking: boolean }>();
+
+const timeoutRenamed = WidgetsChange.make("2026-11-06.rename-timeout", { breaking: true })`
 	Rename the timeout option to requestTimeout.
 `;
 
@@ -67,6 +66,12 @@ const toV2 = Migration.make("1.0.0-to-2.0.0", { from: v1, to: v2, addresses: [ti
 export const history = History.make({ versions: [v1, v2], migrations: [toV2] });
 export const widgets = Package.make("@acme/widgets", { history });
 ```
+
+A change records one logical change in prose. Its metadata belongs to you:
+deltafold stores it but never interprets it. `Change.make(id)` declares a
+change without metadata, `Change.make(id, metadata)` infers the metadata type
+from the value, and `Change.define<Metadata>()` returns a factory whose
+changes all share one metadata type.
 
 `Version.changes` records what shipped in a release. `Migration.addresses`
 records which changes a transition handles. `Migration.instruction(action)`
@@ -264,7 +269,14 @@ it covers.
 import { Changelog } from "deltafold/changelog";
 import * as Markdown from "deltafold/markdown";
 
-const changelog = Changelog.make<{ date: string }>();
+const changelog = Changelog.make<{ date: string }>({
+	sections: [
+		Changelog.section("breaking", {
+			title: "Breaking changes",
+			select: (change) => change.metadata.breaking === true,
+		}),
+	],
+});
 
 Markdown.render(changelog.upgrade(plan, { package: widgets }));
 Markdown.render(
@@ -283,7 +295,9 @@ Markdown.render(
 history as `Version.withMetadata` annotations. Missing, duplicate, or unrelated
 annotations throw `ReleaseMetadataError`.
 
-`Changelog.make` configures change sections and plugins.
+`Changelog.make` configures change sections and plugins. Each section selects
+changes by their metadata, and changes that no section selects go to "Other
+changes". Without sections, a release lists all of its changes under "Changes".
 `Document.Plugin.make` adds content at `Document.Title.pre`,
 `Document.Title.post`, `Document.Body.pre`, or `Document.Body.post`, once per
 release or once per history. `Html.render` from `deltafold/html` renders the

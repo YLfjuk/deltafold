@@ -114,13 +114,16 @@ const changelog = Changelog.make<ReleaseMetadata>({
 	sections: [
 		Changelog.section("breaking", {
 			title: "Breaking changes",
-			select: (change) => change.breaking,
+			select: (change) => change.metadata.breaking === true,
 		}),
 		Changelog.section("features", {
 			title: "Features",
-			select: (change) => change.kind === "added",
+			select: (change) => change.metadata.kind === "added",
 		}),
-		Changelog.section("fixes", { title: "Fixes", select: (change) => change.kind === "fixed" }),
+		Changelog.section("fixes", {
+			title: "Fixes",
+			select: (change) => change.metadata.kind === "fixed",
+		}),
 	],
 	plugins: [commitPlugin, contributorsPlugin, summaryPlugin],
 });
@@ -363,7 +366,15 @@ describe("scenario 14: document structure and escaping", () => {
 			at: Document.Body.post,
 			resolve: () => Document.Section("fixed", { title: "More fixes" }),
 		});
-		const strict = Changelog.make<ReleaseMetadata>({ plugins: [duplicate] });
+		const strict = Changelog.make<ReleaseMetadata>({
+			sections: [
+				Changelog.section("fixed", {
+					title: "Fixes",
+					select: (change) => change.metadata.kind === "fixed",
+				}),
+			],
+			plugins: [duplicate],
+		});
 
 		expect(() => Markdown.render(strict.release(widgets, release101))).toThrow(
 			'Section "fixed" appears more than once in release "1.0.1".',
@@ -372,7 +383,7 @@ describe("scenario 14: document structure and escaping", () => {
 			sections: [
 				Changelog.section("fixes", {
 					title: "Fixes",
-					select: (change) => change.kind === "fixed",
+					select: (change) => change.metadata.kind === "fixed",
 				}),
 			],
 		});
@@ -431,7 +442,7 @@ describe("scenario 14: document structure and escaping", () => {
 		});
 
 		expect(Markdown.render(ordered.release(widgets, release101))).toBe(
-			"first-title\n\nsecond-title\n\n# 1.0.1\n\nfirst-body\n\nsecond-body\n\n## Fixes\n\n- Escape header values.\n",
+			"first-title\n\nsecond-title\n\n# 1.0.1\n\nfirst-body\n\nsecond-body\n\n## Changes\n\n- Escape header values.\n",
 		);
 	});
 

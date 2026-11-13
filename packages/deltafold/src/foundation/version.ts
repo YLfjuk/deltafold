@@ -1,6 +1,6 @@
 import { Predicate } from "effect";
 
-import type { Change } from "./change.ts";
+import type * as Change from "./change.ts";
 
 /** @since @next */
 export type Version = {
@@ -13,13 +13,13 @@ export type Version = {
 	 */
 	readonly previous: Version | undefined;
 	/** The changes that shipped in this release. */
-	readonly changes: ReadonlyArray<Change>;
+	readonly changes: ReadonlyArray<Change.Any>;
 };
 
 /** @since @next */
 export type Options = {
 	readonly previous?: Version;
-	readonly changes: ReadonlyArray<Change>;
+	readonly changes: ReadonlyArray<Change.Any>;
 };
 
 /**

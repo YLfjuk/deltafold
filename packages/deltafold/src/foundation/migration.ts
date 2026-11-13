@@ -2,7 +2,7 @@ import { Predicate } from "effect";
 
 import type * as Action from "./action.ts";
 import { isAction, isParallel, isRef, isSequence } from "./action.ts";
-import type { Change } from "./change.ts";
+import type * as Change from "./change.ts";
 import { instruction, isInstruction, type Text } from "./instruction.ts";
 import { describeValue, dedent, isScalar, type Scalar } from "./template.ts";
 import type { Version } from "./version.ts";
@@ -33,7 +33,7 @@ export type Migration<A extends Action.Any = Action.Any> = {
 	readonly from: Version;
 	readonly to: Version;
 	/** The logical changes this transition handles. */
-	readonly addresses: ReadonlyArray<Change>;
+	readonly addresses: ReadonlyArray<Change.Any>;
 	/** Whether this is an explicit zero-work transition. */
 	readonly noop: boolean;
 	/** Author-declared cost, used only by the `lowest-cost` route policy. */
@@ -63,7 +63,7 @@ export type ActionsOf<M> = M extends Migration<infer A> ? A : never;
 export type Options = {
 	readonly from: Version;
 	readonly to: Version;
-	readonly addresses?: ReadonlyArray<Change>;
+	readonly addresses?: ReadonlyArray<Change.Any>;
 	readonly cost?: number;
 };
 

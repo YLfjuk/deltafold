@@ -1,7 +1,7 @@
 import { Array as Arr, Graph, Order, Result, SemVer } from "effect";
 
 import type * as Action from "../../foundation/action.ts";
-import type { Change } from "../../foundation/change.ts";
+import type * as Change from "../../foundation/change.ts";
 import type * as Migration from "../../foundation/migration.ts";
 import type {
 	Direction,
@@ -346,7 +346,7 @@ const buildPlan = (
 		};
 	});
 
-	const changes: Array<Change> = [];
+	const changes: Array<Change.Any> = [];
 	for (const member of members) {
 		for (const change of member.migration.addresses) {
 			if (!changes.some((known) => known.id === change.id)) changes.push(change);
