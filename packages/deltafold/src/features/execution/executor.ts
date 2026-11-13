@@ -231,7 +231,10 @@ export type Options<H extends Handler.Any> = {
 	readonly settleTimeout?: Duration.Input;
 };
 
-type Resolved = Map<string, Handler.Any>;
+/** A handler as the executor runs it: its action is erased, its channels are not. */
+type Internal<E, R> = Handler.Handler<Action.Any, E, R>;
+
+type Resolved<E, R> = Map<string, Internal<E, R>>;
 
 const describeReplaces = (occurrence: Occurrence) =>
 	occurrence.origin._tag === "Replacement"
@@ -241,18 +244,18 @@ const describeReplaces = (occurrence: Occurrence) =>
 			}))
 		: [];
 
-const coverage = (
+const coverage = <E, R>(
 	plan: Plan.Any,
-	handlers: ReadonlyArray<Handler.Any>,
-): { readonly resolved: Resolved; readonly issues: ReadonlyArray<CoverageIssue> } => {
-	const byAction = new Map<string, Array<Handler.Any>>();
+	handlers: ReadonlyArray<Internal<E, R>>,
+): { readonly resolved: Resolved<E, R>; readonly issues: ReadonlyArray<CoverageIssue> } => {
+	const byAction = new Map<string, Array<Internal<E, R>>>();
 	for (const handler of handlers) {
 		const list = byAction.get(handler.action.id) ?? [];
 		list.push(handler);
 		byAction.set(handler.action.id, list);
 	}
 
-	const resolved: Resolved = new Map();
+	const resolved: Resolved<E, R> = new Map();
 	const issues: Array<CoverageIssue> = [];
 	for (const occurrence of plan.occurrences) {
 		const issue = (tag: CoverageIssue["_tag"]) =>
@@ -310,10 +313,10 @@ const failureOf = <E>(cause: Cause.Cause<E>) => ({
 	cause,
 });
 
-const forEachBranch = (
+const forEachBranch = <R>(
 	branches: ReadonlyArray<Node>,
 	concurrency: Action.Concurrency,
-	run: (node: Node) => Effect.Effect<void, never, any>,
+	run: (node: Node) => Effect.Effect<void, never, R>,
 ) => Effect.forEach(branches, run, { concurrency, discard: true });
 
 /** Registers a callback that cancels the execution. Only `runPromise` uses it. */
@@ -321,16 +324,18 @@ type Subscribe = (cancel: () => void) => void;
 
 type StopReason = "failure" | "cancelled" | "timeout";
 
-type PhaseResult<T> =
-	| { readonly _tag: "Done"; readonly exit: Exit.Exit<T, unknown> }
+type PhaseResult<T, E> =
+	| { readonly _tag: "Done"; readonly exit: Exit.Exit<T, E> }
 	| {
 			readonly _tag: "Interrupted";
 			readonly reason: "cancelled" | "timeout";
 			readonly settled: boolean;
 	  };
 
+type ControlOptions = Pick<Options<never>, "timeout" | "settleTimeout">;
+
 /** Admission state, cancellation, and timeouts shared by real and dry runs. */
-const makeControl = (options: Options<Handler.Any>, subscribe: Subscribe | undefined) =>
+const makeControl = (options: ControlOptions, subscribe: Subscribe | undefined) =>
 	Effect.gen(function* () {
 		const halt: { reason: StopReason | undefined } = { reason: undefined };
 		const cancelled = yield* Deferred.make<"cancelled">();
@@ -345,9 +350,9 @@ const makeControl = (options: Options<Handler.Any>, subscribe: Subscribe | undef
 		});
 
 		/** Runs one precondition or body, racing it against cancellation and the timeout. */
-		const runPhase = <T>(
-			work: Effect.Effect<T, unknown, any>,
-		): Effect.Effect<PhaseResult<T>, never, any> =>
+		const runPhase = <T, E, R>(
+			work: Effect.Effect<T, E, R>,
+		): Effect.Effect<PhaseResult<T, E>, never, R> =>
 			Effect.gen(function* () {
 				let settled = true;
 				const tracked = work.pipe(
@@ -382,11 +387,11 @@ const makeControl = (options: Options<Handler.Any>, subscribe: Subscribe | undef
 		return { halt, stop, runPhase };
 	});
 
-const interrupted = <A extends Action.Any>(
+const interrupted = <A extends Action.Any, E>(
 	plan: Plan.Plan<A, Plan.Coverage>,
 	mode: Report["mode"],
 	reason: "cancelled" | "timeout",
-	outcomes: ReadonlyMap<string, Outcome>,
+	outcomes: ReadonlyMap<string, Outcome<E>>,
 	bodiesStarted: boolean,
 ) =>
 	new ExecutionInterrupted({
@@ -394,14 +399,14 @@ const interrupted = <A extends Action.Any>(
 		report: report(plan, mode, "interrupted", outcomes, bodiesStarted),
 	});
 
-const execute = (
-	plan: Plan.Any,
-	resolved: Resolved,
-	options: Options<Handler.Any>,
+const execute = <A extends Action.Any, E, R>(
+	plan: Plan.Plan<A, Plan.Coverage>,
+	resolved: Resolved<E, R>,
+	options: ControlOptions,
 	subscribe: Subscribe | undefined,
-): Effect.Effect<Report, ExecutionFailed | ExecutionInterrupted, any> =>
+): Effect.Effect<Report<A, E>, ExecutionFailed<A, E> | ExecutionInterrupted<A, E>, R> =>
 	Effect.gen(function* () {
-		const outcomes = new Map<string, Outcome>();
+		const outcomes = new Map<string, Outcome<E>>();
 		const { halt, stop, runPhase } = yield* makeControl(options, subscribe);
 		let bodiesStarted = false;
 
@@ -472,7 +477,7 @@ const execute = (
 				outcomes.set(occurrence.id, { _tag: "Completed" });
 			});
 
-		const runNode = (node: Node): Effect.Effect<void, never, any> => {
+		const runNode = (node: Node): Effect.Effect<void, never, R> => {
 			switch (node._tag) {
 				case "Occurrence":
 					return runOccurrence(node);
@@ -504,19 +509,19 @@ const execute = (
 		return yield* interrupted(plan, "execute", halt.reason, outcomes, bodiesStarted);
 	});
 
-const dryRun = (
-	plan: Plan.Any,
-	resolved: Resolved,
-	options: Options<Handler.Any>,
+const dryRun = <A extends Action.Any, E, R>(
+	plan: Plan.Plan<A, Plan.Coverage>,
+	resolved: Resolved<E, R>,
+	options: ControlOptions,
 	subscribe: Subscribe | undefined,
-): Effect.Effect<Report, ExecutionInterrupted, any> =>
+): Effect.Effect<Report<A, E>, ExecutionInterrupted<A, E>, R> =>
 	Effect.gen(function* () {
-		const outcomes = new Map<string, Outcome>();
+		const outcomes = new Map<string, Outcome<E>>();
 		const { halt, runPhase } = yield* makeControl(options, subscribe);
 		let failedAt: string | undefined;
 
 		/** Returns whether the node would or might change state. */
-		const visit = (node: Node, dirty: boolean): Effect.Effect<boolean, never, any> =>
+		const visit = (node: Node, dirty: boolean): Effect.Effect<boolean, never, R> =>
 			Effect.gen(function* () {
 				if (node._tag === "Sequence") {
 					let current = dirty;
@@ -610,8 +615,13 @@ const run = <A extends Action.Any, C extends Plan.Coverage, H extends Handler.An
 	options: Options<H>,
 	subscribe: Subscribe | undefined,
 ): Effect.Effect<Report<A, Errors<H>>, ExecutionError<A, Errors<H>>, Requirements<H>> => {
-	const program = Effect.gen(function* () {
-		const checked = coverage(plan, options.handlers ?? []);
+	// Handlers are covariant in their errors and services, and `Errors<H>` and
+	// `Requirements<H>` collect them from each handler in `H`, so every handler fits this
+	// shape. From here on the compiler checks both channels.
+	const handlers: ReadonlyArray<Internal<Errors<H>, Requirements<H>>> = options.handlers ?? [];
+
+	return Effect.gen(function* () {
+		const checked = coverage(plan, handlers);
 		if (checked.issues.length > 0) {
 			return yield* new HandlerCoverageError({
 				issues: checked.issues,
@@ -619,7 +629,7 @@ const run = <A extends Action.Any, C extends Plan.Coverage, H extends Handler.An
 					plan,
 					options.dryRun === true ? "dry-run" : "execute",
 					"not-started",
-					new Map(),
+					new Map<string, Outcome<never>>(),
 					false,
 				),
 			});
@@ -629,15 +639,6 @@ const run = <A extends Action.Any, C extends Plan.Coverage, H extends Handler.An
 			? yield* dryRun(plan, checked.resolved, options, subscribe)
 			: yield* execute(plan, checked.resolved, options, subscribe);
 	});
-
-	// The plan's action union and the handler union determine these types; the
-	// implementation works on erased handlers.
-	// oxlint-disable-next-line typescript/no-unsafe-type-assertion, effecttsgo/unsafe-effect-type-assertion
-	return program as Effect.Effect<
-		Report<A, Errors<H>>,
-		ExecutionError<A, Errors<H>>,
-		Requirements<H>
-	>;
 };
 
 /**
