@@ -140,6 +140,21 @@ const resolve = (definition: Definition, selection: Selection, args: ReadonlyArr
 		);
 	});
 
+/** `--action-timeout` and `--settle-timeout` as given, for suggested commands. */
+const limitArgs = (input: {
+	readonly actionTimeout: Option.Option<Duration.Duration>;
+	readonly settleTimeout: Option.Option<Duration.Duration>;
+}) => [
+	...Option.match(input.actionTimeout, {
+		onNone: () => [],
+		onSome: (value) => ["--action-timeout", `${Duration.toMillis(value)}ms`],
+	}),
+	...Option.match(input.settleTimeout, {
+		onNone: () => [],
+		onSome: (value) => ["--settle-timeout", `${Duration.toMillis(value)}ms`],
+	}),
+];
+
 /** The arguments of a selection, without `--route` and `--policy`. */
 const selectionArgs = (command: string, selection: Selection) => [
 	command,
@@ -420,9 +435,20 @@ const changelogCommand = (definition: Definition, releases: () => ReadonlyArray<
 		(input) =>
 			withOutput(
 				Effect.gen(function* () {
-					const all = releases();
 					const pkg = definition.package;
 					const kind = Option.isSome(input.release) ? "release" : "history";
+					const all = yield* Effect.try({ try: releases, catch: Encode.error }).pipe(
+						Effect.catch((error) =>
+							fail(definition.name, {
+								reason: "invalid_release_metadata",
+								message: "Couldn't load the release metadata",
+								status: "error",
+								exitCode: 1,
+								details: [error.message],
+								data: { error },
+							}),
+						),
+					);
 					const document = yield* Effect.try({
 						try: () => {
 							if (Option.isNone(input.release))
@@ -524,6 +550,7 @@ const migrateCommand = (
 					const args = [
 						...selectionArgs("migrate", input),
 						...(input.dryRun ? ["--dry-run"] : []),
+						...limitArgs(input),
 					];
 					const plan = yield* resolve(definition, input, args);
 
@@ -622,9 +649,13 @@ const migrateCommand = (
 											"Warn",
 										);
 										const final = yield* Fiber.join(fiber);
+										// A run that failed before the interruption still carries its report.
 										if (final._tag === "Report")
 											yield* printReport(final.report);
-										else if (final.error instanceof ExecutionInterrupted)
+										else if (
+											final.error instanceof ExecutionInterrupted ||
+											final.error instanceof ExecutionFailed
+										)
 											yield* printReport(final.error.report);
 										yield* output.diagnostic("Canceled.", "Warn");
 									}),
@@ -674,6 +705,7 @@ const migrateCommand = (
 										"--route",
 										plan.route.id,
 										"--dry-run",
+										...limitArgs(input),
 									],
 								},
 							],
