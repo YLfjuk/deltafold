@@ -26,6 +26,9 @@ typecheck, build, and test. `pnpm run format` rewrites files to fix formatting.
 The `scripts` field of the root [package.json](package.json) lists the
 individual checks.
 
+Lint uses Effect's Oxlint integration. For editor setup and diagnostics,
+see the [Effect language service documentation](https://github.com/Effect-TS/tsgo#readme).
+
 CI runs the same scripts on Ubuntu and Windows, and builds and tests on the
 minimum and newest supported Node.js lines.
 

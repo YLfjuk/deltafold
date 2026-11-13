@@ -6,15 +6,16 @@
 		"build": "turbo run build",
 		"typecheck": "turbo run typecheck",
 		"test": "turbo run test",
-		"lint": "vp lint",
+		"lint": "effect-tsgo vp lint",
 		"format": "vp fmt",
 		"format:check": "vp fmt --check",
-		"check": "vp fmt --check && vp lint && turbo run typecheck build test",
+		"check": "vp fmt --check && effect-tsgo vp lint && turbo run typecheck build test",
 		"changeset": "changeset",
 		"version": "changeset version"
 	},
 	"devDependencies": {
 		"@changesets/cli": "catalog:",
+		"@effect/tsgo": "catalog:",
 		"turbo": "catalog:",
 		"typescript": "catalog:",
 		"vite-plus": "catalog:"
