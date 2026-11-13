@@ -319,13 +319,20 @@ lists it under `observation`. After cancellation or a timeout, the executor wait
 for each observer at most `settleTimeout`.
 
 A run emits `RunStarted`, then `StepStarted`, `ActionPhaseStarted` for each
-precondition, body, confirmation, and verification, `ActionSettled` with the outcome, `StepSettled`, and
-finally `RunFinished`. Every event carries progress counted in the optimized
+prepare phase, apply phase, confirmation, and verification that starts,
+`ActionSettled` with the outcome once the action's scope has closed,
+`StepSettled`, and finally `RunFinished`. Every event carries progress counted in the optimized
 plan: steps with actions, prose-only steps (which the executor does not wait
 at), and actions. Steps that rules emptied and noop steps are listed in
 `RunStarted` but not counted. Events carry identifiers and descriptions, never
 payloads or errors; the report keeps the full errors. Pass `runId` to tell runs
 apart in an observer shared by concurrent runs.
+
+A manual occurrence's `confirmation` phase lasts while the run waits for a
+person, so a progress display can show that it is waiting. Its outcome reports
+the performer and, once confirmed, whether the work was `asserted` or
+`verified`; a decline settles as `Declined`. Observers cannot answer for the
+person. A run that fails with `InteractionUnavailable` emits no events.
 
 ## Simplify routes with rules and shortcuts
 
