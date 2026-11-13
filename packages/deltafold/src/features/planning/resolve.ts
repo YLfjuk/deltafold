@@ -1,6 +1,5 @@
 import { Array as Arr, Graph, Order, Result, SemVer } from "effect";
 
-import type * as Action from "../../foundation/action.ts";
 import type * as Change from "../../foundation/change.ts";
 import type * as Migration from "../../foundation/migration.ts";
 import type {
@@ -16,6 +15,7 @@ import type {
 import type * as Shortcut from "../../foundation/shortcut.ts";
 import type { Version } from "../../foundation/version.ts";
 import { resolveGuide } from "./guide.ts";
+import { declaredOccurrenceId, routeHop, routeShortcut, routeStart } from "./identifiers.ts";
 import {
 	AmbiguousRoute,
 	ConflictingRewrites,
@@ -160,11 +160,11 @@ const families: ReadonlyArray<ReadonlySet<Edge["class"]>> = [
 ];
 
 const routeOf = (from: Version, edges: ReadonlyArray<Edge>): Route => {
-	let id = from.id;
+	let id = routeStart(from.id);
 	const hops: Array<Hop> = [];
 	for (const edge of edges) {
 		if (edge.shortcut === undefined) {
-			id += `>${edge.to.id}`;
+			id += routeHop(edge.to.id);
 			hops.push({
 				_tag: "Migrations",
 				from: edge.from,
@@ -173,7 +173,7 @@ const routeOf = (from: Version, edges: ReadonlyArray<Edge>): Route => {
 			});
 			continue;
 		}
-		id += `>[${edge.shortcut.id}]>${edge.to.id}`;
+		id += routeShortcut(edge.shortcut.id, edge.to.id);
 		hops.push({ _tag: "Shortcut", from: edge.from, to: edge.to, shortcut: edge.shortcut });
 	}
 
@@ -219,11 +219,6 @@ const enumerateRoutes = (
 
 	return Result.succeed([...routes.values()]);
 };
-
-const declaredOccurrenceId = (migration: Migration.Any, direction: Direction, action: Action.Any) =>
-	direction === "forward"
-		? `${migration.id}/${action.id}`
-		: `${migration.id}/revert/${action.id}`;
 
 const toNode = (items: ReadonlyArray<Item>): ReadonlyArray<Node> =>
 	items.flatMap((item): ReadonlyArray<Node> => {
@@ -384,13 +379,13 @@ const summaryOf = (candidate: Candidate): RouteSummary => ({
 
 /** Migration tokens of a route, with shortcut hops expanded to the route they replace. */
 const canonicalTokens = (candidate: Candidate) =>
-	candidate.edges
-		.flatMap((edge) =>
+	JSON.stringify(
+		candidate.edges.flatMap((edge) =>
 			edge.shortcut === undefined
-				? edge.members.map((member) => `${member.direction}:${member.migration.id}`)
-				: edge.shortcut.replaces.map((migration) => `forward:${migration.id}`),
-		)
-		.join(",");
+				? edge.members.map((member) => [member.direction, member.migration.id])
+				: edge.shortcut.replaces.map((migration) => ["forward", migration.id]),
+		),
+	);
 
 const shortcutCount = (candidate: Candidate) =>
 	candidate.edges.filter((edge) => edge.shortcut !== undefined).length;

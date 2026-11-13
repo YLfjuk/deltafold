@@ -151,6 +151,29 @@ const recording = (events: Array<string>) => (action: Action.Any) =>
 	Handler.effect(action, () => Effect.sync(() => events.push(action.id)));
 
 describe("Executor behavior", () => {
+	it.effect("runs each occurrence once when author identifiers contain separators", () =>
+		Effect.gen(function* () {
+			const events: Array<string> = [];
+			const first = touch("b/c");
+			const second = touch("c");
+			const history = History.make({
+				versions: [w1, w2, w3],
+				migrations: [
+					Migration.make("a", { from: w1, to: w2 })`${first}`,
+					Migration.make("a/b", { from: w2, to: w3 })`${second}`,
+				],
+			});
+			const record = recording(events);
+
+			const result = yield* Executor.effect(planOf(history), {
+				handlers: [record(first), record(second)],
+			});
+
+			expect(result.status).toBe("completed");
+			expect(events).toEqual(["b/c", "c"]);
+		}),
+	);
+
 	it.effect("runs mixed Promise, Effect, and module-produced handlers in plan order", () =>
 		Effect.gen(function* () {
 			const events: Array<string> = [];

@@ -36,6 +36,11 @@ export type Origin =
  */
 export type Occurrence<A extends Action.Any = Action.Any> = {
 	readonly _tag: "Occurrence";
+	/**
+	 * Unique within the plan. Built from the migration, direction, and action identifiers,
+	 * or from the rule and the replaced occurrences. Separator characters in author
+	 * identifiers are escaped with a backslash, so identifiers never collide.
+	 */
 	readonly id: string;
 	readonly action: A;
 	/** The migration whose step contains this occurrence. */
@@ -150,7 +155,8 @@ export type Hop =
 export type Route = {
 	/**
 	 * Identifies the route for explicit selection: version identifiers joined by `>`,
-	 * with shortcut hops written as `[shortcut-id]`.
+	 * with shortcut hops written as `[shortcut-id]`. A backslash escapes `\`, `>`, `[`,
+	 * and `]` inside identifiers, so a version `a>b` appears as `a\>b`.
 	 */
 	readonly id: string;
 	readonly hops: ReadonlyArray<Hop>;

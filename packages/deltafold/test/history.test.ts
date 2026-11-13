@@ -913,6 +913,117 @@ describe("prose ownership in resolved guides", () => {
 	});
 });
 
+const key = (id: string) => RenameKey.make(id, { target: "config", from: id, to: `${id}!` });
+
+const occurrenceIds = (plan: Plan.Any) => plan.occurrences.map((occurrence) => occurrence.id);
+
+describe("identifiers with separator characters", () => {
+	it("keeps occurrences of different migrations and actions apart", () => {
+		const w1 = Version.make("1", { changes: [] });
+		const w2 = Version.make("2", { previous: w1, changes: [] });
+		const w3 = Version.make("3", { previous: w2, changes: [] });
+		const history = History.make({
+			versions: [w1, w2, w3],
+			migrations: [
+				Migration.make("a", { from: w1, to: w2 })`${key("b/c")}`,
+				Migration.make("a/b", { from: w2, to: w3 })`${key("c")}`,
+			],
+		});
+
+		expect(occurrenceIds(success(History.resolve(history, { from: "1", to: "3" })))).toEqual([
+			"a/b\\/c",
+			"a\\/b/c",
+		]);
+	});
+
+	it("keeps the reverse direction distinct from a migration named like it", () => {
+		const w1 = Version.make("1", { changes: [] });
+		const w2 = Version.make("2", { previous: w1, changes: [] });
+		const x = key("x");
+		const reverse = History.make({
+			versions: [w1, w2],
+			migrations: [
+				Migration.withRevert(Migration.make("m", { from: w1, to: w2 })`${key("y")}`)`${x}`,
+			],
+		});
+		const forward = History.make({
+			versions: [w1, w2],
+			migrations: [Migration.make("m/revert", { from: w1, to: w2 })`${x}`],
+		});
+
+		expect(occurrenceIds(success(History.resolve(reverse, { from: "2", to: "1" })))).toEqual([
+			"m/revert/x",
+		]);
+		expect(occurrenceIds(success(History.resolve(forward, { from: "1", to: "2" })))).toEqual([
+			"m\\/revert/x",
+		]);
+	});
+
+	it("keeps a replacement apart from a declared occurrence with the same text", () => {
+		const w1 = Version.make("1", { changes: [] });
+		const w2 = Version.make("2", { previous: w1, changes: [] });
+		const w3 = Version.make("3", { previous: w2, changes: [] });
+		const b = key("b");
+		const c = key("c");
+		const history = History.make({
+			versions: [w1, w2, w3],
+			migrations: [
+				Migration.make("a", { from: w1, to: w2 })`${b}`,
+				Migration.make("r(a/b)", { from: w2, to: w3 })`${c}`,
+			],
+			rules: [Rule.replace("r", { match: [b], replacement: [c] })],
+		});
+
+		expect(occurrenceIds(success(History.resolve(history, { from: "1", to: "3" })))).toEqual([
+			"r(a/b)/c",
+			"r\\(a\\/b\\)/c",
+		]);
+	});
+
+	it("reports routes through differently named versions as ambiguous", () => {
+		const s = Version.make("s", { changes: [] });
+		const a = Version.make("a", { previous: s, changes: [] });
+		const b = Version.make("b", { previous: a, changes: [] });
+		const ab = Version.make("a>b", { previous: b, changes: [] });
+		const t = Version.make("t", { previous: ab, changes: [] });
+		const sa = Migration.make("s-a", { from: s, to: a })`${key("sa")}`;
+		const ab1 = Migration.make("a-b", { from: a, to: b })`${key("ab")}`;
+		const bt = Migration.make("b-t", { from: b, to: t })`${key("bt")}`;
+		const history = History.make({
+			versions: [s, a, b, ab, t],
+			migrations: [
+				sa,
+				ab1,
+				bt,
+				Migration.make("s-ab", { from: s, to: ab })`${key("s-ab")}`,
+				Migration.make("ab-t", { from: ab, to: t })`${key("ab-t")}`,
+			],
+			shortcuts: [
+				Shortcut.make("fast]", {
+					from: s,
+					to: t,
+					replaces: [sa, ab1, bt],
+					migrations: [Migration.make("s-t", { from: s, to: t })`${key("st")}`],
+				}),
+			],
+		});
+
+		const error = failure(History.resolve(history, { from: "s", to: "t" }));
+
+		const candidates = error._tag === "AmbiguousRoute" ? error.candidates : [];
+
+		expect(candidates).toHaveLength(3);
+		expect(candidates.map((candidate) => candidate.id)).toEqual(
+			expect.arrayContaining(["s>[fast\\]]>t", "s>a>b>t", "s>a\\>b>t"]),
+		);
+		expect(
+			occurrenceIds(
+				success(History.resolve(history, { from: "s", to: "t", route: "s>a\\>b>t" })),
+			),
+		).toEqual(["s-ab/s-ab", "ab-t/ab-t"]);
+	});
+});
+
 describe("template prose", () => {
 	it("removes indentation after a first line on the opening backtick and surrounding blank lines", () => {
 		const inline = Change.make("inline")`Rename the option.

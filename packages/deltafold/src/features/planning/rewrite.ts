@@ -4,6 +4,7 @@ import type * as Action from "../../foundation/action.ts";
 import type * as Migration from "../../foundation/migration.ts";
 import type { Occurrence } from "../../foundation/plan.ts";
 import type * as Rule from "../../foundation/rule.ts";
+import { replacementOccurrenceId } from "./identifiers.ts";
 
 /**
  * A top-level element of a route's sequential spine, or of one parallel branch. `step`
@@ -185,7 +186,7 @@ const replace = (rule: Rule.Any, items: ReadonlyArray<Item>, position: number): 
 	const make: MakeOccurrence = (action, instruction) => {
 		const occurrence: Occurrence = {
 			_tag: "Occurrence",
-			id: `${rule.id}(${removed.map((replaced) => replaced.id).join("+")})/${action.id}`,
+			id: replacementOccurrenceId(rule, removed, action),
 			action,
 			migration: first.migration,
 			direction: first.direction,

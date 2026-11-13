@@ -33,7 +33,9 @@ style follows the
 `<migration>/<action>` or `<migration>/revert/<action>`. It survives prose edits
 because it does not depend on position. A replacement's identifier is
 `<rule>(<replaced occurrence ids joined by +>)/<action>`, so chained replacements
-nest. Each migration side declares an action at most once.
+nest. A backslash escapes `\`, `/`, `(`, `)`, and `+` inside author identifiers,
+so distinct occurrences never share an identifier and author identifiers need no
+restrictions. Each migration side declares an action at most once.
 
 **Validation.** `History.make` never throws. `History.validate` returns every
 issue, sorted by tag, subject, and message, and resolution fails with
@@ -56,8 +58,9 @@ migration declared from the backport itself.
 
 **Route identifiers.** A route identifier is the version identifiers joined by
 `>`, with shortcut hops written as `[shortcut-id]`, for example
-`2.0.1>[fast-upgrade]>2.0.8`. Candidates are enumerated with Effect's `Graph`
-module.
+`2.0.1>[fast-upgrade]>2.0.8`. A backslash escapes `\`, `>`, `[`, and `]` inside
+identifiers, so distinct routes never share an identifier. Candidates are
+enumerated with Effect's `Graph` module.
 
 **Explicit selection.** When several candidates exist and neither `route` nor a
 `policy` picks exactly one, resolution fails with `AmbiguousRoute`. The error
