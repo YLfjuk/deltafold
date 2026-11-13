@@ -1,3 +1,4 @@
+import { recommended } from "@effect/tsgo/oxlint-presets";
 import { defineConfig } from "vite-plus";
 
 export default defineConfig({
@@ -64,6 +65,7 @@ export default defineConfig({
 		],
 	},
 	lint: {
+		extends: [recommended],
 		plugins: ["typescript", "unicorn", "oxc", "import", "vitest"],
 		categories: {
 			correctness: "error",

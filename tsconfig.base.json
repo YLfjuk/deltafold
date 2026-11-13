@@ -27,6 +27,7 @@
 		"plugins": [
 			{
 				"name": "@effect/language-service",
+				"diagnostics": false,
 				"noExternal": true,
 				"allowedUnstableApis": ["@effect/vitest#it"]
 			}
