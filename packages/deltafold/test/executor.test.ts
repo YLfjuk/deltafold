@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it, vi } from "@effect/vitest";
-import { Context, Duration, Effect, Fiber, Result, Schema } from "effect";
+import { Context, Duration, Effect, Fiber, Layer, Result, Schema } from "effect";
 import { TestClock } from "effect/testing";
 
 import { Action, Executor, Handler, History, Migration, Plan, Rule, Version } from "deltafold";
@@ -564,6 +564,45 @@ describe("Executor behavior", () => {
 			done: "Completed",
 			fails: "Failed",
 		});
+	});
+
+	it("supplies services from a layer and rejects with the layer's own build error", async () => {
+		class LayerFailed extends Error {
+			readonly _tag = "LayerFailed";
+		}
+		const updated: Array<string> = [];
+		const edit = touch("edit");
+		const history = History.make({
+			versions: [w1, w2],
+			migrations: [Migration.make("1-to-2", { from: w1, to: w2 })`${edit}`],
+		});
+		const handlers = [
+			Handler.promise(edit, async (payload, { editor }) => editor.update(payload.name), {
+				services: { editor: ConfigEditor },
+			}),
+		];
+		const working = Layer.succeed(ConfigEditor, {
+			update: async (target) => {
+				updated.push(target);
+			},
+		});
+		const broken = Layer.effect(ConfigEditor, Effect.fail(new LayerFailed()));
+
+		const report = await Executor.runPromise(planOf(history, "2.0.0"), {
+			handlers,
+			services: working,
+		});
+		const error: unknown = await Executor.runPromise(planOf(history, "2.0.0"), {
+			handlers,
+			services: broken,
+		}).then(
+			() => undefined,
+			(cause: unknown) => cause,
+		);
+
+		expect(outcomes(report)).toEqual({ edit: "Completed" });
+		expect(updated).toEqual(["edit"]);
+		expect(error).toBeInstanceOf(LayerFailed);
 	});
 });
 

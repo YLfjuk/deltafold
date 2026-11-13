@@ -663,14 +663,14 @@ export const effect = <
 ): Effect.Effect<Report<A, Errors<H>>, ExecutionError<A, Errors<H>>, Requirements<H>> =>
 	run(plan, options, undefined);
 
-type ServicesOption<R> = [R] extends [never]
+type ServicesOption<R, LE> = [R] extends [never]
 	? {
 			/** Handlers without Effect services need none. */
-			readonly services?: Context.Context<never> | Layer.Layer<never, unknown>;
+			readonly services?: Context.Context<never> | Layer.Layer<never, LE>;
 		}
 	: {
 			/** Supplies the handlers' Effect services. */
-			readonly services: Context.Context<R> | Layer.Layer<R, unknown>;
+			readonly services: Context.Context<R> | Layer.Layer<R, LE>;
 		};
 
 /** @since @next */
@@ -694,9 +694,10 @@ export const runPromise = <
 	A extends Action.Any,
 	C extends Plan.Coverage,
 	H extends Handler.Any = never,
+	LE = never,
 >(
 	plan: Plan.Plan<A, C>,
-	options: PromiseOptions<H> & ServicesOption<Requirements<H>> & CoverageCheck<A, H, C>,
+	options: PromiseOptions<H> & ServicesOption<Requirements<H>, LE> & CoverageCheck<A, H, C>,
 ): Promise<Report<A, Errors<H>>> => {
 	const { signal } = options;
 	let unsubscribe: (() => void) | undefined;
@@ -713,8 +714,7 @@ export const runPromise = <
 					unsubscribe = () => signal.removeEventListener("abort", cancel);
 				};
 	const program = run(plan, options, subscribe);
-	const services: Context.Context<never> | Layer.Layer<never, unknown> | undefined =
-		options.services;
+	const services: Context.Context<never> | Layer.Layer<never, LE> | undefined = options.services;
 	const provided =
 		services === undefined
 			? program
@@ -725,9 +725,10 @@ export const runPromise = <
 					Effect.provide(program, services);
 
 	return Effect.runPromiseExit(
-		// `ServicesOption` requires services that cover every requirement.
+		// `ServicesOption` requires services that cover every requirement. A layer that
+		// fails to build rejects with its own error.
 		// oxlint-disable-next-line typescript/no-unsafe-type-assertion, effecttsgo/unsafe-effect-type-assertion
-		provided as Effect.Effect<Report<A, Errors<H>>, unknown>,
+		provided as Effect.Effect<Report<A, Errors<H>>, ExecutionError<A, Errors<H>> | LE>,
 	)
 		.finally(() => unsubscribe?.())
 		.then((exit) => {
