@@ -507,7 +507,7 @@ describe("scenario 14: document structure and escaping", () => {
 		const middle = Version.make("middle", { previous: root, changes: [] });
 		const leaf = Version.make("leaf", { previous: middle, changes: [] });
 		const sibling = Version.make("sibling", { previous: root, changes: [] });
-		const history = History.make({
+		const crossing = History.make({
 			versions: [root, middle, leaf, sibling],
 			migrations: [
 				Migration.withRevert(
@@ -516,7 +516,7 @@ describe("scenario 14: document structure and escaping", () => {
 				Migration.make("m/revert", { from: middle, to: sibling })`${addRetryLimit}`,
 			],
 		});
-		const resolved = History.resolve(history, { from: "leaf", to: "sibling" });
+		const resolved = History.resolve(crossing, { from: "leaf", to: "sibling" });
 		if (Result.isFailure(resolved)) throw resolved.failure;
 
 		expect(resolved.success.steps.map((step) => [step.migration.id, step.direction])).toEqual([
