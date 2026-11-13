@@ -186,8 +186,10 @@ const trimInlines = (values: ReadonlyArray<Document.Inline>): ReadonlyArray<Docu
 	return result.flatMap((value) => (value._tag === "Text" && value.value === "" ? [] : [value]));
 };
 
+// Generated sections take their identity from model identifiers under a kind that has no
+// `/`, so any version or migration identifier renders without colliding with others.
 const stepId = (step: Step) =>
-	step.direction === "forward" ? step.migration.id : `${step.migration.id}/revert`;
+	`deltafold/${step.direction === "forward" ? "step" : "revert"}/${step.migration.id}`;
 
 /**
  * Configures sections and plugins for changelog documents. Without `sections`, a release
@@ -258,7 +260,7 @@ export const make = <M = unknown>(options: Options<M> = {}): Changelog<M> => {
 
 	const releaseSection = (context: Document.ReleaseContext<M>): Document.Section => {
 		const base = asRelease(
-			Document.Section(context.version.id, {
+			Document.generatedSection(`deltafold/release/${context.version.id}`, {
 				title: context.version.id,
 				children: changeSections(context.version.changes),
 			}),
@@ -392,7 +394,7 @@ export const make = <M = unknown>(options: Options<M> = {}): Changelog<M> => {
 						candidate.from.id === step.from.id && candidate.to.id === step.to.id,
 				).length > 1;
 			const stepSections = shown.map((step) =>
-				Document.Section(stepId(step), {
+				Document.generatedSection(stepId(step), {
 					title: `${step.from.id} to ${step.to.id}${sharedEndpoints(step) ? ` (${step.migration.id})` : ""}`,
 					children: guideBlocks(step.guide),
 				}),

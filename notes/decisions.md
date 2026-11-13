@@ -161,8 +161,11 @@ micromark-util-sanitize-uri.
 
 **Section identifiers.** Section identifiers are unique within their release or
 document. Sections that deltafold generates use identifiers with the reserved
-`deltafold/` prefix, so they never collide with version, migration, or
-configured section identifiers. `Document.Section` rejects that prefix.
+`deltafold/` prefix: fixed ones such as `deltafold/package`, and ones derived from
+model identifiers as `deltafold/release/<version>`, `deltafold/step/<migration>`,
+and `deltafold/revert/<migration>`. The kind contains no `/`, so any version or
+migration identifier renders, and generated sections never collide with each
+other or with configured sections. `Document.Section` rejects the prefix.
 
 **Plugins.** Plugin scopes are `Document.Release` and `Document.History`.
 Insertion points are `Document.Title.pre`, `Document.Title.post`,

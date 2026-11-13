@@ -491,6 +491,41 @@ describe("scenario 14: document structure and escaping", () => {
 		expect(() => Document.Section("deltafold/package")).toThrow('reserved "deltafold/" prefix');
 	});
 
+	it("renders versions and migrations whose identifiers use the reserved prefix", () => {
+		const prefixed = Version.make("deltafold/v1", { changes: [securityFixed] });
+		const pkg = Package.make("@acme/prefixed", {
+			history: History.make({ versions: [prefixed], migrations: [] }),
+		});
+
+		expect(
+			Markdown.render(Changelog.make().release(pkg, Version.withMetadata(prefixed, {}))),
+		).toBe("# deltafold/v1\n\n## Changes\n\n- Escape header values.\n");
+	});
+
+	it("keeps a reverted step apart from a migration named like its revert", () => {
+		const root = Version.make("root", { changes: [] });
+		const middle = Version.make("middle", { previous: root, changes: [] });
+		const leaf = Version.make("leaf", { previous: middle, changes: [] });
+		const sibling = Version.make("sibling", { previous: root, changes: [] });
+		const history = History.make({
+			versions: [root, middle, leaf, sibling],
+			migrations: [
+				Migration.withRevert(
+					Migration.make("m", { from: middle, to: leaf })`${renameTimeout}`,
+				)`Restore the timeout option.`,
+				Migration.make("m/revert", { from: middle, to: sibling })`${addRetryLimit}`,
+			],
+		});
+		const resolved = History.resolve(history, { from: "leaf", to: "sibling" });
+		if (Result.isFailure(resolved)) throw resolved.failure;
+
+		expect(resolved.success.steps.map((step) => [step.migration.id, step.direction])).toEqual([
+			["m", "revert"],
+			["m/revert", "forward"],
+		]);
+		expect(() => Markdown.render(changelog.upgrade(resolved.success))).not.toThrow();
+	});
+
 	it("renders nested sections, lists, and links in HTML", () => {
 		expect(Html.render(changelog.release(widgets, release100))).toBe(
 			[
