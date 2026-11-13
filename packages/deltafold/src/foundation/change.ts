@@ -145,9 +145,7 @@ export type Definition<M extends object> = {
  *
  * @since @next
  */
-export const define = <M extends object>(): Definition<M> => ({
-	make: (id, metadata, relations = {}) => describe(id, metadata, relations),
-});
+export const define = <M extends object>(): Definition<M> => ({ make: make<M> });
 
 /** @since @next */
 export const isChange = (value: unknown): value is Change => Predicate.isTagged(value, "Change");

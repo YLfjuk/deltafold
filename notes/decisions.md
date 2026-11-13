@@ -17,19 +17,6 @@ definition. Handlers bind to action instances, never to change records.
 same change records. A matching change identifier never deduplicates action
 execution.
 
-**Headless changes.** A change carries consumer-defined `metadata`, such as a
-classification, a breaking flag, or a version bump. deltafold stores and
-compares it but assigns it no meaning. `Change.make(id)` declares a change
-without metadata, `Change.make(id, metadata)` infers the metadata type, and
-`Change.define<Metadata>()` returns a factory that requires one metadata type.
-Relationships (`reverts`, `backportOf`) are a separate argument, so they never
-collide with metadata field names. Changelog sections select changes through
-their metadata, and the default changelog lists all changes in one "Changes"
-section. Release logic stays outside the core: reading bumps, choosing a
-version, finding pending changes, assigning them to a release, and publishing.
-The core models membership (`Version.changes`), migration coverage
-(`Migration.addresses`), and ancestry (`previous`).
-
 **No route is not no work.** A missing route fails as `UnsupportedRoute`.
 `Migration.noop` is the only way to declare a supported zero-work transition. A
 migration with no prose and no actions, including one whose groups are all
@@ -229,11 +216,6 @@ settlement. Documents covers documents, sections, and changelogs. `package.ts`
 is a single file until it needs more. A helper used by one feature stays in that
 feature. `src/renderers` lowers documents for the `markdown` and `html` entry
 points. Ambient declarations live in `@types` folders.
-
-**Unstable Effect APIs.** Route planning and validation use `effect/Graph`, and
-release ordering uses `effect/SemVer`. Effect marks both modules unstable. The
-specific functions used are listed in `allowedUnstableApis` in
-`tsconfig.base.json`, so a new unstable API still produces a diagnostic.
 
 **TypeScript 7.** tsdown emits declarations with TypeScript 7 and warns that its
 API is experimental. If declaration output regresses, fall back to TypeScript 6

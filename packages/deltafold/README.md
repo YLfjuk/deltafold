@@ -69,12 +69,6 @@ export const history = History.make({ versions: [v1, v2], migrations: [toV2] });
 export const widgets = Package.make("@acme/widgets", { history });
 ```
 
-A change records one logical change in prose. Its metadata belongs to you:
-deltafold stores it but never interprets it. `Change.make(id)` declares a
-change without metadata, `Change.make(id, metadata)` infers the metadata type
-from the value, and `Change.define<Metadata>()` returns a factory whose
-changes all share one metadata type.
-
 `Version.changes` records what shipped in a release. `Migration.addresses`
 records which changes a transition handles. `Migration.instruction(action)`
 attaches prose to one action, so the prose disappears from guides when a rule
