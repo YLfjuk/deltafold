@@ -185,15 +185,18 @@ export const promise = <
 	options?: PromiseOptions<A["payload"], S, G> & ReservedSignal<S>,
 ): Handler<A, GuardedError<G[number]> | UnexpectedHandlerError, ServiceIds<S>> => {
 	const isDeclared = declaredError(options?.errors ?? []);
-	// Effect.all resolves each declared key to its service. TypeScript cannot relate its
-	// conditional record type to the mapped context type while `S` is generic.
 	const services: ServiceMap = options?.services ?? {};
-	// oxlint-disable-next-line typescript/no-unsafe-type-assertion
-	const resolve = Effect.all(services) as Effect.Effect<
-		{ readonly [K in keyof S]: S[K]["Service"] },
-		never,
-		ServiceIds<S>
-	>;
+	// The handler requires exactly the declared services. Reading them from its context
+	// keeps that requirement typed; only the record of resolved services needs a cast,
+	// because Object.fromEntries does not track keys.
+	const resolve = Effect.map(
+		Effect.context<ServiceIds<S>>(),
+		(context) =>
+			// oxlint-disable-next-line typescript/no-unsafe-type-assertion
+			Object.fromEntries(
+				Object.entries(services).map(([name, key]) => [name, Context.get(context, key)]),
+			) as { readonly [K in keyof S]: S[K]["Service"] },
+	);
 
 	const adapt = <T>(
 		phase: Phase,
