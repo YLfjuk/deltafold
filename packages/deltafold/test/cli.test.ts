@@ -1046,7 +1046,7 @@ describe("types", () => {
 		const foreign = Handler.promise(restoreTimeout, async () => {});
 		typeOnly(() => {
 			// @ts-expect-error restore-timeout is not an action of the widgets history.
-			Command.make(widgets, { name: "x", handlers: [foreign] });
+			void Command.make(widgets, { name: "x", handlers: [foreign] });
 		});
 	});
 
