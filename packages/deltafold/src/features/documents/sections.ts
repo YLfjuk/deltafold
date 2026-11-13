@@ -1,10 +1,16 @@
 import type { Version } from "../../foundation/version.ts";
-import { isBlock, type Anchor, type Block, type PluginOutput, type Section } from "./document.ts";
-import { pipeable } from "./pipeable.ts";
+import {
+	isBlock,
+	SectionValue,
+	type Anchor,
+	type Block,
+	type PluginOutput,
+	type Section,
+} from "./document.ts";
 
 /** Marks a section as the section of one release. */
 export const asRelease = (section: Section, version: Version): Section =>
-	pipeable({ ...section, release: version });
+	new SectionValue({ ...section, release: version });
 
 /** Content that one plugin contributes at an anchor. */
 export type Contribution = { readonly at: Anchor; readonly blocks: ReadonlyArray<Block> };
@@ -22,7 +28,7 @@ export const insertAll = (
 			)
 			.flatMap((contribution) => contribution.blocks);
 
-	return pipeable({
+	return new SectionValue({
 		...section,
 		before: [...section.before, ...at("title", "pre")],
 		after: [...section.after, ...at("title", "post")],

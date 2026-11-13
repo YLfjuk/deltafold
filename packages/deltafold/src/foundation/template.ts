@@ -1,31 +1,15 @@
+import dedentText from "dedent";
+
 const placeholder = "\u0000";
 
 /**
- * Removes the common indentation of a tagged template, and the blank first and last
- * lines that come from writing the template on its own lines.
+ * Removes the common indentation of a tagged template and its surrounding whitespace.
  *
  * Returns one literal string per original literal, so interpolated values stay at their
- * positions.
+ * positions and are never stringified or re-indented.
  */
-export const dedent = (strings: ReadonlyArray<string>): ReadonlyArray<string> => {
-	const joined = strings.join(placeholder);
-	const lines = joined.split("\n");
-
-	if (lines.length > 1 && lines[0]?.trim() === "") lines.shift();
-	if (lines.length > 1 && lines.at(-1)?.trim() === "") lines.pop();
-
-	const indents = lines.flatMap((line) => {
-		if (line.trim() === "") return [];
-
-		return line.length - line.trimStart().length;
-	});
-	const indent = indents.length === 0 ? 0 : Math.min(...indents);
-
-	return lines
-		.map((line) => (line.trim() === "" ? "" : line.slice(indent)))
-		.join("\n")
-		.split(placeholder);
-};
+export const dedent = (strings: ReadonlyArray<string>): ReadonlyArray<string> =>
+	dedentText(strings.join(placeholder)).split(placeholder);
 
 /** Scalar values that interpolate as text. */
 export type Scalar = string | number | boolean | bigint;

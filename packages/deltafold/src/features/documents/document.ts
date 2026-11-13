@@ -2,7 +2,6 @@ import { Data, Predicate, type Pipeable } from "effect";
 
 import type { Version } from "../../foundation/version.ts";
 import type { Package } from "../package.ts";
-import { pipeable } from "./pipeable.ts";
 
 /** @since @next */
 export type Text = { readonly _tag: "Text"; readonly value: string };
@@ -178,8 +177,13 @@ const anchor = (part: Anchor["part"], position: Anchor["position"]): Anchor => (
 	position,
 });
 
+class TitleValue extends Data.TaggedClass("Title")<Omit<Title, "_tag" | "pipe">> {}
+
+/** Builds section values. Like titles, they are immutable and have Effect's `pipe`. */
+export class SectionValue extends Data.TaggedClass("Section")<Omit<Section, "_tag" | "pipe">> {}
+
 const makeTitle = (text: InlineInput, options: { readonly level?: number } = {}): Title =>
-	pipeable({ _tag: "Title", children: inlines(text), level: options.level });
+	new TitleValue({ children: inlines(text), level: options.level });
 
 /**
  * Builds a title. `Document.Title.pre` and `Document.Title.post` are the insertion points
@@ -224,8 +228,7 @@ const reservedPrefix = "deltafold/";
 
 /** Builds a section without the reserved-prefix check, for sections deltafold generates. */
 export const generatedSection = (id: string, options: SectionOptions = {}): Section =>
-	pipeable({
-		_tag: "Section",
+	new SectionValue({
 		id,
 		title: titleOf(options.title),
 		before: [],
@@ -242,7 +245,7 @@ export const generatedSection = (id: string, options: SectionOptions = {}): Sect
 export const withLevel =
 	(level: number) =>
 	(title: Title): Title =>
-		pipeable({ ...title, level });
+		new TitleValue({ ...title, level });
 
 /**
  * Sets the title of a section.
@@ -252,7 +255,7 @@ export const withLevel =
 export const withTitle =
 	(title: Title | string) =>
 	(section: Section): Section =>
-		pipeable({ ...section, title: titleOf(title) });
+		new SectionValue({ ...section, title: titleOf(title) });
 
 /**
  * Appends blocks to a section's body.
@@ -262,7 +265,7 @@ export const withTitle =
 export const append =
 	(...blocks: ReadonlyArray<Block>) =>
 	(section: Section): Section =>
-		pipeable({ ...section, children: [...section.children, ...blocks] });
+		new SectionValue({ ...section, children: [...section.children, ...blocks] });
 
 /**
  * A document structure that cannot be rendered.

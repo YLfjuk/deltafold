@@ -164,45 +164,15 @@ settings:
 
 catalogs:
   default:
-    '@arethetypeswrong/core':
-      specifier: 0.18.5
-      version: 0.18.5
-    '@changesets/cli':
-      specifier: 3.0.3
-      version: 3.0.3
     '@effect/tsgo':
       specifier: 0.67.7
       version: 0.67.7
     '@effect/vitest':
       specifier: 4.1.2
       version: 4.1.2
-    '@types/hast':
-      specifier: 3.0.5
-      version: 3.0.5
-    '@types/mdast':
-      specifier: 4.0.4
-      version: 4.0.4
     effect:
       specifier: ^4.1.2
       version: 4.1.2
-    hast-util-to-html:
-      specifier: 9.0.5
-      version: 9.0.5
-    mdast-util-to-hast:
-      specifier: 13.2.1
-      version: 13.2.1
-    mdast-util-to-markdown:
-      specifier: 2.2.0
-      version: 2.2.0
-    micromark-util-sanitize-uri:
-      specifier: 2.0.1
-      version: 2.0.1
-    publint:
-      specifier: 0.3.25
-      version: 0.3.25
-    turbo:
-      specifier: 2.11.10
-      version: 2.11.10
     typescript:
       specifier: 7.0.2
       version: 7.0.2
@@ -219,13 +189,13 @@ importers:
   .:
     devDependencies:
       '@changesets/cli':
-        specifier: 'catalog:'
+        specifier: 3.0.3
         version: 3.0.3
       '@effect/tsgo':
         specifier: 'catalog:'
         version: 0.67.7
       turbo:
-        specifier: 'catalog:'
+        specifier: 2.11.10
         version: 2.11.10
       typescript:
         specifier: 'catalog:'
@@ -237,26 +207,29 @@ importers:
   packages/deltafold:
     dependencies:
       '@types/hast':
-        specifier: 'catalog:'
+        specifier: 3.0.5
         version: 3.0.5
       '@types/mdast':
-        specifier: 'catalog:'
+        specifier: 4.0.4
         version: 4.0.4
+      dedent:
+        specifier: 1.7.2
+        version: 1.7.2
       hast-util-to-html:
-        specifier: 'catalog:'
+        specifier: 9.0.5
         version: 9.0.5
       mdast-util-to-hast:
-        specifier: 'catalog:'
+        specifier: 13.2.1
         version: 13.2.1
       mdast-util-to-markdown:
-        specifier: 'catalog:'
+        specifier: 2.2.0
         version: 2.2.0
       micromark-util-sanitize-uri:
-        specifier: 'catalog:'
+        specifier: 2.0.1
         version: 2.0.1
     devDependencies:
       '@arethetypeswrong/core':
-        specifier: 'catalog:'
+        specifier: 0.18.5
         version: 0.18.5
       '@effect/vitest':
         specifier: 'catalog:'
@@ -265,7 +238,7 @@ importers:
         specifier: 'catalog:'
         version: 4.1.2
       publint:
-        specifier: 'catalog:'
+        specifier: 0.3.25
         version: 0.3.25
       typescript:
         specifier: 'catalog:'
@@ -1194,6 +1167,14 @@ packages:
 
   decode-named-character-reference@1.3.0:
     resolution: {integrity: sha512-GtpQYB283KrPp6nRw50q3U9/VfOutZOe103qlN7BPP6Ad27xYnOIWv4lPzo8HCAL+mMZofJ9KEy30fq6MfaK6Q==}
+
+  dedent@1.7.2:
+    resolution: {integrity: sha512-WzMx3mW98SN+zn3hgemf4OzdmyNhhhKz5Ay0pUfQiMQ3e1g+xmTJWp/pKdwKVXhdSkAEGIIzqeuWrL3mV/AXbA==}
+    peerDependencies:
+      babel-plugin-macros: ^3.1.0
+    peerDependenciesMeta:
+      babel-plugin-macros:
+        optional: true
 
   dequal@2.0.3:
     resolution: {integrity: sha512-0je+qPKHEMohvfRTCEo3CrPG6cAzAYgmzKyxRiYSSDkS6eGJdyVJm7WaYA5ECaAD9wLB2T4EEeymA5aFVcYXCA==}
@@ -2335,6 +2316,8 @@ snapshots:
   decode-named-character-reference@1.3.0:
     dependencies:
       character-entities: 2.0.2
+
+  dedent@1.7.2: {}
 
   dequal@2.0.3: {}
 

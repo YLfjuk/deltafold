@@ -1,5 +1,6 @@
 import { Predicate } from "effect";
 
+import type { ValueOf } from "../types.ts";
 import { describeValue, dedent, isScalar, type Scalar } from "./template.ts";
 
 /**
@@ -15,7 +16,7 @@ export const Kind = {
 } as const;
 
 /** @since @next */
-export type Kind = (typeof Kind)[keyof typeof Kind];
+export type Kind = ValueOf<typeof Kind>;
 
 /**
  * A human-readable record of one logical change. A change can exist before it is

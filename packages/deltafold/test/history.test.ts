@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Result } from "effect";
 
-import { Action, History, Migration, Plan, Rule, Shortcut, Version } from "deltafold";
+import { Action, Change, History, Migration, Plan, Rule, Shortcut, Version } from "deltafold";
 import {
 	AddKey,
 	RenameKey,
@@ -910,6 +910,21 @@ describe("prose ownership in resolved guides", () => {
 			omitted: false,
 			guide: [{ _tag: "Text", text: "Back up your database." }],
 		});
+	});
+});
+
+describe("template prose", () => {
+	it("removes indentation after a first line on the opening backtick and surrounding blank lines", () => {
+		const inline = Change.make("inline", { kind: "changed" })`Rename the option.
+			Then restart the service.`;
+		const padded = Change.make("padded", { kind: "changed" })`
+
+			Rename the option.
+
+		`;
+
+		expect(inline.description).toBe("Rename the option.\nThen restart the service.");
+		expect(padded.description).toBe("Rename the option.");
 	});
 });
 

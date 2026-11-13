@@ -36,7 +36,7 @@
 		},
 		"./changelog": {
 			"@deltafold/dev.src": "./src/features/documents/index.ts",
-			"default": "./dist/changelog/index.js"
+			"default": "./dist/changelog.js"
 		},
 		"./html": {
 			"@deltafold/dev.src": "./src/renderers/html.ts",
@@ -51,7 +51,7 @@
 	"publishConfig": {
 		"exports": {
 			".": "./dist/index.js",
-			"./changelog": "./dist/changelog/index.js",
+			"./changelog": "./dist/changelog.js",
 			"./html": "./dist/html.js",
 			"./markdown": "./dist/markdown.js",
 			"./package.json": "./package.json"
@@ -64,18 +64,19 @@
 		"test": "vp test run"
 	},
 	"dependencies": {
-		"@types/hast": "catalog:",
-		"@types/mdast": "catalog:",
-		"hast-util-to-html": "catalog:",
-		"mdast-util-to-hast": "catalog:",
-		"mdast-util-to-markdown": "catalog:",
-		"micromark-util-sanitize-uri": "catalog:"
+		"@types/hast": "3.0.5",
+		"@types/mdast": "4.0.4",
+		"dedent": "1.7.2",
+		"hast-util-to-html": "9.0.5",
+		"mdast-util-to-hast": "13.2.1",
+		"mdast-util-to-markdown": "2.2.0",
+		"micromark-util-sanitize-uri": "2.0.1"
 	},
 	"devDependencies": {
-		"@arethetypeswrong/core": "catalog:",
+		"@arethetypeswrong/core": "0.18.5",
 		"@effect/vitest": "catalog:",
 		"effect": "catalog:",
-		"publint": "catalog:",
+		"publint": "0.3.25",
 		"typescript": "catalog:",
 		"vite-plus": "catalog:"
 	},

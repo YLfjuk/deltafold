@@ -1,6 +1,7 @@
 import { Context, Data, Effect, Predicate, Schema } from "effect";
 
 import type * as Action from "../../foundation/action.ts";
+import type { ValueOf } from "../../types.ts";
 import { trackPromise } from "./settlement.ts";
 
 /**
@@ -106,9 +107,9 @@ export type PromiseContext<S extends ServiceMap = NoServices> = {
 	readonly [K in keyof S]: S[K]["Service"];
 } & { readonly signal: AbortSignal };
 
-type ServiceIds<S extends ServiceMap> = {
+type ServiceIds<S extends ServiceMap> = ValueOf<{
 	[K in keyof S]: S[K] extends Context.Key<infer I, any> ? I : never;
-}[keyof S];
+}>;
 
 /**
  * Recognizes a declared rejection: a schema, or a type guard such as an `instanceof`
