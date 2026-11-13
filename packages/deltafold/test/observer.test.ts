@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it } from "@effect/vitest";
-import { Context, Duration, Effect, Fiber, Result } from "effect";
+import { Context, Duration, Effect, Fiber, Result, Schema } from "effect";
 import { TestClock } from "effect/testing";
 
 import {
@@ -7,6 +7,7 @@ import {
 	Executor,
 	Handler,
 	History,
+	Interaction,
 	Migration,
 	Observer,
 	Package,
@@ -40,6 +41,13 @@ const sleeps = <A extends Action.Any>(action: A, duration: Duration.Input) =>
 		prepare: () => Effect.succeed(Handler.prepared()),
 		apply: () => Effect.sleep(duration),
 	});
+
+class Unreadable extends Schema.TaggedError<Unreadable, { readonly brand: unique symbol }>()(
+	"Unreadable",
+	{},
+) {}
+
+const answering = (answer: Interaction.Answer) => Interaction.promise(async () => answer);
 
 const ok = <A extends Action.Any>(action: A) => Handler.effect(action, () => Effect.void);
 
@@ -700,4 +708,280 @@ describe("Cancellation", () => {
 			});
 		}),
 	);
+});
+
+describe("Manual handlers", () => {
+	const [prepare, rotate, finish] = [touch("prepare"), touch("rotate"), touch("finish")];
+	const history = History.make({
+		versions: [v1, v2, v3],
+		migrations: [
+			Migration.make("1-to-2", { from: v1, to: v2 })`${prepare}${rotate}`,
+			Migration.make("2-to-3", { from: v2, to: v3 })`${finish}`,
+		],
+	});
+	const plan = planOf(history, "3.0.0");
+
+	it("shows waiting as the confirmation phase and summarizes manual completion", async () => {
+		const { events, observer } = recorder();
+		const report = await Executor.runPromise(plan, {
+			handlers: [
+				ok(prepare),
+				Handler.manual(rotate, { verify: async () => true }),
+				ok(finish),
+			],
+			interaction: answering("confirmed"),
+			observers: [observer],
+		});
+
+		checkInvariants(events, report);
+		expect(tags(events).slice(4, 8)).toEqual([
+			"ActionPhaseStarted:rotate:confirmation",
+			"ActionPhaseStarted:rotate:verification",
+			"ActionSettled:rotate:Completed",
+			"StepSettled:1-to-2",
+		]);
+		const settled = events.flatMap((event) =>
+			event._tag === "ActionSettled" ? [event.outcome] : [],
+		);
+		expect(settled).toEqual([
+			{ _tag: "Completed", performer: "automated" },
+			{ _tag: "Completed", performer: "manual", confirmation: "verified" },
+			{ _tag: "Completed", performer: "automated" },
+		]);
+	});
+
+	it("reports a decline, stops admission, and counts it", async () => {
+		const { events, observer } = recorder();
+		const error: unknown = await Executor.runPromise(plan, {
+			handlers: [ok(prepare), Handler.manual(rotate), ok(finish)],
+			interaction: answering("declined"),
+			observers: [observer],
+		}).catch((cause: unknown) => cause);
+
+		expect(error).toBeInstanceOf(Executor.ExecutionFailed);
+		if (!(error instanceof Executor.ExecutionFailed)) return;
+		checkInvariants(events, error.report);
+		const declined = events.find(
+			(event) => event._tag === "ActionSettled" && event.action.action === "rotate",
+		);
+		expect(declined?._tag === "ActionSettled" && declined.outcome).toEqual({
+			_tag: "Declined",
+		});
+		expect(events.at(-1)).toMatchObject({
+			status: "failed",
+			counts: { Completed: 1, Declined: 1, Unattempted: 1 },
+		});
+	});
+
+	it("emits nothing when no interaction can answer", async () => {
+		const { events, observer } = recorder();
+		const error: unknown = await Executor.runPromise(plan, {
+			handlers: [ok(prepare), Handler.manual(rotate), ok(finish)],
+			observers: [observer],
+		}).catch((cause: unknown) => cause);
+
+		expect(error).toBeInstanceOf(Executor.InteractionUnavailable);
+		expect(events).toEqual([]);
+	});
+
+	it("reports manual performers in a dry run without asking", async () => {
+		const { events, observer } = recorder();
+		let asked = 0;
+		const report = await Executor.runPromise(plan, {
+			dryRun: true,
+			handlers: [
+				Handler.effect(prepare, {
+					prepare: () => Effect.succeed(Handler.prepared()),
+					apply: () => Effect.void,
+				}),
+				Handler.manual(rotate),
+				ok(finish),
+			],
+			interaction: Interaction.promise(async () => {
+				asked += 1;
+
+				return "confirmed";
+			}),
+			observers: [observer],
+		});
+
+		expect(asked).toBe(0);
+		checkInvariants(events, report);
+		expect(
+			events.flatMap((event) =>
+				event._tag === "ActionPhaseStarted"
+					? [`${event.action.action}:${event.phase}`]
+					: [],
+			),
+		).toEqual(["prepare:prepare"]);
+		expect(
+			events.flatMap((event) => (event._tag === "ActionSettled" ? [event.outcome] : [])),
+		).toEqual([
+			{ _tag: "WouldExecute", evaluated: true, performer: "automated" },
+			{ _tag: "WouldExecute", evaluated: false, performer: "manual" },
+			{ _tag: "WouldExecute", evaluated: false, performer: "automated" },
+		]);
+	});
+
+	it("settles a cancelled confirmation as interrupted in its phase", async () => {
+		const controller = new AbortController();
+		const { events, observer } = recorder();
+		const error: unknown = await Executor.runPromise(plan, {
+			signal: controller.signal,
+			handlers: [ok(prepare), Handler.manual(rotate), ok(finish)],
+			interaction: Interaction.promise(
+				(_request, { signal }) =>
+					new Promise<Interaction.Answer>((_resolve, reject) => {
+						signal.addEventListener("abort", () => reject(signal.reason));
+						controller.abort();
+					}),
+			),
+			observers: [observer],
+		}).catch((cause: unknown) => cause);
+
+		expect(error).toBeInstanceOf(Executor.ExecutionInterrupted);
+		if (!(error instanceof Executor.ExecutionInterrupted)) return;
+		checkInvariants(events, error.report);
+		const interrupted = events.find(
+			(event) => event._tag === "ActionSettled" && event.action.action === "rotate",
+		);
+		expect(interrupted?._tag === "ActionSettled" && interrupted.outcome).toEqual({
+			_tag: "Interrupted",
+			phase: "confirmation",
+			reason: "cancelled",
+			settled: true,
+		});
+	});
+
+	it("composes handler, interaction, and observer services", () => {
+		const Terminal = Context.Service<{ readonly ask: () => Effect.Effect<boolean> }>(
+			"test/Terminal",
+		);
+		type Terminal = Context.Service.Identifier<typeof Terminal>;
+		const Log = Context.Service<{ readonly line: (text: string) => Effect.Effect<void> }>(
+			"test/Log",
+		);
+		type Log = Context.Service.Identifier<typeof Log>;
+		const interaction = Interaction.effect(() =>
+			Effect.flatMap(Effect.service(Terminal), (terminal) =>
+				Effect.map(terminal.ask(), (yes) => (yes ? "confirmed" : "declined")),
+			),
+		);
+		const logging = Observer.effect((event) =>
+			Effect.flatMap(Effect.service(Log), (log) => log.line(event._tag)),
+		);
+		const execution = Executor.effect(plan, {
+			handlers: [ok(prepare), Handler.manual(rotate), ok(finish)],
+			interaction,
+			observers: [logging],
+		});
+
+		expectTypeOf<Effect.Services<typeof execution>>().toEqualTypeOf<Terminal | Log>();
+		expectTypeOf<
+			Executor.Requirements<never, typeof interaction, typeof logging>
+		>().toEqualTypeOf<Terminal | Log>();
+	});
+});
+
+describe("Prepare phases", () => {
+	const [edit, later] = [touch("edit"), touch("later")];
+	const history = History.make({
+		versions: [v1, v2],
+		migrations: [Migration.make("1-to-2", { from: v1, to: v2 })`${edit}${later}`],
+	});
+	const plan = planOf(history, "2.0.0");
+
+	it("reports the outcome after the scope closes, including a cleanup failure", async () => {
+		const { events, observer } = recorder();
+		const error: unknown = await Executor.runPromise(plan, {
+			handlers: [
+				Handler.effect(edit, {
+					prepare: () =>
+						Effect.as(
+							Effect.addFinalizer(() => Effect.die("unlock failed")),
+							Handler.prepared(),
+						),
+					apply: () => Effect.void,
+				}),
+				ok(later),
+			],
+			observers: [observer],
+		}).catch((cause: unknown) => cause);
+
+		expect(error).toBeInstanceOf(Executor.ExecutionFailed);
+		if (!(error instanceof Executor.ExecutionFailed)) return;
+		checkInvariants(events, error.report);
+		expect(tags(events)).toEqual([
+			"RunStarted",
+			"StepStarted:1-to-2",
+			"ActionPhaseStarted:edit:prepare",
+			"ActionPhaseStarted:edit:apply",
+			"ActionSettled:edit:Failed",
+			"StepSettled:1-to-2",
+			"RunFinished",
+		]);
+		const failed = events[4];
+		expect(failed?._tag === "ActionSettled" && failed.outcome).toEqual({
+			_tag: "Failed",
+			phase: "apply",
+			errorTag: undefined,
+		});
+	});
+
+	it("reports a handler that interrupts itself and keeps delivering without a bound", async () => {
+		const { events, observer } = recorder();
+		let slowDeliveries = 0;
+		const slow = Observer.effect(() =>
+			Effect.andThen(
+				Effect.sleep("30 millis"),
+				Effect.sync(() => (slowDeliveries += 1)),
+			),
+		);
+		const error: unknown = await Executor.runPromise(plan, {
+			settleTimeout: "1 millis",
+			handlers: [Handler.effect(edit, () => Effect.interrupt), ok(later)],
+			observers: [slow, observer],
+		}).catch((cause: unknown) => cause);
+
+		expect(error).toBeInstanceOf(Executor.ExecutionInterrupted);
+		if (!(error instanceof Executor.ExecutionInterrupted)) return;
+		expect(error.reason).toBe("handler");
+		checkInvariants(events, error.report);
+		const settled = events.find((event) => event._tag === "ActionSettled");
+		expect(settled?._tag === "ActionSettled" && settled.outcome).toEqual({
+			_tag: "Interrupted",
+			phase: "apply",
+			reason: "handler",
+			settled: true,
+		});
+		expect(error.report.observation).toEqual([]);
+		expect(slowDeliveries).toBe(events.length);
+	});
+
+	it("summarizes a failed dry-run preparation by its error tag", async () => {
+		const { events, observer } = recorder();
+		const report = await Executor.runPromise(plan, {
+			dryRun: true,
+			handlers: [
+				Handler.effect(edit, {
+					prepare: () => Effect.fail(new Unreadable()),
+					apply: () => Effect.void,
+				}),
+				ok(later),
+			],
+			observers: [observer],
+		});
+
+		checkInvariants(events, report);
+		expect(
+			events.flatMap((event) => (event._tag === "ActionSettled" ? [event.outcome] : [])),
+		).toEqual([
+			{ _tag: "PreparationFailed", errorTag: "Unreadable" },
+			{
+				_tag: "Undetermined",
+				reason: 'Execution would stop at the failed preparation of "1-to-2/edit".',
+				performer: "automated",
+			},
+		]);
+	});
 });
