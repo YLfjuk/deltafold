@@ -16,7 +16,10 @@ const ExportEditor = Context.Service<{
 }>("test/ExportEditor");
 type ExportEditor = Context.Service.Identifier<typeof ExportEditor>;
 
-class EditFailed extends Schema.TaggedError<EditFailed>()("EditFailed", {}) {}
+class EditFailed extends Schema.TaggedError<EditFailed, { readonly brand: unique symbol }>()(
+	"EditFailed",
+	{},
+) {}
 
 const v1 = Version.make("1.0.0", { changes: [] });
 const v2 = Version.make("2.0.0", { previous: v1, changes: [] });

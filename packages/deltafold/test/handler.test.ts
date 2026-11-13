@@ -70,7 +70,10 @@ describe("Handler typing", () => {
 	});
 
 	it("keeps native Effect errors and services", () => {
-		class EditFailed extends Schema.TaggedError<EditFailed>()("EditFailed", {}) {}
+		class EditFailed extends Schema.TaggedError<
+			EditFailed,
+			{ readonly brand: unique symbol }
+		>()("EditFailed", {}) {}
 		const handler = Handler.effect(
 			renameA,
 			(payload) =>
