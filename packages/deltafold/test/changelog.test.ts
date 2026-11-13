@@ -155,6 +155,20 @@ const leveled = (level: number): Document.Document => ({
 });
 
 describe("scenario 12: drafts and annotated releases", () => {
+	it("renders releases without a metadata type when no plugin reads metadata", () => {
+		const plain = Changelog.make();
+
+		expect(Markdown.render(plain.release(widgets, Version.withMetadata(v101, {})))).toBe(
+			"# 1.0.1\n\n## Changes\n\n- Escape header values.\n",
+		);
+	});
+
+	it("keeps the metadata type that configured plugins read", () => {
+		expect.assertions(0);
+		// @ts-expect-error the plugins read ReleaseMetadata, which needs releasedAt and commit.
+		changelog.release(widgets, Version.withMetadata(v101, {}));
+	});
+
 	it("renders a change that is not released yet", () => {
 		expect(Markdown.render(changelog.change(retriesAdded))).toBe(
 			"# Unreleased\n\n## Features\n\n- Add a retry limit option.\n",
@@ -423,6 +437,21 @@ describe("scenario 14: document structure and escaping", () => {
 			'<p><a href="">unsafe</a> <a href="../guide.md">relative</a> <a href="mailto:team@example.com">mail</a></p>',
 		);
 		expect(Markdown.render(links)).not.toContain("javascript:");
+	});
+
+	it("escapes link query strings once in each format", () => {
+		const query: Document.Document = {
+			_tag: "Document",
+			kind: "release",
+			children: [
+				Document.Paragraph([Document.Link("query", "https://example.com/?a=1&b=2")]),
+			],
+		};
+
+		expect(Html.render(query)).toBe(
+			'<p><a href="https://example.com/?a=1&#x26;b=2">query</a></p>',
+		);
+		expect(Markdown.render(query)).toBe("[query](https://example.com/?a=1\\&b=2)\n");
 	});
 
 	it("inserts plugin content at each anchor in configuration order", () => {

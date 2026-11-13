@@ -213,7 +213,7 @@ const stepId = (step: Step) =>
  *
  * @since @next
  */
-export const make = <M = never>(options: Options<M> = {}): Changelog<M> => {
+export const make = <M = unknown>(options: Options<M> = {}): Changelog<M> => {
 	const sections = options.sections ?? [];
 	const plugins = options.plugins ?? [];
 	const other = options.other ?? { title: sections.length === 0 ? "Changes" : "Other changes" };

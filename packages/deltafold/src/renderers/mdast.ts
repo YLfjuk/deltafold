@@ -1,5 +1,5 @@
 import type * as Mdast from "mdast";
-import { sanitizeUri } from "micromark-util-sanitize-uri";
+import { normalizeUri, sanitizeUri } from "micromark-util-sanitize-uri";
 
 import {
 	DocumentError,
@@ -10,6 +10,13 @@ import {
 
 /** Link schemes kept in rendered output. Relative URLs are always kept. */
 const safeSchemes = /^(https?|mailto)$/i;
+
+/**
+ * Keeps a URL whose scheme is allowed, and replaces any other URL with an empty one.
+ * `sanitizeUri` also HTML-escapes its result, which the serializers would escape again,
+ * so only its scheme check is used here.
+ */
+const safeUrl = (url: string) => (sanitizeUri(url, safeSchemes) === "" ? "" : normalizeUri(url));
 
 const maximumLevel = 6;
 
@@ -25,7 +32,7 @@ const lowerInline = (value: Inline): Mdast.PhrasingContent => {
 		case "Link":
 			return {
 				type: "link",
-				url: sanitizeUri(value.url, safeSchemes),
+				url: safeUrl(value.url),
 				children: value.children.map(lowerInline),
 			};
 		case "Strong":
