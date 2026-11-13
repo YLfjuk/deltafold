@@ -592,6 +592,42 @@ describe("Executor behavior", () => {
 		});
 	});
 
+	it("resolves symbol-keyed services for the precondition and the body", async () => {
+		const editorKey = Symbol("editor");
+		const seen: Array<string> = [];
+		const edit = touch("edit");
+		const history = History.make({
+			versions: [w1, w2],
+			migrations: [Migration.make("1-to-2", { from: w1, to: w2 })`${edit}`],
+		});
+		const editor = {
+			update: async (target: string) => {
+				seen.push(target);
+			},
+		};
+
+		const report = await Executor.runPromise(planOf(history, "2.0.0"), {
+			handlers: [
+				Handler.promise(
+					edit,
+					async (payload, { services }) =>
+						services[editorKey].update(`body:${payload.name}`),
+					{
+						services: { [editorKey]: ConfigEditor },
+						when: async (payload, { services }) => {
+							await services[editorKey].update(`when:${payload.name}`);
+							return true;
+						},
+					},
+				),
+			],
+			services: Context.make(ConfigEditor, editor),
+		});
+
+		expect(outcomes(report)).toEqual({ edit: "Completed" });
+		expect(seen).toEqual(["when:edit", "body:edit"]);
+	});
+
 	it("supplies services from a layer and rejects with the layer's own build error", async () => {
 		class LayerFailed extends Error {
 			readonly _tag = "LayerFailed";
@@ -823,6 +859,52 @@ describe("Executor admission, cancellation, and settlement", () => {
 
 		expect(added).toHaveBeenCalledTimes(1);
 		expect(removed).toHaveBeenCalledTimes(1);
+	});
+
+	it("cancels while the services layer is acquired, or before it starts", async () => {
+		const edit = touch("edit");
+		const events: Array<string> = [];
+		const handlers = [
+			Handler.promise(
+				edit,
+				async (payload, { services: { editor } }) => editor.update(payload.name),
+				{ services: { editor: ConfigEditor } },
+			),
+		];
+		const pending = Layer.effect(
+			ConfigEditor,
+			Effect.andThen(
+				Effect.sync(() => events.push("acquiring")),
+				Effect.onInterrupt(Effect.never, () => Effect.sync(() => events.push("released"))),
+			),
+		);
+		const editPlan = Plan.withRuntimeCoverage(planOf(single(edit), "2.0.0"));
+		const rejection = (signal: AbortSignal) =>
+			Executor.runPromise(editPlan, { handlers, services: pending, signal }).then(
+				() => undefined,
+				(cause: unknown) => cause,
+			);
+
+		const during = new AbortController();
+		const running = rejection(during.signal);
+		await Effect.runPromise(Effect.sleep("20 millis"));
+		during.abort();
+		const interrupted = await running;
+
+		expect(interrupted).toBeInstanceOf(Executor.ExecutionInterrupted);
+		expect(
+			interrupted instanceof Executor.ExecutionInterrupted && outcomes(interrupted.report),
+		).toEqual({
+			edit: "Unattempted",
+		});
+		expect(events).toEqual(["acquiring", "released"]);
+
+		events.length = 0;
+		const before = new AbortController();
+		before.abort();
+
+		expect(await rejection(before.signal)).toBeInstanceOf(Executor.ExecutionInterrupted);
+		expect(events).toEqual([]);
 	});
 
 	it("applies cancellation and timeouts to dry-run preconditions", async () => {

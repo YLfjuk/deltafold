@@ -700,18 +700,34 @@ export const runPromise = <
 	options: PromiseOptions<H> & ServicesOption<Requirements<H>, LE> & CoverageCheck<A, H, C>,
 ): Promise<Report<A, Errors<H>>> => {
 	const { signal } = options;
-	let unsubscribe: (() => void) | undefined;
+	const notStarted = () =>
+		new ExecutionInterrupted({
+			reason: "cancelled",
+			report: report(
+				plan,
+				options.dryRun === true ? "dry-run" : "execute",
+				"interrupted",
+				new Map<string, Outcome<Errors<H>>>(),
+				false,
+			),
+		});
+	if (signal?.aborted === true) return Promise.reject(notStarted());
+
+	// Until the run installs its own cancellation, an abort stops building the services
+	// layer. Afterwards the run stops admission and reports partial progress.
+	const abortedBeforeRun = Deferred.makeUnsafe<void>();
+	let cancelRun: (() => void) | undefined;
+	const onAbort = () => {
+		if (cancelRun === undefined) Deferred.doneUnsafe(abortedBeforeRun, Effect.void);
+		else cancelRun();
+	};
+	signal?.addEventListener("abort", onAbort, { once: true });
 	const subscribe: Subscribe | undefined =
 		signal === undefined
 			? undefined
 			: (cancel) => {
-					if (signal.aborted) {
-						cancel();
-
-						return;
-					}
-					signal.addEventListener("abort", cancel, { once: true });
-					unsubscribe = () => signal.removeEventListener("abort", cancel);
+					cancelRun = cancel;
+					if (signal.aborted) cancel();
 				};
 	const program = run(plan, options, subscribe);
 	const services: Context.Context<never> | Layer.Layer<never, LE> | undefined = options.services;
@@ -723,14 +739,21 @@ export const runPromise = <
 				: // runPromise is the entry point: the caller's layer is built for this one run.
 					// oxlint-disable-next-line effecttsgo/strict-effect-provide
 					Effect.provide(program, services);
+	const cancellable =
+		signal === undefined
+			? provided
+			: Effect.raceFirst(
+					provided,
+					Effect.andThen(Deferred.await(abortedBeforeRun), Effect.fail(notStarted())),
+				);
 
 	return Effect.runPromiseExit(
 		// `ServicesOption` requires services that cover every requirement. A layer that
 		// fails to build rejects with its own error.
 		// oxlint-disable-next-line typescript/no-unsafe-type-assertion, effecttsgo/unsafe-effect-type-assertion
-		provided as Effect.Effect<Report<A, Errors<H>>, ExecutionError<A, Errors<H>> | LE>,
+		cancellable as Effect.Effect<Report<A, Errors<H>>, ExecutionError<A, Errors<H>> | LE>,
 	)
-		.finally(() => unsubscribe?.())
+		.finally(() => signal?.removeEventListener("abort", onAbort))
 		.then((exit) => {
 			if (Exit.isSuccess(exit)) return exit.value;
 

@@ -91,7 +91,7 @@ const skipReasonOf = <P>(action: Action.Action<string, P>, reason: SkipReason<P>
  *
  * @since @next
  */
-export type ServiceMap = { readonly [name: string]: Context.Key<any, any> };
+export type ServiceMap = { readonly [name: string | symbol]: Context.Key<any, any> };
 
 // oxlint-disable-next-line typescript/no-generated-empty-object-type -- A handler without services declares an empty service map.
 type NoServices = Record<never, never>;
@@ -183,7 +183,10 @@ export const promise = <
 		(context) =>
 			// oxlint-disable-next-line typescript/no-unsafe-type-assertion
 			Object.fromEntries(
-				Object.entries(services).map(([name, key]) => [name, Context.get(context, key)]),
+				Reflect.ownKeys(services).map((name) => [
+					name,
+					Context.get(context, services[name]!),
+				]),
 			) as { readonly [K in keyof S]: S[K]["Service"] },
 	);
 
