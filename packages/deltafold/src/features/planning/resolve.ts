@@ -159,6 +159,9 @@ const families: ReadonlyArray<ReadonlySet<Edge["class"]>> = [
 	new Set(["down", "cross"]),
 ];
 
+const routeCost = (edges: ReadonlyArray<Edge>) =>
+	edges.reduce((total, edge) => total + edge.cost, 0);
+
 const routeOf = (from: Version, edges: ReadonlyArray<Edge>): Route => {
 	let id = routeStart(from.id);
 	const hops: Array<Hop> = [];
@@ -197,11 +200,14 @@ const graphOf = (context: Context, family: ReadonlySet<Edge["class"]>) => {
 	return { graph, nodes };
 };
 
-const enumerateRoutes = (
-	context: Context,
-	from: Version,
-	to: Version,
-): Result.Result<ReadonlyArray<ReadonlyArray<Edge>>, TooManyRoutes> => {
+type Enumerated = {
+	/** At most `routeLimit` routes, in search order. */
+	readonly routes: ReadonlyArray<ReadonlyArray<Edge>>;
+	/** Whether the search stopped because more routes exist. */
+	readonly overLimit: boolean;
+};
+
+const enumerateRoutes = (context: Context, from: Version, to: Version): Enumerated => {
 	const routes = new Map<string, ReadonlyArray<Edge>>();
 	for (const family of families) {
 		const { graph, nodes } = graphOf(context, family);
@@ -213,11 +219,9 @@ const enumerateRoutes = (
 			routes.set(routeOf(from, path.costs).id, path.costs);
 		}
 	}
-	if (routes.size > routeLimit) {
-		return Result.fail(new TooManyRoutes({ from: from.id, to: to.id, limit: routeLimit }));
-	}
+	const found = [...routes.values()];
 
-	return Result.succeed([...routes.values()]);
+	return { routes: found.slice(0, routeLimit), overLimit: found.length > routeLimit };
 };
 
 const toNode = (items: ReadonlyArray<Item>): ReadonlyArray<Node> =>
@@ -584,13 +588,17 @@ export const candidatesBetween = (
 	to: Version,
 ): Result.Result<ReadonlyArray<Candidate>, TooManyRoutes> => {
 	const direction = requestDirection(context, from.id, to.id);
+	const { routes, overLimit } = enumerateRoutes(context, from, to);
+	if (overLimit) {
+		return Result.fail(new TooManyRoutes({ from: from.id, to: to.id, limit: routeLimit }));
+	}
 
-	return Result.map(enumerateRoutes(context, from, to), (routes) =>
+	return Result.succeed(
 		routes.map((edges) => ({
 			route: routeOf(from, edges),
 			edges,
 			plan: buildPlan(context, from, to, direction, edges),
-			cost: edges.reduce((total, edge) => total + edge.cost, 0),
+			cost: routeCost(edges),
 		})),
 	);
 };
@@ -648,6 +656,11 @@ export const resolve = (
 export type Destination = {
 	readonly version: Version;
 	readonly routes: ReadonlyArray<string>;
+	/**
+	 * Present when more routes exist than route search explores. `routes` then lists the
+	 * routes found, cheapest first, and resolving needs an explicit `route`.
+	 */
+	readonly overLimit?: true;
 };
 
 const semverOrder = (self: string, that: string): number | undefined => {
@@ -683,8 +696,21 @@ export const destinations = (
 			return [];
 		}
 
-		const routes = Result.getOrElse(candidatesBetween(context, from, version), () => []);
+		const { routes, overLimit } = enumerateRoutes(context, from, version);
+		if (!overLimit) {
+			return [{ version, routes: routes.map((edges) => routeOf(from, edges).id) }];
+		}
+		const cheapest = Arr.sort(
+			routes,
+			Order.mapInput(Order.Number, (edges: ReadonlyArray<Edge>) => routeCost(edges)),
+		);
 
-		return [{ version, routes: routes.map((candidate) => candidate.route.id) }];
+		return [
+			{
+				version,
+				routes: cheapest.map((edges) => routeOf(from, edges).id),
+				overLimit: true as const,
+			},
+		];
 	});
 };

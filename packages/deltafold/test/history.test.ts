@@ -847,6 +847,29 @@ describe("search limits", () => {
 			},
 		);
 	});
+
+	it("lists the cheapest routes found for a destination over the route limit", () => {
+		const layered = diamonds(7);
+		const [first] = layered.versions;
+		const last = layered.versions.at(-1);
+		if (first === undefined || last === undefined) throw new Error("diamonds has versions");
+		const history = History.make({
+			versions: layered.versions,
+			migrations: [
+				Migration.noop("direct", { from: first, to: last }),
+				...layered.migrations,
+			],
+		});
+
+		const listed = success(History.upgrades(history, { from: "0.0.0" }));
+		const crowded = listed.find((destination) => destination.version.id === "7.0.0");
+		const nearer = listed.find((destination) => destination.version.id === "6.0.0");
+
+		expect(crowded).toMatchObject({ overLimit: true, routes: { length: 100 } });
+		expect(crowded?.routes[0]).toBe("0.0.0>7.0.0");
+		expect(nearer?.overLimit).toBeUndefined();
+		expect(nearer?.routes).toHaveLength(64);
+	});
 });
 
 describe("prose ownership in resolved guides", () => {
