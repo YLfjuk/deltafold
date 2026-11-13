@@ -434,12 +434,12 @@ const changelogCommand = (definition: Definition, releases: () => ReadonlyArray<
 								? undefined
 								: definition.changelog.release(pkg, release);
 						},
-						catch: (error) => error,
+						catch: Encode.error,
 					}).pipe(
 						Effect.catch((error) =>
 							fail(definition.name, {
 								reason: "invalid_release_metadata",
-								message: Encode.error(error).message,
+								message: error.message,
 								status: "error",
 								exitCode: 1,
 							}),
@@ -530,7 +530,7 @@ const migrateCommand = (
 					yield* output.diagnostic("Loading handlers", "Debug");
 					const handlers = yield* Effect.tryPromise({
 						try: loadHandlers,
-						catch: (error) => error,
+						catch: Encode.error,
 					}).pipe(
 						Effect.catch((error) =>
 							fail(name, {
@@ -538,8 +538,8 @@ const migrateCommand = (
 								message: "Couldn't load the migration handlers",
 								status: "error",
 								exitCode: 1,
-								details: [Encode.error(error).message],
-								data: { error: Encode.error(error) },
+								details: [error.message],
+								data: { error },
 							}),
 						),
 					);
