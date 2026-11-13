@@ -1039,9 +1039,50 @@ describe("template prose", () => {
 	});
 });
 
+const reverting = (inner: Change.Any) => Change.make("outer", {}, { reverts: [inner] })`Outer.`;
+
+const backporting = (inner: Change.Any) =>
+	Change.make("backport", {}, { backportOf: inner })`Backport.`;
+
 describe("validation", () => {
 	const v1 = Version.make("1.0.0", { changes: [timeoutRenamed] });
 	const v2 = Version.make("2.0.0", { previous: v1, changes: [] });
+
+	it("finds conflicts between changes that repeated definitions refer to", () => {
+		const first = Change.make("inner", { x: 1 })`Inner.`;
+		const second = Change.make("inner", { x: 2 })`Inner.`;
+		const w1 = Version.make("1", { changes: [reverting(first), backporting(first)] });
+		const w2 = Version.make("2", {
+			previous: w1,
+			changes: [reverting(second), backporting(second)],
+		});
+
+		expect(
+			History.validate(History.make({ versions: [w1, w2], migrations: [] })).map((issue) => [
+				issue._tag,
+				issue.subject,
+			]),
+		).toEqual([["ConflictingChange", "inner"]]);
+	});
+
+	it("accepts a rule that changes structure and rejects one that changes nothing", () => {
+		const a = key("a");
+		const b = key("b");
+		const declared = Migration.make("1-to-2", { from: v1, to: v2 })`${a}${b}`;
+		const ruleIssues = (rule: Rule.Any) =>
+			History.validate(
+				History.make({ versions: [v1, v2], migrations: [declared], rules: [rule] }),
+			).map((issue) => [issue._tag, issue.subject]);
+
+		expect(
+			ruleIssues(
+				Rule.replace("parallel", { match: [a, b], replacement: [Action.parallel([a, b])] }),
+			),
+		).toEqual([]);
+		expect(ruleIssues(Rule.replace("same", { match: [a, b], replacement: [a, b] }))).toEqual([
+			["InvalidRule", "same"],
+		]);
+	});
 
 	it("rejects registering a migration and its withRevert result together", () => {
 		const forward = Migration.make("1-to-2", { from: v1, to: v2 })`${renameTimeout}`;

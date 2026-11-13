@@ -6,6 +6,7 @@ import type * as Migration from "../../foundation/migration.ts";
 import type * as Rule from "../../foundation/rule.ts";
 import type * as Shortcut from "../../foundation/shortcut.ts";
 import type { Version } from "../../foundation/version.ts";
+import { stepKey } from "./rewrite.ts";
 
 /**
  * A problem in a history's declarations.
@@ -170,20 +171,23 @@ export const validate = (declarations: Declarations): ReadonlyArray<Issue> => {
 
 	// Change definitions.
 	const changes = new Map<string, Change.Any>();
+	// Every distinct object is compared and has its relationships followed, so a repeated
+	// definition cannot hide a conflict between the changes it refers to.
+	const visited = new Set<Change.Any>();
+	const conflictingChanges = new Set<string>();
 	const visitChange = (change: Change.Any) => {
+		if (visited.has(change)) return;
+		visited.add(change);
 		const known = changes.get(change.id);
-		if (known !== undefined) {
-			if (!sameDefinition(known, change)) {
-				issue(
-					"ConflictingChange",
-					change.id,
-					`Change "${change.id}" has conflicting definitions.`,
-				);
-			}
-
-			return;
+		if (known === undefined) changes.set(change.id, change);
+		else if (!sameDefinition(known, change) && !conflictingChanges.has(change.id)) {
+			conflictingChanges.add(change.id);
+			issue(
+				"ConflictingChange",
+				change.id,
+				`Change "${change.id}" has conflicting definitions.`,
+			);
 		}
-		changes.set(change.id, change);
 		for (const reverted of change.reverts) visitChange(reverted);
 		if (change.backportOf !== undefined) visitChange(change.backportOf);
 	};
@@ -328,14 +332,9 @@ export const validate = (declarations: Declarations): ReadonlyArray<Issue> => {
 				`Rule "${rule.id}" repeats an action in its replacement.`,
 			);
 		}
-		const sameIds =
-			patternActions.length === replacementActions.length &&
-			patternActions.every((action, index) => action.id === replacementActions[index]?.id);
-		if (
-			rule.match.length > 0 &&
-			sameIds &&
-			rule.match.every((pattern) => pattern._tag === "Action")
-		) {
+		// Same actions in a different structure, such as a sequence made parallel, is a
+		// real replacement.
+		if (rule.match.length > 0 && stepKey(rule.match) === stepKey(rule.replacement)) {
 			issue("InvalidRule", rule.id, `Rule "${rule.id}" replaces its match with itself.`);
 		}
 	}

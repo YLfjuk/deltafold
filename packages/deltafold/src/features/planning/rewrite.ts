@@ -94,7 +94,8 @@ export const keyOf = (items: ReadonlyArray<Item>): string =>
 		})
 		.join(",");
 
-const stepKey = (steps: ReadonlyArray<Action.Step>): string =>
+/** A key that identifies declared steps by their action structure. Branch order is ignored. */
+export const stepKey = (steps: ReadonlyArray<Action.Step>): string =>
 	steps
 		.map((step) => {
 			switch (step._tag) {
