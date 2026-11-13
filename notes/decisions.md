@@ -254,7 +254,8 @@ These work today but need confirmation before 1.0:
   occurrence.
 - `settleTimeout` defaults to 5 seconds.
 - `Migration.noop(id, { reversible: true })` declares a reverse zero-work
-  transition.
+  transition. A revert added to a noop with `Migration.withRevert` is real work,
+  so only the forward side is omitted.
 - `changelog.upgrade` renders downgrade plans too, titled "Downgrade".
 - History documents list releases newest first by semver when every identifier
   parses, and in reverse registration order otherwise. A standalone release has

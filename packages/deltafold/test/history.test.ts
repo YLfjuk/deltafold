@@ -525,6 +525,28 @@ describe("scenario 6: shortcuts", () => {
 });
 
 describe("scenario 7: downgrades", () => {
+	it("keeps a revert added to a noop migration as real work", () => {
+		const w0 = Version.make("0", { changes: [] });
+		const w1 = Version.make("1", { previous: w0, changes: [] });
+		const undo = key("undo");
+		const history = History.make({
+			versions: [w0, w1],
+			migrations: [
+				Migration.withRevert(Migration.noop("m", { from: w0, to: w1 }))`Undo it: ${undo}`,
+			],
+		});
+
+		const up = success(History.resolve(history, { from: "0", to: "1" }));
+		const down = success(History.resolve(history, { from: "1", to: "0" }));
+
+		expect(up.steps[0]?.omitted).toBe(true);
+		expect(up.explanations).toMatchObject([{ _tag: "OmittedStep", reason: "noop" }]);
+		expect(down.steps[0]).toMatchObject({ omitted: false });
+		expect(down.steps[0]?.guide.length).toBeGreaterThan(0);
+		expect(down.occurrences.map((occurrence) => occurrence.id)).toEqual(["m/revert/undo"]);
+		expect(down.explanations).toEqual([]);
+	});
+
 	const v1 = Version.make("1.0.0", { changes: [] });
 	const v2 = Version.make("2.0.0", { previous: v1, changes: [timeoutRenamed] });
 	const v3 = Version.make("3.0.0", { previous: v2, changes: [retriesAdded] });

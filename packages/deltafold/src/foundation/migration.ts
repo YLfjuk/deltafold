@@ -211,7 +211,8 @@ export const noop = <C extends Change.Any = never>(
 
 /**
  * Adds a reverse transition. Register the returned migration in place of the original:
- * both share the same identifier.
+ * both share the same identifier. On a `Migration.noop`, the reverse is real work: only
+ * the forward side stays zero-work.
  *
  * @example
  * ```ts

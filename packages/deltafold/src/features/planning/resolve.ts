@@ -315,13 +315,15 @@ const buildPlan = (
 			declaredOccurrenceId(member.migration, member.direction, action),
 		);
 		const allRemoved = declaredCount > 0 && retained.length === 0;
-		const omitted = member.migration.noop || allRemoved;
+		// `noop` describes the zero-work sides. A revert added to a noop migration is work.
+		const noop = member.migration.noop && content.length === 0;
+		const omitted = noop || allRemoved;
 		if (omitted) {
 			explanations.push({
 				_tag: "OmittedStep",
 				migration: member.migration,
 				direction: member.direction,
-				reason: member.migration.noop ? "noop" : "all-actions-removed",
+				reason: noop ? "noop" : "all-actions-removed",
 			});
 		}
 		const [stepFrom, stepTo] =
