@@ -1,6 +1,7 @@
 import { describe, expect, expectTypeOf, it } from "@effect/vitest";
+import { Result } from "effect";
 
-import { Change, History, Package, Version } from "deltafold";
+import { Change, History, Migration, Package, Version } from "deltafold";
 import { Changelog } from "deltafold/changelog";
 import * as Markdown from "deltafold/markdown";
 
@@ -10,6 +11,9 @@ interface TeamMetadata {
 }
 
 const TeamChange = Change.define<TeamMetadata>();
+
+/** Mutual assignability, for unions of changes that expectTypeOf cannot compare. */
+type Equals<X, Y> = [X] extends [Y] ? ([Y] extends [X] ? true : false) : false;
 
 describe("Change", () => {
 	it("declares a change without metadata", () => {
@@ -127,6 +131,94 @@ describe("changelog sections and change metadata", () => {
 
 		expect(Markdown.render(changelog.release(pkg, release))).toBe(
 			"# 1.0.0\n\n## Breaking changes\n\n- Remove a flag.\n\n## Other changes\n\n- Fix a crash.\n",
+		);
+	});
+});
+
+describe("metadata through versions, migrations, and plans", () => {
+	const tracked = Change.make("tracked", {
+		area: "cli",
+		owner: { team: "tools" },
+		tickets: [7, 9],
+	})`Rename the flag.`;
+	const typed = TeamChange.make("typed", { area: "http", bump: "patch" })`Escape headers.`;
+	// Distinct metadata keeps TypeScript from merging these change types in unions.
+	const restored = Change.make(
+		"restored",
+		{ area: "cli", restores: "tracked" },
+		{ reverts: [tracked], backportOf: typed },
+	)`Restore the flag.`;
+	const v1 = Version.make("1", { changes: [tracked] });
+	const v2 = Version.make("2", { previous: v1, changes: [typed, restored] });
+	const migration = Migration.noop("1-to-2", {
+		from: v1,
+		to: v2,
+		addresses: [tracked, typed, restored],
+	});
+	const history = History.make({ versions: [v1, v2], migrations: [migration] });
+	const resolved = History.resolve(history, { from: "1", to: "2" });
+	if (Result.isFailure(resolved)) throw resolved.failure;
+	const plan = resolved.success;
+
+	it("keeps each change's inferred metadata type", () => {
+		expectTypeOf(v1.changes).toEqualTypeOf<ReadonlyArray<typeof tracked>>();
+		expectTypeOf(tracked.metadata).toEqualTypeOf<{
+			readonly area: "cli";
+			readonly owner: { readonly team: "tools" };
+			readonly tickets: readonly [7, 9];
+		}>();
+		type Addressed = typeof tracked | typeof typed | typeof restored;
+		expectTypeOf<
+			Equals<typeof migration.addresses, ReadonlyArray<Addressed>>
+		>().toEqualTypeOf<true>();
+		expectTypeOf<Equals<typeof plan.changes, ReadonlyArray<Addressed>>>().toEqualTypeOf<true>();
+		expectTypeOf<Equals<History.ChangesOf<typeof history>, Addressed>>().toEqualTypeOf<true>();
+		expectTypeOf<
+			Equals<typeof v2.changes, ReadonlyArray<typeof typed | typeof restored>>
+		>().toEqualTypeOf<true>();
+	});
+
+	it("rejects metadata reads that the declared types do not allow", () => {
+		expect.assertions(0);
+		// @ts-expect-error `area` is a string.
+		void (v1.changes.at(0)?.metadata.area satisfies number | undefined);
+		// @ts-expect-error the metadata declares no `nonexistent` field.
+		void v1.changes.at(0)?.metadata.nonexistent;
+		// @ts-expect-error `area` is a string on every addressed change.
+		void (plan.changes.at(0)?.metadata.area satisfies number | undefined);
+		// @ts-expect-error the ancestor's change type is not known here, so fields need narrowing.
+		void v2.previous?.changes.at(0)?.metadata.area;
+	});
+
+	it("keeps the change objects, nested metadata, and relationships at run time", () => {
+		expect(plan.changes).toEqual([tracked, typed, restored]);
+		expect(plan.changes[0]).toBe(tracked);
+		expect(plan.changes[0]?.metadata).toEqual({
+			area: "cli",
+			owner: { team: "tools" },
+			tickets: [7, 9],
+		});
+		expect(plan.changes[2]?.reverts[0]).toBe(tracked);
+		expect(plan.changes[2]?.backportOf).toBe(typed);
+	});
+
+	it("passes the same metadata to changelog selectors", () => {
+		const changelog = Changelog.make<{}>({
+			sections: [
+				Changelog.section("tools", {
+					title: "Tools",
+					select: ({ metadata: { owner } }) =>
+						typeof owner === "object" &&
+						owner !== null &&
+						"team" in owner &&
+						owner.team === "tools",
+				}),
+			],
+		});
+		const pkg = Package.make("@acme/tool", { history });
+
+		expect(Markdown.render(changelog.release(pkg, Version.withMetadata(v1, {})))).toBe(
+			"# 1\n\n## Tools\n\n- Rename the flag.\n",
 		);
 	});
 });

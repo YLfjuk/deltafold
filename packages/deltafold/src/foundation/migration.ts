@@ -27,13 +27,13 @@ export type Content<A extends Action.Any = Action.Any> = ReadonlyArray<
 export type Interpolation = Scalar | Action.Ref | Action.Step;
 
 /** @since @next */
-export type Migration<A extends Action.Any = Action.Any> = {
+export type Migration<A extends Action.Any = Action.Any, C extends Change.Any = Change.Any> = {
 	readonly _tag: "Migration";
 	readonly id: string;
 	readonly from: Version;
 	readonly to: Version;
 	/** The logical changes this transition handles. */
-	readonly addresses: ReadonlyArray<Change.Any>;
+	readonly addresses: ReadonlyArray<C>;
 	/** Whether this is an explicit zero-work transition. */
 	readonly noop: boolean;
 	/** Author-declared cost, used only by the `lowest-cost` route policy. */
@@ -59,11 +59,18 @@ export type Any = Migration<any>;
  */
 export type ActionsOf<M> = M extends Migration<infer A> ? A : never;
 
+/**
+ * The changes a migration addresses.
+ *
+ * @since @next
+ */
+export type ChangesOf<M> = M extends Migration<any, infer C> ? C : never;
+
 /** @since @next */
-export type Options = {
+export type Options<C extends Change.Any = Change.Any> = {
 	readonly from: Version;
 	readonly to: Version;
-	readonly addresses?: ReadonlyArray<Change.Any>;
+	readonly addresses?: ReadonlyArray<C>;
 	readonly cost?: number;
 };
 
@@ -158,11 +165,11 @@ const content = (
  * @since @next
  */
 export const make =
-	(id: string, options: Options) =>
+	<C extends Change.Any = never>(id: string, options: Options<C>) =>
 	<const V extends ReadonlyArray<Interpolation>>(
 		strings: TemplateStringsArray,
 		...values: V
-	): Migration<Action.ActionsOf<V[number]>> => ({
+	): Migration<Action.ActionsOf<V[number]>, C> => ({
 		_tag: "Migration",
 		id,
 		from: options.from,
@@ -175,7 +182,7 @@ export const make =
 	});
 
 /** @since @next */
-export type NoopOptions = Options & {
+export type NoopOptions<C extends Change.Any = Change.Any> = Options<C> & {
 	/** Also declares the reverse transition as zero-work. */
 	readonly reversible?: boolean;
 };
@@ -187,7 +194,10 @@ export type NoopOptions = Options & {
  *
  * @since @next
  */
-export const noop = (id: string, options: NoopOptions): Migration<never> => ({
+export const noop = <C extends Change.Any = never>(
+	id: string,
+	options: NoopOptions<C>,
+): Migration<never, C> => ({
 	_tag: "Migration",
 	id,
 	from: options.from,
@@ -215,11 +225,11 @@ export const noop = (id: string, options: NoopOptions): Migration<never> => ({
  * @since @next
  */
 export const withRevert =
-	<A extends Action.Any>(migration: Migration<A>) =>
+	<A extends Action.Any, C extends Change.Any>(migration: Migration<A, C>) =>
 	<const V extends ReadonlyArray<Interpolation>>(
 		strings: TemplateStringsArray,
 		...values: V
-	): Migration<A | Action.ActionsOf<V[number]>> => ({
+	): Migration<A | Action.ActionsOf<V[number]>, C> => ({
 		...migration,
 		revert: content(strings, values, `Revert of migration "${migration.id}"`),
 	});

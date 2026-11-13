@@ -183,7 +183,11 @@ export type Coverage = "static" | "runtime";
  *
  * @since @next
  */
-export type Plan<A extends Action.Any = Action.Any, C extends Coverage = "static"> = {
+export type Plan<
+	A extends Action.Any = Action.Any,
+	C extends Coverage = "static",
+	Ch extends Change.Any = Change.Any,
+> = {
 	readonly _tag: "Plan";
 	readonly from: Version;
 	readonly to: Version;
@@ -193,7 +197,7 @@ export type Plan<A extends Action.Any = Action.Any, C extends Coverage = "static
 	/** Occurrences in plan order. */
 	readonly occurrences: ReadonlyArray<Occurrence<A>>;
 	/** The changes addressed by the route's migrations. */
-	readonly changes: ReadonlyArray<Change.Any>;
+	readonly changes: ReadonlyArray<Ch>;
 	readonly explanations: ReadonlyArray<Explanation>;
 	/**
 	 * Whether executors check handler coverage only at run time. Plans resolved from a
@@ -230,9 +234,9 @@ export const isEmpty = (plan: Any): boolean => plan.occurrences.length === 0;
  *
  * @since @next
  */
-export const withRuntimeCoverage = <A extends Action.Any>(
-	plan: Plan<A, Coverage>,
-): Plan<A, "runtime"> => ({
+export const withRuntimeCoverage = <A extends Action.Any, Ch extends Change.Any>(
+	plan: Plan<A, Coverage, Ch>,
+): Plan<A, "runtime", Ch> => ({
 	...plan,
 	coverage: "runtime",
 });

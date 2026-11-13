@@ -1,6 +1,7 @@
 import { Predicate, Result } from "effect";
 
 import type * as Action from "../../foundation/action.ts";
+import type * as Change from "../../foundation/change.ts";
 import type * as Migration from "../../foundation/migration.ts";
 import type { Plan } from "../../foundation/plan.ts";
 import type * as Rule from "../../foundation/rule.ts";
@@ -23,7 +24,7 @@ export * from "./resolve-error.ts";
 export type { Destination, Issue, ResolveOptions, RoutePolicy };
 
 /** @since @next */
-export type History<A extends Action.Any = Action.Any> = {
+export type History<A extends Action.Any = Action.Any, C extends Change.Any = Change.Any> = {
 	readonly _tag: "History";
 	readonly versions: ReadonlyArray<Version>;
 	readonly migrations: ReadonlyArray<Migration.Any>;
@@ -31,6 +32,8 @@ export type History<A extends Action.Any = Action.Any> = {
 	readonly shortcuts: ReadonlyArray<Shortcut.Any>;
 	/** Type-level record of every action instance that a plan can contain. */
 	readonly "~actions"?: A;
+	/** Type-level record of every change that a plan's `changes` can contain. */
+	readonly "~changes"?: C;
 };
 
 /**
@@ -46,6 +49,13 @@ export type Any = History<any>;
  * @since @next
  */
 export type ActionsOf<H> = H extends History<infer A> ? A : never;
+
+/**
+ * Every change that a plan resolved from the history can list in `changes`.
+ *
+ * @since @next
+ */
+export type ChangesOf<H> = H extends History<any, infer C> ? C : never;
 
 /**
  * Registers declarations. Migrations are registered independently of versions, so
@@ -66,7 +76,8 @@ export const make = <
 	readonly rules?: R;
 	readonly shortcuts?: S;
 }): History<
-	Migration.ActionsOf<M[number]> | Rule.ActionsOf<R[number]> | Shortcut.ActionsOf<S[number]>
+	Migration.ActionsOf<M[number]> | Rule.ActionsOf<R[number]> | Shortcut.ActionsOf<S[number]>,
+	Migration.ChangesOf<M[number]> | Shortcut.ChangesOf<S[number]>
 > => ({
 	_tag: "History",
 	versions: declarations.versions,
@@ -123,14 +134,15 @@ const valid = (history: Any): Result.Result<Context, InvalidHistory> => {
  *
  * @since @next
  */
-export const resolve = <A extends Action.Any>(
-	history: History<A>,
+export const resolve = <A extends Action.Any, C extends Change.Any>(
+	history: History<A, C>,
 	options: ResolveOptions,
-): Result.Result<Plan<A>, ResolveError> =>
-	// Every occurrence comes from the history's declarations, whose action union is `A`.
+): Result.Result<Plan<A, "static", C>, ResolveError> =>
+	// Every occurrence and change comes from the history's declarations, whose unions are
+	// `A` and `C`.
 	// oxlint-disable-next-line typescript/no-unsafe-type-assertion
 	Result.flatMap(valid(history), (context) => resolveRoute(context, options)) as Result.Result<
-		Plan<A>,
+		Plan<A, "static", C>,
 		ResolveError
 	>;
 

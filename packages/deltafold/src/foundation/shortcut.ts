@@ -1,11 +1,12 @@
 import { Predicate } from "effect";
 
 import type * as Action from "./action.ts";
+import type * as Change from "./change.ts";
 import type * as Migration from "./migration.ts";
 import type { Version } from "./version.ts";
 
 /** @since @next */
-export type Shortcut<A extends Action.Any = Action.Any> = {
+export type Shortcut<A extends Action.Any = Action.Any, C extends Change.Any = Change.Any> = {
 	readonly _tag: "Shortcut";
 	readonly id: string;
 	readonly from: Version;
@@ -13,7 +14,7 @@ export type Shortcut<A extends Action.Any = Action.Any> = {
 	/** The canonical route this shortcut replaces, in order. */
 	readonly replaces: ReadonlyArray<Migration.Any>;
 	/** The migrations that run instead, in order. */
-	readonly migrations: ReadonlyArray<Migration.Migration<A>>;
+	readonly migrations: ReadonlyArray<Migration.Migration<A, C>>;
 	/** Author-declared cost, used only by the `lowest-cost` route policy. */
 	readonly cost: number | undefined;
 };
@@ -33,6 +34,13 @@ export type Any = Shortcut<any>;
 export type ActionsOf<S> = S extends Shortcut<infer A> ? A : never;
 
 /**
+ * The changes addressed by a shortcut's migrations.
+ *
+ * @since @next
+ */
+export type ChangesOf<S> = S extends Shortcut<any, infer C> ? C : never;
+
+/**
  * Declares a shortcut. The author asserts that its migrations are equivalent to the
  * canonical route it replaces; deltafold does not prove it.
  *
@@ -48,16 +56,16 @@ export type ActionsOf<S> = S extends Shortcut<infer A> ? A : never;
  *
  * @since @next
  */
-export const make = <M extends Migration.Any>(
+export const make = <A extends Action.Any, C extends Change.Any = never>(
 	id: string,
 	options: {
 		readonly from: Version;
 		readonly to: Version;
 		readonly replaces: ReadonlyArray<Migration.Any>;
-		readonly migrations: ReadonlyArray<M>;
+		readonly migrations: ReadonlyArray<Migration.Migration<A, C>>;
 		readonly cost?: number;
 	},
-): Shortcut<Migration.ActionsOf<M>> => ({
+): Shortcut<A, C> => ({
 	_tag: "Shortcut",
 	id,
 	from: options.from,

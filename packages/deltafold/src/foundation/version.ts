@@ -3,7 +3,7 @@ import { Predicate } from "effect";
 import type * as Change from "./change.ts";
 
 /** @since @next */
-export type Version = {
+export type Version<C extends Change.Any = Change.Any> = {
 	readonly _tag: "Version";
 	readonly id: string;
 	/**
@@ -13,13 +13,13 @@ export type Version = {
 	 */
 	readonly previous: Version | undefined;
 	/** The changes that shipped in this release. */
-	readonly changes: ReadonlyArray<Change.Any>;
+	readonly changes: ReadonlyArray<C>;
 };
 
 /** @since @next */
-export type Options = {
+export type Options<C extends Change.Any = Change.Any> = {
 	readonly previous?: Version;
-	readonly changes: ReadonlyArray<Change.Any>;
+	readonly changes: ReadonlyArray<C>;
 };
 
 /**
@@ -33,7 +33,10 @@ export type Options = {
  *
  * @since @next
  */
-export const make = (id: string, options: Options): Version => ({
+export const make = <C extends Change.Any = never>(
+	id: string,
+	options: Options<C>,
+): Version<C> => ({
 	_tag: "Version",
 	id,
 	previous: options.previous,

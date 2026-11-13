@@ -100,6 +100,13 @@ const paragraphsOf = (text: string): ReadonlyArray<Document.Paragraph> =>
 		.filter((part) => part !== "")
 		.map((part) => Document.Paragraph(part));
 
+/**
+ * Selectors read metadata fields by name. Reading any field of an object yields a value
+ * or `undefined`, so viewing the metadata as fields of type `unknown` is sound.
+ */
+// oxlint-disable-next-line typescript/no-unsafe-type-assertion
+const selectable = (change: Change.Any) => change as Change.Change;
+
 const changeList = (changes: ReadonlyArray<Change.Any>) =>
 	Document.List(changes.map((change) => paragraphsOf(change.description)));
 
@@ -217,7 +224,7 @@ export const make = <M = never>(options: Options<M> = {}): Changelog<M> => {
 		const grouped = new Map<string, Array<Change.Any>>();
 		const unmatched: Array<Change.Any> = [];
 		for (const change of changes) {
-			const match = sections.find((definition) => definition.select(change));
+			const match = sections.find((definition) => definition.select(selectable(change)));
 			if (match === undefined) {
 				unmatched.push(change);
 				continue;

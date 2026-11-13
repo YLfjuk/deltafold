@@ -39,11 +39,12 @@ export type Change<M extends object = Metadata> = {
 };
 
 /**
- * A change with any metadata.
+ * A change whose metadata type is not known statically. Its metadata is an object, so
+ * reading a field requires narrowing first.
  *
  * @since @next
  */
-export type Any = Change<any>;
+export type Any = Change<object>;
 
 /**
  * Relationships to other changes.
