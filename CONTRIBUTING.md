@@ -26,19 +26,8 @@ typecheck, build, and test. `pnpm run format` rewrites files to fix formatting.
 The `scripts` field of the root [package.json](package.json) lists the
 individual checks.
 
-Typechecking uses `@effect/tsgo` 0.67.7 with TypeScript 7.0.2. It reports
-Effect suggestions without failing on them; Effect errors and warnings fail the
-check. The test helper `@effect/vitest#it` is allowed as an unstable API.
-Vite+ lint stays independent and does not run a second set of Effect rules.
-
-For an editor supporting a custom TypeScript LSP executable, run
-`pnpm exec effect-tsgo get-exe-path` and configure the returned executable as
-the sole TypeScript server, with `--lsp --stdio` if required by the editor.
-Restart the server after installation. Editor extension support varies; verify
-activation by checking that an unassigned `Effect.log("test")` in `src` shows
-`floatingEffect`. Do not run another TypeScript server alongside it. The
-compiler wrapper does not patch the pnpm store. External layer graph links are
-disabled by `noExternal`.
+Typechecking uses Effect's compiler wrapper. For editor setup and diagnostics,
+see the [Effect language service documentation](https://github.com/Effect-TS/tsgo#readme).
 
 CI runs the same scripts on Ubuntu and Windows, and builds and tests on the
 minimum and newest supported Node.js lines.
