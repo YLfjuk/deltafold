@@ -22,10 +22,8 @@ pnpm install
 
 ### Agent skills
 
-Project agent skills are installed with [skills.sh](https://skills.sh) as copies
-in `.agents/skills` and `.claude/skills`. `skills-lock.json` records their
-sources. Restore them with `npx skills experimental_install`, and update them
-with `npx skills update -p`.
+Project agent skills come from [skills.sh](https://skills.sh). Restore them with
+`npx skills experimental_install`, and update them with `npx skills update -p`.
 
 ## Checks
 
