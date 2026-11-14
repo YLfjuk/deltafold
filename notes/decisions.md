@@ -239,12 +239,11 @@ for declaration emit.
 The 0.0.0 placeholder was published manually. Publishing must go through pnpm,
 which applies `publishConfig.exports`.
 
-**Changelogs.** Changesets versions the package with its default changelog
-formatter. A Changesets changelog plugin formats one line per changeset, so it
-cannot express deltafold sections or resolved guides. The intended integration
-sets `"changelog": false` and lets a deltafold step render `CHANGELOG.md` from
-the package history, with release metadata passed as `Version.withMetadata`
-annotations. GitHub Releases need a release workflow with write permissions.
+**Changelogs.** Changesets versions this repository's package with its default
+changelog formatter. Release planning for packages modeled with deltafold
+belongs to the separate `@deltafold/release` package; its contract and
+prototype findings are in [release design](release-design.md). GitHub Releases
+need a release workflow with write permissions.
 
 **API reference.** Generated API docs with `@effect/docgen` are deferred. A trial
 with version 4.1.2 type-checked `@example` blocks with TypeScript 7 and wrote
