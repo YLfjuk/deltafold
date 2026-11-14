@@ -8,4 +8,5 @@
 - Use the repository owner's GitHub noreply address for author and committer
   metadata. Do not fall back to a personal email from global Git configuration.
 - Before pushing, inspect staged files and commit metadata for privacy leaks.
-- The design and task notes live in notes/, and reference images in notes/assets/.
+- Requirements and decisions live in notes/, and reference images in
+  notes/assets/.

@@ -1,0 +1,211 @@
+// Keeps the package README examples working. The in-memory file map stands in for the
+// consumer's own file access.
+import { describe, expect, expectTypeOf, it } from "@effect/vitest";
+import { Context, Effect, Result } from "effect";
+
+import {
+	Action,
+	Change,
+	Executor,
+	Handler,
+	History,
+	Migration,
+	Package,
+	Rule,
+	Version,
+} from "deltafold";
+import { Changelog } from "deltafold/changelog";
+import * as Markdown from "deltafold/markdown";
+
+const files = new Map<string, Record<string, unknown>>();
+
+const renameKey = async (
+	file: string,
+	from: string,
+	to: string,
+	_options: { signal: AbortSignal },
+) => {
+	const config = files.get(file);
+	if (config === undefined || !(from in config)) throw new Error(`${file} has no "${from}" key`);
+	const { [from]: value, ...rest } = config;
+	files.set(file, { ...rest, [to]: value });
+};
+
+// Declarations, as a package author writes them.
+const RenameKey = Action.define<{ file: string; from: string; to: string }>("config.rename", {
+	describe: ({ file, from, to }) => `In ${file}, rename "${from}" to "${to}"`,
+});
+
+const renameTimeout = RenameKey.make("rename-timeout", {
+	file: "app.json",
+	from: "timeout",
+	to: "requestTimeout",
+});
+
+const WidgetsChange = Change.define<{ readonly breaking: boolean }>();
+
+const timeoutRenamed = WidgetsChange.make("2026-11-06.rename-timeout", { breaking: true })`
+	Rename the timeout option to requestTimeout.
+`;
+
+const v1 = Version.make("1.0.0", { changes: [] });
+const v2 = Version.make("2.0.0", { previous: v1, changes: [timeoutRenamed] });
+
+const toV2 = Migration.make("1.0.0-to-2.0.0", { from: v1, to: v2, addresses: [timeoutRenamed] })`
+	${Migration.instruction(renameTimeout)`Rename the timeout option. Its value stays in milliseconds.`}
+`;
+
+const restoreTimeout = RenameKey.make("restore-timeout", {
+	file: "app.json",
+	from: "requestTimeout",
+	to: "timeout",
+});
+const reversible = Migration.withRevert(toV2)`${restoreTimeout}`;
+
+const history = History.make({ versions: [v1, v2], migrations: [toV2] });
+const widgets = Package.make("@acme/widgets", { history });
+
+// The Effect handler, as in the README, working on the in-memory file map.
+const ConfigFiles = Context.Service<{
+	readonly renameKey: (file: string, from: string, to: string) => Effect.Effect<void>;
+}>("app/ConfigFiles");
+
+const effectHandler = Handler.effect(renameTimeout, ({ file, from, to }) =>
+	Effect.gen(function* () {
+		const configFiles = yield* ConfigFiles;
+		yield* configFiles.renameKey(file, from, to);
+	}),
+);
+
+const configFiles = ConfigFiles.of({
+	renameKey: (file, from, to) =>
+		Effect.promise(() => renameKey(file, from, to, { signal: new AbortController().signal })),
+});
+
+// Consumer code.
+const handlers = [
+	Handler.promise(
+		renameTimeout,
+		async ({ file, from, to }, { signal }) => {
+			await renameKey(file, from, to, { signal });
+		},
+		{
+			when: ({ file }) => files.has(file),
+			skipReason: "This project has no app.json",
+		},
+	),
+];
+
+const migrate = async (from: string, to: string) => {
+	const resolved = History.resolve(history, { from, to });
+	if (Result.isFailure(resolved)) throw new Error(resolved.failure.message);
+
+	try {
+		const report = await Executor.runPromise(resolved.success, { handlers });
+
+		return report.occurrences.map((entry) => `${entry.occurrence.id}: ${entry.outcome._tag}`);
+	} catch (error) {
+		if (error instanceof Executor.ExecutionFailed) {
+			return error.report.occurrences.map(
+				(entry) => `${entry.occurrence.id}: ${entry.outcome._tag}`,
+			);
+		}
+		throw error;
+	}
+};
+
+describe("README examples", () => {
+	it("runs the Promise example", async () => {
+		files.set("app.json", { timeout: 5000 });
+
+		expect(await migrate("1.0.0", "2.0.0")).toEqual([
+			"1.0.0-to-2.0.0/rename-timeout: Completed",
+		]);
+		expect(files.get("app.json")).toEqual({ requestTimeout: 5000 });
+		expect(await migrate("1.0.0", "2.0.0")).toEqual(["1.0.0-to-2.0.0/rename-timeout: Failed"]);
+
+		files.clear();
+		expect(await migrate("1.0.0", "2.0.0")).toEqual(["1.0.0-to-2.0.0/rename-timeout: Skipped"]);
+		await expect(migrate("2.0.0", "1.0.0")).rejects.toThrow(
+			'No declared downgrade route from "2.0.0" to "1.0.0".',
+		);
+	});
+
+	it("runs the Effect example", async () => {
+		files.set("app.json", { timeout: 5000 });
+		const resolved = History.resolve(history, { from: "1.0.0", to: "2.0.0" });
+		if (Result.isFailure(resolved)) throw resolved.failure;
+		const execution = Executor.effect(resolved.success, { handlers: [effectHandler] });
+		expectTypeOf<Effect.Services<typeof execution>>().toEqualTypeOf<
+			Context.Service.Identifier<typeof ConfigFiles>
+		>();
+
+		const report = await Effect.runPromise(
+			execution.pipe(Effect.provideService(ConfigFiles, configFiles)),
+		);
+
+		expect(report.status).toBe("completed");
+		expect(files.get("app.json")).toEqual({ requestTimeout: 5000 });
+	});
+
+	it("cancels a round trip with a rule", () => {
+		const v3 = Version.make("3.0.0", { previous: v2, changes: [] });
+		const toV3 = Migration.make("2.0.0-to-3.0.0", { from: v2, to: v3 })`${restoreTimeout}`;
+		const cancelRoundTrip = Rule.replace("cancel-timeout-round-trip", {
+			match: [renameTimeout, restoreTimeout],
+			replacement: [],
+		});
+		const withRule = History.make({
+			versions: [v1, v2, v3],
+			migrations: [reversible, toV3],
+			rules: [cancelRoundTrip],
+		});
+		const resolved = History.resolve(withRule, { from: "1.0.0", to: "3.0.0" });
+		if (Result.isFailure(resolved)) throw resolved.failure;
+
+		expect(resolved.success.occurrences).toEqual([]);
+	});
+
+	it("renders the guide and the changelog", () => {
+		const resolved = History.resolve(history, { from: "1.0.0", to: "2.0.0" });
+		if (Result.isFailure(resolved)) throw resolved.failure;
+		const changelog = Changelog.make();
+
+		expect(Markdown.render(changelog.upgrade(resolved.success, { package: widgets }))).toBe(
+			"# Upgrade @acme/widgets from 1.0.0 to 2.0.0\n\n## 1.0.0 to 2.0.0\n\nRename the timeout option. Its value stays in milliseconds.\n",
+		);
+		expect(
+			Markdown.render(
+				changelog.history(widgets, {
+					releases: [Version.withMetadata(v1, {}), Version.withMetadata(v2, {})],
+				}),
+			),
+		).toBe(
+			"# @acme/widgets\n\n## 2.0.0\n\n### Changes\n\n- Rename the timeout option to requestTimeout.\n\n## 1.0.0\n",
+		);
+	});
+
+	it("renders sections with release metadata", () => {
+		const sectioned = Changelog.make<{ date: string }>({
+			sections: [
+				Changelog.section("breaking", {
+					title: "Breaking changes",
+					select: (change) => change.metadata.breaking === true,
+				}),
+			],
+		});
+
+		expect(
+			Markdown.render(
+				sectioned.history(widgets, {
+					releases: [
+						Version.withMetadata(v1, { date: "2026-10-01" }),
+						Version.withMetadata(v2, { date: "2026-11-06" }),
+					],
+				}),
+			),
+		).toBe(
+			"# @acme/widgets\n\n## 2.0.0\n\n### Breaking changes\n\n- Rename the timeout option to requestTimeout.\n\n## 1.0.0\n",
+		);
+	});
+});

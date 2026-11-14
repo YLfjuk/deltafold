@@ -1,25 +1,19 @@
 # deltafold
 
-deltafold is a planned TypeScript library for modeling version history,
-resolving migration instructions between versions, and generating changelogs.
+deltafold is a TypeScript library for modeling version history, resolving
+migration instructions between versions, running them with your own handlers,
+and generating changelogs and upgrade guides. It is built on Effect 4 and is in
+early development.
 
-The repository has a workspace and tooling setup and an empty `deltafold` package
-in `packages/deltafold`. No library API exists yet. Version 0.0.0 on npm is a placeholder that
-reserves the package name.
-
-- [API design](notes/api-design.md): the pre-implementation specification.
-- [Review findings](notes/review-findings.md): design review results.
-- [Implementation plan](notes/implementation-plan.md): phases and progress.
+- [Package README](packages/deltafold/README.md): installation and usage.
+- [Requirements](notes/requirements.md): what the library must do.
+- [Decisions](notes/decisions.md): design decisions, provisional choices,
+  limitations, unbuilt work, and open questions.
 
 ## Development
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for requirements, setup, checks, and
 changesets, and [SECURITY.md](SECURITY.md) for reporting vulnerabilities.
-
-Project agent skills are installed with [skills.sh](https://skills.sh) as copies in
-`.agents/skills` and `.claude/skills`. `skills-lock.json` records their sources.
-Restore them with `npx skills experimental_install`. Update them with
-`npx skills update -p`.
 
 ## License
 

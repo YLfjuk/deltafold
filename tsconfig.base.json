@@ -29,7 +29,8 @@
 				"name": "@effect/language-service",
 				"diagnostics": false,
 				"noExternal": true,
-				"allowedUnstableApis": ["@effect/vitest#it"]
+				"importAliases": { "Array": "Arr" },
+				"allowedUnstableApis": ["@effect/vitest#it", "effect/Graph", "effect/SemVer"]
 			}
 		]
 	}

@@ -60,8 +60,6 @@ export default defineConfig({
 			".claude/**",
 			"pnpm-lock.yaml",
 			"skills-lock.json",
-			// Design input is kept verbatim until it is consolidated into maintained docs.
-			"notes/**",
 		],
 	},
 	lint: {
@@ -72,6 +70,8 @@ export default defineConfig({
 			suspicious: "error",
 		},
 		rules: {
+			// Effect data types use `_tag` as their discriminant.
+			"no-underscore-dangle": ["error", { allow: ["_tag"] }],
 			// @effect/vitest adds Effect-aware test blocks.
 			"vitest/no-standalone-expect": [
 				"error",

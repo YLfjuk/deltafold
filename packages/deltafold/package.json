@@ -34,11 +34,26 @@
 			"@deltafold/dev.src": "./src/index.ts",
 			"default": "./dist/index.js"
 		},
+		"./changelog": {
+			"@deltafold/dev.src": "./src/features/documents/index.ts",
+			"default": "./dist/changelog.js"
+		},
+		"./html": {
+			"@deltafold/dev.src": "./src/renderers/html.ts",
+			"default": "./dist/html.js"
+		},
+		"./markdown": {
+			"@deltafold/dev.src": "./src/renderers/markdown.ts",
+			"default": "./dist/markdown.js"
+		},
 		"./package.json": "./package.json"
 	},
 	"publishConfig": {
 		"exports": {
 			".": "./dist/index.js",
+			"./changelog": "./dist/changelog.js",
+			"./html": "./dist/html.js",
+			"./markdown": "./dist/markdown.js",
 			"./package.json": "./package.json"
 		},
 		"access": "public"
@@ -47,6 +62,15 @@
 		"build": "vp pack",
 		"typecheck": "tsc --noEmit",
 		"test": "vp test run"
+	},
+	"dependencies": {
+		"@types/hast": "3.0.5",
+		"@types/mdast": "4.0.4",
+		"dedent": "1.7.2",
+		"hast-util-to-html": "9.0.5",
+		"mdast-util-to-hast": "13.2.1",
+		"mdast-util-to-markdown": "2.2.0",
+		"micromark-util-sanitize-uri": "2.0.1"
 	},
 	"devDependencies": {
 		"@arethetypeswrong/core": "catalog:",
