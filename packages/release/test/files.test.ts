@@ -90,7 +90,7 @@ describe("prepare and apply", () => {
 	it.effect(
 		"copies pending declarations, edits manifests and replacements, then consumes pending modules",
 		() => {
-			const { files, layer } = memoryFs(workspace());
+			const { files, provide } = memoryFs(workspace());
 
 			return Effect.gen(function* () {
 				const prepared = yield* ReleaseFiles.prepare(plan, options);
@@ -149,12 +149,12 @@ export const version = Version.make("1.6.0", {
 				expect(files.get("docs/guide.md")).toBe("Available since 1.6.0.\n");
 				expect(files.get("packages/widgets/src/index.ts")).toContain("@since 1.6.0");
 				expect(files.get("packages/widgets/src/generated/schema.ts")).toContain("@next");
-			}).pipe(Effect.provide(layer));
+			}).pipe(provide);
 		},
 	);
 
 	it.effect("refuses a stale plan before writing anything", () => {
-		const { files, layer } = memoryFs(workspace());
+		const { files, provide } = memoryFs(workspace());
 
 		return Effect.gen(function* () {
 			const prepared = yield* ReleaseFiles.prepare(plan, options);
@@ -167,11 +167,11 @@ export const version = Version.make("1.6.0", {
 				paths: [".changes/late.ts", "docs/guide.md"],
 			});
 			expect(files.has("packages/widgets/versions/1.6.0.ts")).toBe(false);
-		}).pipe(Effect.provide(layer));
+		}).pipe(provide);
 	});
 
 	it.effect("restores changed files when a write fails", () => {
-		const { files, layer } = memoryFs(workspace(), {
+		const { files, provide } = memoryFs(workspace(), {
 			failWrite: "packages/react/package.json",
 		});
 		const before = new Map(files);
@@ -191,7 +191,7 @@ export const version = Version.make("1.6.0", {
 				unrestored: [],
 			});
 			expect(new Map(files)).toEqual(before);
-		}).pipe(Effect.provide(layer));
+		}).pipe(provide);
 	});
 
 	it.effect("reports every preparation problem together", () => {
@@ -203,7 +203,7 @@ export const version = Version.make("1.6.0", {
 		};
 		// Without a generated 1.5.2 module, the widgets version has no previous source.
 		delete initial["packages/widgets/versions/1.5.2.ts"];
-		const { layer } = memoryFs(initial);
+		const { provide } = memoryFs(initial);
 		const overlapping = Release.make("widgets", {
 			...release.config,
 			replacements: [
@@ -230,6 +230,6 @@ export const version = Version.make("1.6.0", {
 				"MissingSource",
 				"ReplacementConflict",
 			]);
-		}).pipe(Effect.provide(layer));
+		}).pipe(provide);
 	});
 });

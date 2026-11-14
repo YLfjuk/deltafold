@@ -1,4 +1,4 @@
-import { Effect, FileSystem, Layer, PlatformError } from "effect";
+import { Effect, FileSystem, PlatformError } from "effect";
 
 const notFound = (method: string, path: string) =>
 	PlatformError.systemError({
@@ -70,5 +70,8 @@ export const memoryFs = (
 		},
 	});
 
-	return { files, layer: Layer.succeed(FileSystem.FileSystem, fs) };
+	return {
+		files,
+		provide: Effect.provideService(FileSystem.FileSystem, fs),
+	};
 };
