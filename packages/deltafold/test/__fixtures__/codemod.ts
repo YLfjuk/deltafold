@@ -30,17 +30,23 @@ export const handler = <A extends Action.Any>(
 ) =>
 	Handler.promise(
 		action,
-		async (payload, { signal, services: { files } }) => {
-			for (const file of await files.list(options.include)) {
-				signal.throwIfAborted();
-				await files.rewrite(file, (source) => options.transform(source, payload));
-			}
+		{
+			prepare: async (_payload, { services: { files } }) => {
+				const matched = await files.list(options.include);
+
+				return matched.length > 0
+					? Handler.prepared(matched)
+					: Handler.skip("No files match the include patterns");
+			},
+			apply: async (matched, { payload, signal, services: { files } }) => {
+				for (const file of matched) {
+					signal.throwIfAborted();
+					await files.rewrite(file, (source) => options.transform(source, payload));
+				}
+			},
 		},
 		{
 			services: { files: SourceFiles },
 			errors: [(cause: unknown) => cause instanceof TransformRejected],
-			when: async (_payload, { services: { files } }) =>
-				(await files.list(options.include)).length > 0,
-			skipReason: "No files match the include patterns",
 		},
 	);

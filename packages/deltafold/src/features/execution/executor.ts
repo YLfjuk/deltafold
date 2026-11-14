@@ -7,8 +7,10 @@ import {
 	Effect,
 	Equal,
 	Exit,
+	Fiber,
 	Layer,
 	Option,
+	Scope,
 } from "effect";
 
 import type * as Action from "../../foundation/action.ts";
@@ -46,11 +48,12 @@ export type Outcome<E = unknown> =
 	  }
 	/** Not started because execution stopped first. */
 	| { readonly _tag: "Unattempted" }
+	/** `evaluated`: whether a prepare phase ran and decided to apply. */
 	| { readonly _tag: "WouldExecute"; readonly evaluated: boolean }
 	| { readonly _tag: "WouldSkip"; readonly reason: string }
 	| { readonly _tag: "Undetermined"; readonly reason: string }
 	| {
-			readonly _tag: "PreconditionFailed";
+			readonly _tag: "PreparationFailed";
 			readonly error: E | undefined;
 			readonly cause: Cause.Cause<E>;
 	  };
@@ -77,7 +80,10 @@ export type Report<A extends Action.Any = Action.Any, E = unknown> = {
 	readonly route: string;
 	/** Every occurrence in plan order. */
 	readonly occurrences: ReadonlyArray<OccurrenceReport<A, E>>;
-	/** Whether any action body started. A started body may have partially changed state. */
+	/**
+	 * Whether any apply phase started. A started apply phase may have partially changed
+	 * state.
+	 */
 	readonly bodiesStarted: boolean;
 	/** Progress is not persisted. Rerunning the plan repeats completed actions. */
 	readonly persistence: "none";
@@ -106,10 +112,10 @@ export type CoverageIssue = {
 const HandlerCoverageBase = Data.TaggedError("HandlerCoverageError");
 
 /**
- * Handler coverage failed before any precondition or body ran. Every occurrence needs
- * exactly one handler, for the same action definition: the same identifier, kind, and
- * payload. For an occurrence that a rule produced, the issue names the rule and the
- * occurrences it replaced.
+ * Handler coverage failed before any handler phase ran. Every occurrence needs exactly
+ * one handler, for the same action definition: the same identifier, kind, and payload.
+ * For an occurrence that a rule produced, the issue names the rule and the occurrences
+ * it replaced.
  *
  * @since @next
  */
@@ -237,14 +243,15 @@ export type Requirements<H> = Handler.Services<H>;
 export type Options<H extends Handler.Any> = {
 	readonly handlers?: ReadonlyArray<H>;
 	/**
-	 * Evaluate preconditions without running any action body. A precondition that may
-	 * depend on an earlier action is reported `Undetermined`, because the dry run does not
-	 * apply that action.
+	 * Run prepare phases without running any apply phase. A prepare phase that may
+	 * depend on an earlier action is reported `Undetermined`, because the dry run does
+	 * not apply that action.
 	 */
 	readonly dryRun?: boolean;
 	/**
-	 * Per-occurrence limit for a precondition or body. Exceeding it interrupts that action
-	 * and stops admitting new ones. It applies to dry-run preconditions too.
+	 * Limit for each phase of an occurrence: the prepare phase and the apply phase each
+	 * get the full limit. Exceeding it interrupts that action and stops admitting new
+	 * ones. It applies to dry-run prepare phases too.
 	 */
 	readonly timeout?: Duration.Input;
 	/**
@@ -336,6 +343,19 @@ const failureOf = <E>(cause: Cause.Cause<E>) => ({
 	cause,
 });
 
+/** The exit an occurrence's scope closes with, so finalizers see how it ended. */
+const exitOf = <E>(outcome: Outcome<E> | undefined): Exit.Exit<void, E> => {
+	switch (outcome?._tag) {
+		case "Failed":
+		case "PreparationFailed":
+			return Exit.failCause(outcome.cause);
+		case "Interrupted":
+			return Exit.interrupt();
+		default:
+			return Exit.void;
+	}
+};
+
 const forEachBranch = <R>(
 	branches: ReadonlyArray<Node>,
 	concurrency: Action.Concurrency,
@@ -344,6 +364,12 @@ const forEachBranch = <R>(
 
 /** Registers a callback that cancels the execution. Only `runPromise` uses it. */
 type Subscribe = (cancel: () => void) => void;
+
+/**
+ * Receives the fiber that closes an occurrence scope after an interrupted Promise
+ * settles, so the caller can keep the services it built open until then.
+ */
+type Retain = (fiber: Fiber.Fiber<void>) => void;
 
 type StopReason = "failure" | InterruptReason;
 
@@ -356,6 +382,13 @@ type PhaseResult<T, E> =
 	  };
 
 type ControlOptions = Pick<Options<never>, "timeout" | "settleTimeout">;
+
+/**
+ * Logs a cleanup failure that the report cannot carry, with the occurrence or the
+ * services layer that owned the resources.
+ */
+const logCleanupFailure = (owner: Record<string, string>) => (cause: Cause.Cause<unknown>) =>
+	Effect.logError("deltafold: cleanup failed", cause).pipe(Effect.annotateLogs(owner));
 
 /** Admission state, cancellation, and timeouts shared by real and dry runs. */
 const makeControl = (options: ControlOptions, subscribe: Subscribe | undefined) =>
@@ -372,17 +405,22 @@ const makeControl = (options: ControlOptions, subscribe: Subscribe | undefined) 
 			Deferred.doneUnsafe(cancelled, Exit.succeed("cancelled"));
 		});
 
-		/** Runs one precondition or body, racing it against cancellation and the timeout. */
+		/**
+		 * Runs one phase, racing it against cancellation and its own timeout. An
+		 * interrupted Promise that outlives the settlement grace period goes to `unsettled`.
+		 */
 		const runPhase = <T, E, R>(
 			work: Effect.Effect<T, E, R>,
+			unsettled: Array<Promise<void>>,
 		): Effect.Effect<PhaseResult<T, E>, never, R> =>
 			Effect.gen(function* () {
 				let settled = true;
 				const tracked = work.pipe(
 					Effect.provideService(SettlementReference, {
 						grace: settleTimeout,
-						record: (value) => {
-							settled = value;
+						unsettled: (promise) => {
+							settled = false;
+							unsettled.push(promise);
 						},
 					}),
 				);
@@ -410,6 +448,45 @@ const makeControl = (options: ControlOptions, subscribe: Subscribe | undefined) 
 		return { halt, stop, runPhase };
 	});
 
+/**
+ * Runs one occurrence in its own scope, which both phases share. `use` returns the
+ * exit to close the scope with. The scope closes as soon as the occurrence ends, and
+ * a failing finalizer goes to `onCleanupFailure`. If an interrupted Promise has not
+ * settled, the scope stays open until it does, possibly forever; a failing
+ * finalizer is then logged, because the report may already have been returned.
+ */
+const inScope = <E, R>(
+	retain: Retain,
+	occurrenceId: string,
+	use: (
+		scope: Scope.Scope,
+		unsettled: Array<Promise<void>>,
+	) => Effect.Effect<Exit.Exit<void, E>, never, R>,
+	onCleanupFailure: (cause: Cause.Cause<never>) => Effect.Effect<void>,
+): Effect.Effect<void, never, R> =>
+	Effect.uninterruptibleMask((restore) =>
+		Effect.gen(function* () {
+			const scope = yield* Scope.make();
+			const unsettled: Array<Promise<void>> = [];
+			const used = yield* Effect.exit(restore(use(scope, unsettled)));
+			const end = Exit.isSuccess(used) ? used.value : used;
+			if (unsettled.length > 0) {
+				const fiber = yield* Effect.forkDetach(
+					Effect.promise(() => Promise.all(unsettled)).pipe(
+						Effect.andThen(Scope.close(scope, end)),
+						Effect.catchCause(logCleanupFailure({ occurrence: occurrenceId })),
+					),
+				);
+				retain(fiber);
+			} else {
+				const closed = yield* Effect.exit(Scope.close(scope, end));
+				if (Exit.isFailure(closed)) yield* onCleanupFailure(closed.cause);
+			}
+
+			return yield* used;
+		}),
+	).pipe(Effect.asVoid);
+
 const interrupted = <A extends Action.Any, E>(
 	plan: Plan.Plan<A, Plan.Coverage>,
 	mode: Report["mode"],
@@ -422,108 +499,119 @@ const interrupted = <A extends Action.Any, E>(
 		report: report(plan, mode, "interrupted", outcomes, bodiesStarted),
 	});
 
+/**
+ * The outcome of a phase that did not succeed. `undefined` when it succeeded. An Effect
+ * handler that interrupted itself stops admission.
+ */
+const unsuccessful = <T, E>(
+	phase: Handler.Phase,
+	result: PhaseResult<T, E>,
+	stop: (reason: StopReason) => void,
+): Outcome<E> | undefined => {
+	if (result._tag === "Interrupted") {
+		return {
+			_tag: "Interrupted",
+			phase,
+			reason: result.reason,
+			settled: result.settled,
+		};
+	}
+	if (Exit.isFailure(result.exit) && Cause.hasInterruptsOnly(result.exit.cause)) {
+		stop("handler");
+
+		return { _tag: "Interrupted", phase, reason: "handler", settled: true };
+	}
+
+	return undefined;
+};
+
 const execute = <A extends Action.Any, E, R>(
 	plan: Plan.Plan<A, Plan.Coverage>,
 	resolved: Resolved<E, R>,
 	options: ControlOptions,
 	subscribe: Subscribe | undefined,
+	retain: Retain,
 ): Effect.Effect<Report<A, E>, ExecutionFailed<A, E> | ExecutionInterrupted<A, E>, R> =>
 	Effect.gen(function* () {
 		const outcomes = new Map<string, Outcome<E>>();
 		const { halt, stop, runPhase } = yield* makeControl(options, subscribe);
 		let bodiesStarted = false;
 
-		const runOccurrence = (occurrence: Occurrence) =>
-			Effect.gen(function* () {
-				if (halt.reason !== undefined) return;
+		const runOccurrence = (occurrence: Occurrence) => {
+			if (halt.reason !== undefined) return Effect.void;
 
-				const handler = resolved.get(occurrence.id);
-				if (handler === undefined) return;
+			const handler = resolved.get(occurrence.id);
+			if (handler === undefined) return Effect.void;
 
-				if (handler.precondition !== undefined) {
-					const checked = yield* runPhase(handler.precondition);
-					if (checked._tag === "Interrupted") {
-						outcomes.set(occurrence.id, {
-							_tag: "Interrupted",
-							phase: "precondition",
-							reason: checked.reason,
-							settled: checked.settled,
-						});
+			let phase: Handler.Phase = "prepare";
+			const end = (outcome: Outcome<E>) => {
+				outcomes.set(occurrence.id, outcome);
 
-						return;
+				return exitOf(outcome);
+			};
+			const fail = (cause: Cause.Cause<E>) => {
+				stop("failure");
+
+				return end({ _tag: "Failed", phase, ...failureOf(cause) });
+			};
+
+			const use = (scope: Scope.Scope, unsettled: Array<Promise<void>>) =>
+				Effect.gen(function* () {
+					let step: Handler.Step<E, R>;
+					if (handler.prepares) {
+						const preparation = yield* runPhase(handler.prepare(scope), unsettled);
+						const stopped = unsuccessful("prepare", preparation, stop);
+						if (stopped !== undefined) return end(stopped);
+						if (preparation._tag !== "Done") return Exit.void;
+						if (Exit.isFailure(preparation.exit)) return fail(preparation.exit.cause);
+						step = preparation.exit.value;
+						// The occurrence has started, so a sibling failure or timeout lets it
+						// finish. Cancellation that arrived while preparing keeps it from
+						// applying, and the prepared value is discarded.
+						if (step._tag === "Apply" && halt.reason === "cancelled") return Exit.void;
+					} else {
+						const started = yield* Effect.exit(handler.prepare(scope));
+						if (Exit.isFailure(started)) return fail(started.cause);
+						step = started.value;
 					}
-					if (
-						Exit.isFailure(checked.exit) &&
-						Cause.hasInterruptsOnly(checked.exit.cause)
-					) {
-						stop("handler");
-						outcomes.set(occurrence.id, {
-							_tag: "Interrupted",
-							phase: "precondition",
-							reason: "handler",
-							settled: true,
-						});
+					if (step._tag === "Skip") return end({ _tag: "Skipped", reason: step.reason });
 
-						return;
+					phase = "apply";
+					bodiesStarted = true;
+					const applied = yield* runPhase(step.apply, unsettled);
+					const stopped = unsuccessful("apply", applied, stop);
+					if (stopped !== undefined) return end(stopped);
+					if (applied._tag !== "Done") return Exit.void;
+					if (Exit.isFailure(applied.exit)) return fail(applied.exit.cause);
+
+					return end({ _tag: "Completed" });
+				});
+
+			// A finalizer that fails before the report is part of the execution: it fails an
+			// occurrence that otherwise ended normally. An interrupted occurrence keeps its
+			// outcome, and the failure is logged.
+			const onCleanupFailure = (cause: Cause.Cause<never>) =>
+				Effect.suspend(() => {
+					const outcome = outcomes.get(occurrence.id);
+					if (outcome?._tag === "Interrupted") {
+						return logCleanupFailure({ occurrence: occurrence.id })(cause);
 					}
-					if (Exit.isFailure(checked.exit)) {
-						stop("failure");
-						outcomes.set(occurrence.id, {
-							_tag: "Failed",
-							phase: "precondition",
-							...failureOf(checked.exit.cause),
-						});
-
-						return;
-					}
-					if (!checked.exit.value) {
-						outcomes.set(occurrence.id, {
-							_tag: "Skipped",
-							reason: handler.skipReason,
-						});
-
-						return;
-					}
-					// The occurrence has started, so a sibling failure lets it finish.
-					// Cancellation that arrived during the precondition keeps the body from starting.
-					if (halt.reason === "cancelled") return;
-				}
-
-				bodiesStarted = true;
-				const ran = yield* runPhase(handler.body);
-				if (ran._tag === "Interrupted") {
-					outcomes.set(occurrence.id, {
-						_tag: "Interrupted",
-						phase: "body",
-						reason: ran.reason,
-						settled: ran.settled,
-					});
-
-					return;
-				}
-				if (Exit.isFailure(ran.exit) && Cause.hasInterruptsOnly(ran.exit.cause)) {
-					stop("handler");
-					outcomes.set(occurrence.id, {
-						_tag: "Interrupted",
-						phase: "body",
-						reason: "handler",
-						settled: true,
-					});
-
-					return;
-				}
-				if (Exit.isFailure(ran.exit)) {
 					stop("failure");
 					outcomes.set(occurrence.id, {
 						_tag: "Failed",
-						phase: "body",
-						...failureOf(ran.exit.cause),
+						phase,
+						...failureOf(
+							outcome?._tag === "Failed"
+								? Cause.combine(outcome.cause, cause)
+								: cause,
+						),
 					});
 
-					return;
-				}
-				outcomes.set(occurrence.id, { _tag: "Completed" });
-			});
+					return Effect.void;
+				});
+
+			return inScope(retain, occurrence.id, use, onCleanupFailure);
+		};
 
 		const runNode = (node: Node): Effect.Effect<void, never, R> => {
 			switch (node._tag) {
@@ -562,11 +650,64 @@ const dryRun = <A extends Action.Any, E, R>(
 	resolved: Resolved<E, R>,
 	options: ControlOptions,
 	subscribe: Subscribe | undefined,
+	retain: Retain,
 ): Effect.Effect<Report<A, E>, ExecutionInterrupted<A, E>, R> =>
 	Effect.gen(function* () {
 		const outcomes = new Map<string, Outcome<E>>();
 		const { halt, stop, runPhase } = yield* makeControl(options, subscribe);
 		let failedAt: string | undefined;
+
+		/** Runs a prepare phase in the occurrence's scope and records what it predicts. */
+		const prepare = (id: string, handler: Internal<E, R>) => {
+			const end = (outcome: Outcome<E>) => {
+				outcomes.set(id, outcome);
+
+				return exitOf(outcome);
+			};
+			const use = (scope: Scope.Scope, unsettled: Array<Promise<void>>) =>
+				Effect.gen(function* () {
+					const preparation = yield* runPhase(handler.prepare(scope), unsettled);
+					const stopped = unsuccessful("prepare", preparation, stop);
+					if (stopped !== undefined) return end(stopped);
+					if (preparation._tag !== "Done") return Exit.void;
+					if (Exit.isFailure(preparation.exit)) {
+						failedAt = id;
+
+						return end({
+							_tag: "PreparationFailed",
+							...failureOf(preparation.exit.cause),
+						});
+					}
+					// A dry run never applies: the prepared value is discarded.
+					const step = preparation.exit.value;
+
+					return end(
+						step._tag === "Skip"
+							? { _tag: "WouldSkip", reason: step.reason }
+							: { _tag: "WouldExecute", evaluated: true },
+					);
+				});
+			const onCleanupFailure = (cause: Cause.Cause<never>) =>
+				Effect.suspend(() => {
+					const outcome = outcomes.get(id);
+					if (outcome?._tag === "Interrupted") {
+						return logCleanupFailure({ occurrence: id })(cause);
+					}
+					failedAt ??= id;
+					outcomes.set(id, {
+						_tag: "PreparationFailed",
+						...failureOf(
+							outcome?._tag === "PreparationFailed"
+								? Cause.combine(outcome.cause, cause)
+								: cause,
+						),
+					});
+
+					return Effect.void;
+				});
+
+			return inScope(retain, id, use, onCleanupFailure);
+		};
 
 		/** Returns whether the node would or might change state. */
 		const visit = (node: Node, dirty: boolean): Effect.Effect<boolean, never, R> =>
@@ -592,12 +733,12 @@ const dryRun = <A extends Action.Any, E, R>(
 				if (failedAt !== undefined) {
 					outcomes.set(node.id, {
 						_tag: "Undetermined",
-						reason: `Execution would stop at the failed precondition of "${failedAt}".`,
+						reason: `Execution would stop at the failed preparation of "${failedAt}".`,
 					});
 
 					return true;
 				}
-				if (handler.precondition === undefined) {
+				if (!handler.prepares) {
 					outcomes.set(node.id, { _tag: "WouldExecute", evaluated: false });
 
 					return true;
@@ -605,51 +746,15 @@ const dryRun = <A extends Action.Any, E, R>(
 				if (dirty) {
 					outcomes.set(node.id, {
 						_tag: "Undetermined",
-						reason: "The precondition depends on earlier actions that a dry run does not apply.",
+						reason: "The prepare phase depends on earlier actions that a dry run does not apply.",
 					});
 
 					return true;
 				}
 
-				const checked = yield* runPhase(handler.precondition);
-				if (checked._tag === "Interrupted") {
-					outcomes.set(node.id, {
-						_tag: "Interrupted",
-						phase: "precondition",
-						reason: checked.reason,
-						settled: checked.settled,
-					});
+				yield* prepare(node.id, handler);
 
-					return true;
-				}
-				if (Exit.isFailure(checked.exit) && Cause.hasInterruptsOnly(checked.exit.cause)) {
-					stop("handler");
-					outcomes.set(node.id, {
-						_tag: "Interrupted",
-						phase: "precondition",
-						reason: "handler",
-						settled: true,
-					});
-
-					return true;
-				}
-				if (Exit.isFailure(checked.exit)) {
-					failedAt = node.id;
-					outcomes.set(node.id, {
-						_tag: "PreconditionFailed",
-						...failureOf(checked.exit.cause),
-					});
-
-					return true;
-				}
-				if (!checked.exit.value) {
-					outcomes.set(node.id, { _tag: "WouldSkip", reason: handler.skipReason });
-
-					return false;
-				}
-				outcomes.set(node.id, { _tag: "WouldExecute", evaluated: true });
-
-				return true;
+				return outcomes.get(node.id)?._tag !== "WouldSkip";
 			});
 
 		// Later migrations conservatively depend on every earlier migration.
@@ -673,6 +778,7 @@ const run = <A extends Action.Any, C extends Plan.Coverage, H extends Handler.An
 	plan: Plan.Plan<A, C>,
 	options: Options<H>,
 	subscribe: Subscribe | undefined,
+	retain: Retain,
 ): Effect.Effect<Report<A, Errors<H>>, ExecutionError<A, Errors<H>>, Requirements<H>> => {
 	// Handlers are covariant in their errors and services, and `Errors<H>` and
 	// `Requirements<H>` collect them from each handler in `H`, so every handler fits this
@@ -695,16 +801,21 @@ const run = <A extends Action.Any, C extends Plan.Coverage, H extends Handler.An
 		}
 
 		return options.dryRun === true
-			? yield* dryRun(plan, checked.resolved, options, subscribe)
-			: yield* execute(plan, checked.resolved, options, subscribe);
+			? yield* dryRun(plan, checked.resolved, options, subscribe, retain)
+			: yield* execute(plan, checked.resolved, options, subscribe, retain);
 	});
 };
 
 /**
- * Runs a plan as an Effect. Coverage is checked before any precondition or body runs.
- * Steps are sequential barriers; parallel groups run their branches concurrently. On
- * failure, no new action starts, and actions already running settle before the effect
- * fails with the partial report.
+ * Runs a plan as an Effect. Coverage is checked before any handler phase runs. Steps
+ * are sequential barriers; parallel groups run their branches concurrently. On failure,
+ * no new action starts, and actions already running settle before the effect fails
+ * with the partial report.
+ *
+ * Each occurrence has its own scope, shared by its phases and closed when it ends. An
+ * interrupted Promise that has not settled keeps its occurrence's scope open until it
+ * settles, after the effect has ended. Services that the caller provides stay the
+ * caller's to release.
  *
  * To cancel, interrupt the fiber. Interruption reaches running actions and aborts the
  * signal passed to Promise callbacks. The effect then ends as interrupted, without a
@@ -720,7 +831,7 @@ export const effect = <
 	plan: Plan.Plan<A, C>,
 	options: Options<H> & CoverageCheck<A, H, C>,
 ): Effect.Effect<Report<A, Errors<H>>, ExecutionError<A, Errors<H>>, Requirements<H>> =>
-	run(plan, options, undefined);
+	run(plan, options, undefined, () => {});
 
 type ServicesOption<R, LE> = [R] extends [never]
 	? {
@@ -747,10 +858,12 @@ export type PromiseOptions<H extends Handler.Any> = Options<H> & {
  * Building a supplied services layer can also reject with the layer's own error,
  * without a report.
  *
- * A services layer is built for this run and finalized when the run ends. A services
- * context stays owned by the caller. A Promise callback that ignores its signal can keep
- * running after cancellation or a timeout, beyond `settleTimeout`, and so after the
- * run's layer resources are finalized; the report marks it as possibly still running.
+ * A services layer is built for this run. A services context stays owned by the
+ * caller. A Promise callback that ignores its signal can keep running after
+ * cancellation or a timeout, beyond `settleTimeout`; the report marks it as possibly
+ * still running. Its occurrence's scope and the run's services layer then stay open
+ * until it settles, possibly forever, and close in that order. A cleanup failure after
+ * the Promise resolved is logged through Effect.
  *
  * @since @next
  */
@@ -793,16 +906,45 @@ export const runPromise = <
 					cancelRun = cancel;
 					if (signal.aborted) cancel();
 				};
-	const program = run(plan, options, subscribe);
+	const retained: Array<Fiber.Fiber<void>> = [];
+	const program = run(plan, options, subscribe, (fiber) => retained.push(fiber));
 	const services: Context.Context<never> | Layer.Layer<never, LE> | undefined = options.services;
 	const provided =
 		services === undefined
 			? program
 			: Context.isContext(services)
 				? Effect.provideContext(program, services)
-				: // runPromise is the entry point: the caller's layer is built for this one run.
-					// oxlint-disable-next-line effecttsgo/strict-effect-provide
-					Effect.provide(program, services);
+				: // runPromise is the entry point: the caller's layer is built for this one run,
+					// in a scope that outlives the run while retained occurrence scopes are open.
+					Effect.uninterruptibleMask((restore) =>
+						Effect.gen(function* () {
+							const scope = yield* Scope.make();
+							const built = yield* Effect.exit(
+								restore(Layer.buildWithScope(services, scope)),
+							);
+							if (Exit.isFailure(built)) {
+								yield* Scope.close(scope, built);
+
+								return yield* built;
+							}
+							const exit = yield* Effect.exit(
+								restore(Effect.provideContext(program, built.value)),
+							);
+							if (retained.length === 0) yield* Scope.close(scope, exit);
+							else {
+								yield* Effect.forkDetach(
+									Fiber.awaitAll(retained).pipe(
+										Effect.andThen(Scope.close(scope, exit)),
+										Effect.catchCause(
+											logCleanupFailure({ owner: "services layer" }),
+										),
+									),
+								);
+							}
+
+							return yield* exit;
+						}),
+					);
 	const cancellable =
 		signal === undefined
 			? provided

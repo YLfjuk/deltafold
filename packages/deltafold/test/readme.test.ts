@@ -84,16 +84,13 @@ const configFiles = ConfigFiles.of({
 
 // Consumer code.
 const handlers = [
-	Handler.promise(
-		renameTimeout,
-		async ({ file, from, to }, { signal }) => {
+	Handler.promise(renameTimeout, {
+		prepare: async ({ file }) =>
+			files.has(file) ? Handler.prepared() : Handler.skip("This project has no app.json"),
+		apply: async (_prepared, { payload: { file, from, to }, signal }) => {
 			await renameKey(file, from, to, { signal });
 		},
-		{
-			when: ({ file }) => files.has(file),
-			skipReason: "This project has no app.json",
-		},
-	),
+	}),
 ];
 
 const migrate = async (from: string, to: string) => {

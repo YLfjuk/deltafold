@@ -110,8 +110,9 @@ erases release history.
   exactly one handler for its definition. A missing handler for a replacement
   names the rule and the actions it replaced. Where the planned actions are known
   statically, missing handlers are type errors.
-- **EXEC-5.** A precondition that does not hold skips its action with a reason. A
-  precondition that cannot be evaluated fails the run.
+- **EXEC-5.** A handler can prepare its action with a read-only phase that
+  either skips the action with a reason or produces a value that the action
+  receives. A preparation that fails fails the run.
 - **EXEC-6.** Migrations run one after another. Independent branches within a
   migration can run concurrently, with an optional limit.
 - **EXEC-7.** After a failure, no new action starts, and actions already running
