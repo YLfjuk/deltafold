@@ -54,7 +54,10 @@ concrete need appears.
 **No detours.** A route never mixes moves toward ancestors with moves toward
 descendants in release ancestry. Explicit cross-branch migrations may appear in
 either kind of route. A backport therefore reaches another branch only through a
-migration declared from the backport itself.
+migration declared from the backport itself. A declared shortcut is the
+exception: its migrations may pass through a shared ancestor, because a shortcut
+is the author's assertion that they are equivalent to the route it replaces. The
+route that uses it is classified by the shortcut's own endpoints.
 
 **Route identifiers.** A route identifier is the version identifiers joined by
 `>`, with shortcut hops written as `[shortcut-id]`, for example

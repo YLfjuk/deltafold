@@ -59,6 +59,8 @@ erases release history.
   failure, never "no work".
 - **PLAN-3.** A route follows declared migrations only. Sharing an ancestor does
   not allow a route to go down to that ancestor and back up to another branch.
+  An explicitly declared shortcut may take such a path, because the author
+  asserts its equivalence.
 - **PLAN-4.** One migration holds all the work of a transition between two
   versions, and declaring a second one for the same transition is an error.
   Alternative routes are distinct paths between the versions.
