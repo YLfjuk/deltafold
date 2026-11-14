@@ -235,9 +235,18 @@ points. Ambient declarations live in `@types` folders.
 API is experimental. If declaration output regresses, fall back to TypeScript 6
 for declaration emit.
 
-**Publishing.** No release workflow, npm token, or publish step is configured.
-The 0.0.0 placeholder was published manually. Publishing must go through pnpm,
-which applies `publishConfig.exports`.
+**Publishing.** Maintainers apply versions with `pnpm run version` in a pull
+request. The release workflow builds, tests, and runs `changeset pack` on every
+pull request as a publish dry run. On `main`, `changesets/action/publish` runs
+`pnpm run release` (`changeset publish`), which publishes the versions npm does
+not have yet with `pnpm publish`, so `publishConfig.exports` applies. It uses npm
+trusted publishing, without a stored token, and creates release tags and GitHub
+releases. The 0.0.0 placeholder was published manually.
+
+A rerun publishes only versions npm does not have yet. If publishing succeeds but
+creating the release tag fails, a rerun does not recreate the tag. That case is
+recovered by hand: tag the release commit with `git tag deltafold@<version>
+<commit>`, push the tag, and create its GitHub release.
 
 **Changelogs.** Changesets versions the package with its default changelog
 formatter. A Changesets changelog plugin formats one line per changeset, so it
