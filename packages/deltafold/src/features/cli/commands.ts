@@ -597,7 +597,10 @@ const migrateCommand = (
 					const progress = Observer.effect((event) => {
 						const lines = Render.progress(event, output.err);
 
-						return lines.length === 0 ? Effect.void : terminal.progress(lines);
+						return Effect.andThen(
+							terminal.observe(event),
+							lines.length === 0 ? Effect.void : terminal.progress(lines),
+						);
 					});
 					const observers = output.json
 						? definition.package.observers

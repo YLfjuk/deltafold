@@ -907,6 +907,97 @@ describe("manual handlers", () => {
 	);
 });
 
+/** A package whose only migration runs `steps` as parallel branches. */
+const parallel = (steps: ReadonlyArray<Action.Any>) => {
+	const step = Migration.make("1.0.0-to-2.0.0", {
+		from: v1,
+		to: v2,
+	})`${Action.parallel(steps)}`;
+
+	return Package.make("@acme/parallel", {
+		history: History.make({ versions: [v1, v2], migrations: [step] }),
+	});
+};
+
+describe("queued manual prompts", () => {
+	const argv = ["migrate", "--from", "1.0.0", "--to", "2.0.0"];
+
+	it.effect("say that a decline is stopping the run", () =>
+		Effect.gen(function* () {
+			const command = Command.make(parallel([renameTimeout, addRetryLimit]), {
+				handlers: [Handler.manual(renameTimeout), Handler.manual(addRetryLimit)],
+			});
+			const result = yield* capture(start(command, argv), { ...person, input: ["n", "y"] });
+			const second = result.stderr.indexOf("Manual step 1.0.0-to-2.0.0/add-retry-limit");
+			const notice = result.stderr.indexOf(
+				"The run is stopping: 1.0.0-to-2.0.0/rename-timeout was declined.",
+			);
+
+			expect(result.code).toBe(1);
+			expect(second).toBeGreaterThanOrEqual(0);
+			expect(notice).toBeGreaterThan(second);
+			expect(result.stderr).toContain(
+				"This step had already started; confirm only if you completed it.",
+			);
+			expect(result.stdout).toContain(
+				"1.0.0-to-2.0.0/add-retry-limit (confirmed by a person)",
+			);
+		}),
+	);
+
+	it.live("say that a failure is stopping the run", () =>
+		Effect.gen(function* () {
+			const asked = new Set<string>();
+			const bothAsked = yield* Deferred.make<void>();
+			const failed = yield* Deferred.make<void>();
+			const observed = parallel([renameTimeout, addRetryLimit, addBoth]).pipe(
+				Package.withObserver(
+					Observer.effect((event) => {
+						if (event._tag === "ActionPhaseStarted" && event.phase === "confirmation") {
+							asked.add(event.action.occurrence);
+
+							return asked.size === 2
+								? Deferred.succeed(bothAsked, undefined)
+								: Effect.void;
+						}
+
+						return event._tag === "ActionSettled" && event.outcome._tag === "Failed"
+							? Deferred.succeed(failed, undefined)
+							: Effect.void;
+					}),
+				),
+			);
+			const command = Command.make(observed, {
+				handlers: [
+					Handler.manual(renameTimeout),
+					Handler.manual(addRetryLimit),
+					Handler.effect(addBoth, () =>
+						Effect.andThen(
+							Deferred.await(bothAsked),
+							Effect.fail(new Error("disk full")),
+						),
+					),
+				],
+			});
+			// The first answer comes after the failure has reached the CLI's own observer,
+			// which runs after the package's.
+			const afterFailure = Effect.andThen(Deferred.await(failed), Effect.sleep("50 millis"));
+			const result = yield* capture(start(command, argv), {
+				...person,
+				input: [{ line: "y", after: afterFailure }, "y"],
+			});
+			const second = result.stderr.indexOf("Manual step 1.0.0-to-2.0.0/add-retry-limit");
+			const notice = result.stderr.indexOf(
+				"The run is stopping: 1.0.0-to-2.0.0/add-both failed.",
+			);
+
+			expect(result.code).toBe(1);
+			expect(notice).toBeGreaterThan(second);
+			expect(result.stderr.indexOf("The run is stopping")).toBeGreaterThan(second);
+		}),
+	);
+});
+
 describe("observers", () => {
 	it.effect("forwards the package's observers and prints progress on stderr", () =>
 		Effect.gen(function* () {

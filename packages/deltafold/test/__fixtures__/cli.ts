@@ -92,8 +92,11 @@ export type Terminal = {
 	readonly stdoutIsTerminal?: boolean;
 	readonly stderrIsTerminal?: boolean;
 	/** Lines a person types, in order. Reading past them is the end of input. */
-	readonly input?: ReadonlyArray<string>;
+	readonly input?: ReadonlyArray<Typed>;
 };
+
+/** A typed line, optionally typed only after `after` completes. */
+export type Typed = string | { readonly line: string; readonly after: Effect.Effect<void> };
 
 /** The exit code that the platform's main runner reports for an exit. */
 export const exitCode = (exit: Exit.Exit<unknown, unknown>) => {
@@ -139,17 +142,18 @@ export const terminal = (options: Terminal = {}) => {
 				// Yields before answering, so that unserialized prompts would interleave, and
 				// echoes the line to stderr as a terminal does.
 				readLine: Effect.suspend(() => {
-					const line = typed.shift();
+					const next = typed.shift();
+					if (next === undefined) return Effect.fail(new Terminal.QuitError({}));
+					const { line, after } =
+						typeof next === "string" ? { line: next, after: Effect.void } : next;
 
-					return line === undefined
-						? Effect.fail(new Terminal.QuitError({}))
-						: Effect.as(
-								Effect.andThen(
-									Effect.yieldNow,
-									Effect.sync(() => stderr.push(`${line}\n`)),
-								),
-								line,
-							);
+					return Effect.as(
+						Effect.andThen(
+							Effect.andThen(after, Effect.yieldNow),
+							Effect.sync(() => stderr.push(`${line}\n`)),
+						),
+						line,
+					);
 				}),
 				display: () => Effect.void,
 			}),

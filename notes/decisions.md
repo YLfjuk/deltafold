@@ -383,8 +383,9 @@ not manual work and are never prompted for. At the end of input, the CLI aborts
 the run before it stops waiting for the answer, so the confirmation is recorded
 as interrupted; the run then ends as cancelled (130). A run stopped only by
 declined work fails with `manual_work_declined`. A prompt that was already
-waiting is still asked after another branch fails or declines, because started
-work settles. JSON outcomes carry `performer` and, for completed manual work,
+waiting is still asked after another branch fails, declines, or times out,
+because started work settles; it first says that the run is stopping, which
+action stopped it, and that the step had already started. JSON outcomes carry `performer` and, for completed manual work,
 `confirmation` (`asserted` or `verified`), and never the answer text, payloads,
 or causes.
 

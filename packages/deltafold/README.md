@@ -455,7 +455,8 @@ Did you complete it? (y/n) y
 It asks only when stdin and stderr are terminals, `--json` is not set, and `CI`
 is not set, one prompt at a time. Otherwise a run with manual actions does not
 start: the command exits 2 with `interaction_required` and lists them. Answering
-`n` declines the work and stops the run. Ctrl+C or the end of input cancels the
+`n` declines the work and stops the run. A prompt that was already waiting in
+another branch is still asked, and first says that the run is stopping. Ctrl+C or the end of input cancels the
 run instead. `--dry-run` never asks, and reports which actions would need a
 person.
 
