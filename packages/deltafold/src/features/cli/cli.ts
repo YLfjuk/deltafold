@@ -26,7 +26,8 @@ const presenter = CliOutput.layerPresenter({
 			: CliOutput.defaultPresenter.present(event),
 });
 
-// No interactive wizard: the CLI never prompts.
+// No interactive wizard. The only prompts are manual-handler confirmations, which
+// `migrate` asks only at a terminal, without --json, and outside CI.
 const config = CliConfig.layer({
 	builtIns: [GlobalFlag.Help, GlobalFlag.Version, GlobalFlag.Completions, GlobalFlag.LogLevel],
 });
