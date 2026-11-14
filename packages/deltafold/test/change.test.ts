@@ -178,6 +178,23 @@ describe("metadata through versions, migrations, and plans", () => {
 		>().toEqualTypeOf<true>();
 	});
 
+	it("keeps undefined in fields when metadata-free and typed changes mix", () => {
+		const plain = Change.make("plain")`Plain.`;
+		const area = Change.make("area", { area: "cli" })`Area.`;
+		const mixed = Version.make("mixed", { changes: [plain, area] });
+		const first = mixed.changes.at(0);
+
+		expect(first?.metadata).toEqual({});
+		expectTypeOf(plain.metadata.area).toEqualTypeOf<undefined>();
+		expectTypeOf<NonNullable<typeof first>["metadata"]["area"]>().toEqualTypeOf<
+			"cli" | undefined
+		>();
+		if (first !== undefined) {
+			// @ts-expect-error the metadata-free change has no `area`.
+			first.metadata.area satisfies "cli";
+		}
+	});
+
 	it("rejects metadata reads that the declared types do not allow", () => {
 		expect.assertions(0);
 		// @ts-expect-error `area` is a string.

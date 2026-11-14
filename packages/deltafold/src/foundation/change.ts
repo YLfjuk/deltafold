@@ -11,11 +11,12 @@ import { describeValue, dedent, isScalar, type Scalar } from "./template.ts";
 export type Metadata = { readonly [field: string]: unknown };
 
 /**
- * The metadata of a change declared without any.
+ * The metadata of a change declared without any. Every field reads as `undefined`, so
+ * a union with typed metadata keeps `undefined` in each field's type.
  *
  * @since @next
  */
-export type NoMetadata = { readonly [field: string]: never };
+export type NoMetadata = { readonly [field: string]: undefined };
 
 /**
  * A human-readable record of one logical change. A change can exist before it is
