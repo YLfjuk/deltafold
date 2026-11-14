@@ -166,7 +166,9 @@ try {
   the partial report.
 - Nothing is rolled back and progress is not saved: running the plan again
   repeats completed actions.
-- `dryRun: true` evaluates preconditions without running any action body.
+- `dryRun: true` evaluates preconditions without running any action body. A
+  precondition that may depend on an earlier action is reported `Undetermined`,
+  because the dry run does not apply that action.
 - `signal` cancels and `timeout` limits each action; both reject with
   `ExecutionInterrupted`. Cancellation is cooperative: a callback that ignores
   its signal can keep running after the run ends, and the report marks it as
@@ -253,7 +255,9 @@ historical change, including reverted ones, and needs one
 `Version.withMetadata` annotation per release. `Html.render` from
 `deltafold/html` renders the same documents as HTML.
 
-Sections group changes by their metadata, and annotations can carry release
+Without sections, a release lists all of its changes under "Changes". Sections
+group changes by their metadata, changes that no section selects go under "Other
+changes", and annotations can carry release
 metadata, such as dates, for plugins:
 
 ```ts
