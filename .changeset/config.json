@@ -8,5 +8,5 @@
 	"format": false,
 	"updateInternalDependencies": "patch",
 	"commit": false,
-	"changelog": "@changesets/cli/changelog"
+	"changelog": "./changelog.mjs"
 }
