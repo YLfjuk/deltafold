@@ -124,8 +124,10 @@ valid. Failures have a `_tag`:
 - `InvalidHistory`, `UnknownVersion`, `UnknownRoute`, `TooManyRoutes`,
   `RewriteCycle`, `ConflictingRewrites`, and `RewriteLimitExceeded`.
 
-A route never goes down to a shared ancestor and back up to another branch.
-Moving between release branches needs a migration declared between them.
+A route that deltafold finds never goes down to a shared ancestor and back up
+to another branch. Moving between release branches needs a migration declared
+between them, or a shortcut: a declared shortcut may pass through a shared
+ancestor, because its author asserts that it is equivalent.
 `History.upgrades` and `History.downgrades` list the reachable versions.
 
 ## Run a plan with Promise handlers
