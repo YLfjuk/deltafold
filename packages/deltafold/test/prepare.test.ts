@@ -116,7 +116,7 @@ describe("Prepared handlers in real runs", () => {
 			expect(prepared).toBe(1);
 			expect(seen[0]).toBe(value);
 			expect(seen[1]).toBe("edit");
-			expect(outcomesOf(report)).toEqual([{ _tag: "Completed" }]);
+			expect(outcomesOf(report)).toEqual([{ _tag: "Completed", performer: "automated" }]);
 			expect(report.bodiesStarted).toBe(true);
 		}),
 	);
@@ -136,7 +136,7 @@ describe("Prepared handlers in real runs", () => {
 			});
 
 			expect(seen).toEqual([{ _tag: "Skip", reason: "data" }]);
-			expect(outcomesOf(report)).toEqual([{ _tag: "Completed" }]);
+			expect(outcomesOf(report)).toEqual([{ _tag: "Completed", performer: "automated" }]);
 		}),
 	);
 
@@ -222,7 +222,7 @@ describe("Prepared handlers in real runs", () => {
 			yield* TestClock.adjust("1 second");
 			const report = yield* Fiber.join(fiber);
 
-			expect(outcomesOf(report)).toEqual([{ _tag: "Completed" }]);
+			expect(outcomesOf(report)).toEqual([{ _tag: "Completed", performer: "automated" }]);
 		}),
 	);
 
@@ -453,9 +453,9 @@ describe("Prepared handlers in dry runs", () => {
 
 			expect(events).toEqual(["lock:prepared", "unlock:prepared:success"]);
 			expect(outcomesOf(report)).toEqual([
-				{ _tag: "WouldExecute", evaluated: true },
+				{ _tag: "WouldExecute", evaluated: true, performer: "automated" },
 				{ _tag: "WouldSkip", reason: "Already renamed" },
-				{ _tag: "WouldExecute", evaluated: false },
+				{ _tag: "WouldExecute", evaluated: false, performer: "automated" },
 			]);
 			expect(report).toMatchObject({ status: "would-complete", bodiesStarted: false });
 		}),
@@ -494,6 +494,7 @@ describe("Prepared handlers in dry runs", () => {
 				{
 					_tag: "Undetermined",
 					reason: 'Execution would stop at the failed preparation of "1-to-2/broken".',
+					performer: "automated",
 				},
 			]);
 		}),

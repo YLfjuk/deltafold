@@ -1,16 +1,43 @@
-import { Context, Data, Effect, Predicate, Schema, Scope } from "effect";
+import { Data, Effect, Predicate, Scope } from "effect";
 
 import type * as Action from "../../foundation/action.ts";
-import type { ValueOf } from "../../types.ts";
-import { trackPromise } from "./settlement.ts";
+import type * as Callback from "./promise-callback.ts";
+import { adaptPromise } from "./promise-callback.ts";
+
+type NoServices = Callback.NoServices;
+type ServiceIds<S extends ServiceMap> = Callback.ServiceIds<S>;
+type GuardedError<G> = Callback.GuardedError<G>;
 
 /**
- * Where a handler failure happened: the read-only prepare phase, or the apply phase that
- * changes state.
+ * Where a handler failure or interruption happened: the read-only prepare phase, or the
+ * apply phase that changes state. A manual handler has neither: the executor waits for a
+ * person in `confirmation`, then runs the handler's optional check in `verification`.
  *
  * @since @next
  */
-export type Phase = "prepare" | "apply";
+export type Phase = "prepare" | "apply" | "confirmation" | "verification";
+
+/**
+ * Who performs an action: a handler's apply phase, or a person whose confirmation the
+ * executor waits for.
+ *
+ * @since @next
+ */
+export type Performer = "automated" | "manual";
+
+/**
+ * A person confirmed manual work, and the handler's `verify` check returned `false`.
+ *
+ * @since @next
+ */
+export class VerificationFailed extends Data.TaggedError("VerificationFailed")<{
+	readonly actionId: string;
+	readonly kind: string;
+}> {
+	override get message() {
+		return `Manual work for action "${this.actionId}" was confirmed, but its verification check did not pass`;
+	}
+}
 
 /**
  * A Promise handler rejected or threw a value that none of its declared error guards
@@ -96,14 +123,16 @@ const notAPreparation = () =>
 	new TypeError("A prepare phase must return Handler.prepared(value) or Handler.skip(reason)");
 
 /**
- * How an occurrence continues after its prepare phase: skipped, or applied by an effect
- * that already holds the prepared value.
+ * How an occurrence continues after its prepare phase: skipped, applied by an effect
+ * that already holds the prepared value, or confirmed by a person. `verify` checks
+ * confirmed work and fails when the check does not pass.
  *
  * @since @next
  */
 export type Step<E, R> =
 	| Skip
-	| { readonly _tag: "Apply"; readonly apply: Effect.Effect<void, E, R> };
+	| { readonly _tag: "Apply"; readonly apply: Effect.Effect<void, E, R> }
+	| { readonly _tag: "Confirm"; readonly verify: Effect.Effect<void, E, R> | undefined };
 
 const applyStep = <E, R>(apply: Effect.Effect<void, E, R>): Step<E, R> => ({
 	_tag: "Apply",
@@ -122,6 +151,8 @@ const TypeId = "~deltafold/Handler";
 export type Handler<out A extends Action.Any, out E = never, out R = never> = {
 	readonly [TypeId]: typeof TypeId;
 	readonly action: A;
+	/** A `manual` handler has no phases of its own: a person does the work. */
+	readonly performer: Performer;
 	/** Whether the handler has a prepare phase. */
 	readonly prepares: boolean;
 	/**
@@ -167,17 +198,14 @@ const make = <A extends Action.Any, E, R>(
 	action: A,
 	prepares: boolean,
 	prepare: (scope: Scope.Scope) => Effect.Effect<Step<E, R>, E, R>,
-): Handler<A, E, R> => ({ [TypeId]: TypeId, action, prepares, prepare });
+): Handler<A, E, R> => ({ [TypeId]: TypeId, action, performer: "automated", prepares, prepare });
 
 /**
  * Named Effect services that a Promise handler declares.
  *
  * @since @next
  */
-export type ServiceMap = { readonly [name: string | symbol]: Context.Key<any, any> };
-
-// oxlint-disable-next-line typescript/no-generated-empty-object-type -- A handler without services declares an empty service map.
-type NoServices = Record<never, never>;
+export type ServiceMap = Callback.ServiceMap;
 
 /**
  * The second argument of Promise handler callbacks: the `AbortSignal` that
@@ -185,10 +213,7 @@ type NoServices = Record<never, never>;
  *
  * @since @next
  */
-export type PromiseContext<S extends ServiceMap = NoServices> = {
-	readonly signal: AbortSignal;
-	readonly services: { readonly [K in keyof S]: S[K]["Service"] };
-};
+export type PromiseContext<S extends ServiceMap = NoServices> = Callback.PromiseContext<S>;
 
 /**
  * The second argument of a Promise apply phase: the Promise context and the action
@@ -215,10 +240,6 @@ export type PromisePhases<Payload, T extends Preparation<unknown>, S extends Ser
 	) => PromiseLike<unknown>;
 };
 
-type ServiceIds<S extends ServiceMap> = ValueOf<{
-	[K in keyof S]: S[K] extends Context.Key<infer I, any> ? I : never;
-}>;
-
 /**
  * Recognizes a declared rejection: a schema, or a type guard such as an `instanceof`
  * check. Guards must declare their parameter type, for example
@@ -226,13 +247,7 @@ type ServiceIds<S extends ServiceMap> = ValueOf<{
  *
  * @since @next
  */
-export type ErrorGuard = Schema.Top | ((cause: unknown) => cause is any);
-
-type GuardedError<G> = G extends Schema.Top
-	? G["Type"]
-	: G extends ((cause: unknown) => cause is infer E)
-		? E
-		: never;
+export type ErrorGuard = Callback.ErrorGuard;
 
 /** @since @next */
 export type PromiseOptions<S extends ServiceMap, G extends ReadonlyArray<ErrorGuard>> = {
@@ -245,11 +260,6 @@ export type PromiseOptions<S extends ServiceMap, G extends ReadonlyArray<ErrorGu
 	 */
 	readonly errors?: G;
 };
-
-const declaredError =
-	<G extends ReadonlyArray<ErrorGuard>>(guards: G) =>
-	(cause: unknown): cause is GuardedError<G[number]> =>
-		guards.some((guard) => (Schema.isSchema(guard) ? Schema.is(guard)(cause) : guard(cause)));
 
 type PromiseHandler<A extends Action.Any, S extends ServiceMap, G> = Handler<
 	A,
@@ -323,22 +333,7 @@ export function promise<
 ): PromiseHandler<A, S, G[number]> {
 	type E = GuardedError<G[number]> | UnexpectedHandlerError;
 
-	const isDeclared = declaredError(options?.errors ?? []);
-	const services: ServiceMap = options?.services ?? {};
-	// The handler requires exactly the declared services. Reading them from its context
-	// keeps that requirement typed; only the record of resolved services needs a cast,
-	// because Object.fromEntries does not track keys.
-	const resolve = Effect.map(
-		Effect.context<ServiceIds<S>>(),
-		(context) =>
-			// oxlint-disable-next-line typescript/no-unsafe-type-assertion
-			Object.fromEntries(
-				Reflect.ownKeys(services).map((name) => [
-					name,
-					Context.get(context, services[name]!),
-				]),
-			) as { readonly [K in keyof S]: S[K]["Service"] },
-	);
+	const adaptCallback = adaptPromise(options ?? {});
 	const unexpected = (phase: Phase, cause: unknown) =>
 		new UnexpectedHandlerError({ actionId: action.id, kind: action.kind, phase, cause });
 
@@ -346,16 +341,7 @@ export function promise<
 		phase: Phase,
 		callback: (context: PromiseContext<S>) => PromiseLike<T> | T,
 	): Effect.Effect<T, E, ServiceIds<S>> =>
-		Effect.flatMap(resolve, (resolved) =>
-			trackPromise((capture) =>
-				Effect.tryPromise({
-					// Declaring `signal` makes Effect.tryPromise allocate an AbortController.
-					try: (signal) =>
-						capture(Promise.resolve(callback({ signal, services: resolved }))),
-					catch: (cause) => (isDeclared(cause) ? cause : unexpected(phase, cause)),
-				}),
-			),
-		);
+		adaptCallback(callback, (cause) => unexpected(phase, cause));
 
 	if (Predicate.isFunction(run)) {
 		const apply = Effect.asVoid(adapt("apply", (context) => run(action.payload, context)));
@@ -483,3 +469,146 @@ export function effect<A extends Action.Any, E1, R1, E2, R2>(
 		),
 	);
 }
+
+const verified = <E, R>(action: Action.Any, check: Effect.Effect<boolean, E, R>) =>
+	Effect.flatMap(check, (passed) =>
+		passed
+			? Effect.void
+			: Effect.fail(new VerificationFailed({ actionId: action.id, kind: action.kind })),
+	);
+
+const makeManual = <A extends Action.Any, E, R>(
+	action: A,
+	verify: ((scope: Scope.Scope) => Effect.Effect<void, E, R>) | undefined,
+): Handler<A, E, R> => ({
+	[TypeId]: TypeId,
+	action,
+	performer: "manual",
+	prepares: false,
+	prepare: (scope) => Effect.succeed({ _tag: "Confirm", verify: verify?.(scope) }),
+});
+
+/** @since @next */
+export type ManualOptions<Payload, S extends ServiceMap, G extends ReadonlyArray<ErrorGuard>> = {
+	/** Effect services resolved for `verify` and added to the handler requirements. */
+	readonly services?: S;
+	/** Guards for rejections of `verify` that keep their own type. */
+	readonly errors?: G;
+	/**
+	 * Read-only check that runs after the person confirms. Returning `false` fails the
+	 * occurrence with `VerificationFailed`. A passing check is evidence that the work is
+	 * in place, not proof of how it was done.
+	 */
+	readonly verify?: (
+		payload: Payload,
+		context: PromiseContext<S>,
+	) => boolean | PromiseLike<boolean>;
+};
+
+// An optional `verify` key may hold a check, so it counts as declared.
+type ManualErrors<O, G extends ReadonlyArray<ErrorGuard>> = "verify" extends keyof O
+	? GuardedError<G[number]> | UnexpectedHandlerError | VerificationFailed
+	: never;
+
+/**
+ * Declares that a person performs the action. A manual handler has no prepare or apply
+ * phase. In a real run the executor asks its `interaction` to confirm the work, showing
+ * the occurrence's own instruction or description, and never completes the occurrence
+ * on its own. A dry run reports that a person would be asked. The optional `verify`
+ * check is a Promise callback that runs only after the confirmation.
+ *
+ * The same action can have a manual handler in one environment and an automated one in
+ * another.
+ *
+ * @example
+ * ```ts
+ * Handler.manual(rotateApiKey, {
+ * 	services: { keys: KeyStore },
+ * 	verify: (payload, { services: { keys } }) => keys.isFresh(payload.service),
+ * });
+ * ```
+ *
+ * @since @next
+ */
+export const manual = <
+	A extends Action.Any,
+	const S extends ServiceMap = NoServices,
+	const G extends ReadonlyArray<ErrorGuard> = [],
+	const O extends ManualOptions<A["payload"], S, G> = NoServices,
+>(
+	action: A,
+	options?: O & ManualOptions<A["payload"], S, G>,
+): Handler<A, ManualErrors<O, G>, ServiceIds<S>> => {
+	const adapt = adaptPromise(options ?? {});
+	const verify = options?.verify;
+	const check =
+		verify === undefined
+			? undefined
+			: verified(
+					action,
+					adapt(
+						(context) => verify(action.payload, context),
+						(cause) =>
+							new UnexpectedHandlerError({
+								actionId: action.id,
+								kind: action.kind,
+								phase: "verification",
+								cause,
+							}),
+					),
+				);
+
+	// `ManualErrors` is `never` only when the options cannot hold a check, and then
+	// `check` is undefined and the handler has no errors.
+	// oxlint-disable-next-line typescript/no-unsafe-type-assertion
+	return makeManual(action, check === undefined ? undefined : () => check) as Handler<
+		A,
+		ManualErrors<O, G>,
+		ServiceIds<S>
+	>;
+};
+
+/** @since @next */
+export type ManualEffectOptions<Payload, E, R> = {
+	/**
+	 * Read-only check that runs after the person confirms. Succeeding with `false` fails
+	 * the occurrence with `VerificationFailed`. It runs in the occurrence's `Scope`.
+	 */
+	readonly verify?: (payload: Payload) => Effect.Effect<boolean, E, R>;
+};
+
+type VerifyError<O> = "verify" extends keyof O ? VerificationFailed : never;
+
+/**
+ * `Handler.manual` with an Effect `verify` check, which keeps its own errors and
+ * services.
+ *
+ * @since @next
+ */
+export const manualEffect = <
+	A extends Action.Any,
+	E = never,
+	R = never,
+	const O extends ManualEffectOptions<A["payload"], E, R> = NoServices,
+>(
+	action: A,
+	options?: O & ManualEffectOptions<A["payload"], E, R>,
+): Handler<A, E | VerifyError<O>, Exclude<R, Scope.Scope>> => {
+	const verify = options?.verify;
+
+	// `VerifyError` is `never` only when the options cannot hold a check.
+	// oxlint-disable-next-line typescript/no-unsafe-type-assertion
+	return makeManual(
+		action,
+		verify === undefined
+			? undefined
+			: (scope) =>
+					Scope.provide(
+						verified(
+							action,
+							Effect.suspend(() => verify(action.payload)),
+						),
+						scope,
+					),
+	) as Handler<A, E | VerifyError<O>, Exclude<R, Scope.Scope>>;
+};
