@@ -163,17 +163,29 @@ erases release history.
 
 ### Command-line interface
 
-- **CLI-1.** A ready-made command-line interface, or a builder that package
-  authors expose from their own package, shares one command implementation. The
-  package identity comes from the package declaration.
-- **CLI-2.** Commands cover changelog generation, migration planning and
-  application, dry runs, and listing upgrade and downgrade destinations.
-  Unsupported or ambiguous routes fail instead of guessing.
+- **CLI-1.** Package authors build a migrator command for their own package from
+  its package declaration and handlers, with one shared command implementation.
+  deltafold's own command is built the same way. Several package commands can be
+  combined into one tool.
+- **CLI-2.** Commands cover validation, migration planning and application, dry
+  runs, listing upgrade and downgrade destinations, and generating guides and
+  changelogs. Unsupported or ambiguous routes fail instead of guessing, and an
+  unknown version never falls back to another one.
 - **CLI-3.** Documents and structured results go to standard output unless
   another destination is chosen; diagnostics and progress go to standard error.
   The log level never suppresses results or a failing exit status, and
   machine-readable output stays parseable.
-- **CLI-4.** Loading a package's entry module never starts migration work.
+- **CLI-4.** Loading a package's entry module never starts migration work. Help,
+  inspection, planning, and documents never load handlers or run preconditions.
+- **CLI-5.** Machine-readable output is versioned and failures carry stable
+  reasons and structured data, including the choices that would resolve them.
+  Exit statuses distinguish success, operational failure, input the caller must
+  correct or choose, and interruption.
+- **CLI-6.** A run that fails or is cancelled still reports which actions
+  completed, failed, were interrupted, or may still be running. The command only
+  prompts to confirm manual handlers, and only when a person is at a terminal;
+  it never prompts with machine-readable output, in CI, without a terminal, or in
+  a dry run.
 
 ## Non-functional requirements
 
