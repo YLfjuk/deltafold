@@ -243,6 +243,11 @@ not have yet with `pnpm publish`, so `publishConfig.exports` applies. It uses np
 trusted publishing, without a stored token, and creates release tags and GitHub
 releases. The 0.0.0 placeholder was published manually.
 
+A rerun publishes only versions npm does not have yet. If publishing succeeds but
+creating the release tag fails, a rerun does not recreate the tag. That case is
+recovered by hand: tag the release commit with `git tag deltafold@<version>
+<commit>`, push the tag, and create its GitHub release.
+
 **Changelogs.** Changesets versions the package with its default changelog
 formatter. A Changesets changelog plugin formats one line per changeset, so it
 cannot express deltafold sections or resolved guides. The intended integration
