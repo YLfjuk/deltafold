@@ -41,7 +41,10 @@ export class ReleaseMetadataError extends Data.TaggedError("ReleaseMetadataError
 
 /** @since @next */
 export type HistoryOptions<M> = {
-	/** Release metadata annotations, one per included version, in any order. */
+	/**
+	 * Release metadata annotations, one per included version, in any order. Missing,
+	 * duplicate, or unrelated annotations throw `ReleaseMetadataError`.
+	 */
 	readonly releases: ReadonlyArray<Release<M>>;
 	/** The versions to include. Defaults to every version in the package history. */
 	readonly versions?: ReadonlyArray<Version>;

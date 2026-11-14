@@ -15,11 +15,6 @@ early development.
 See [CONTRIBUTING.md](CONTRIBUTING.md) for requirements, setup, checks, and
 changesets, and [SECURITY.md](SECURITY.md) for reporting vulnerabilities.
 
-Project agent skills are installed with [skills.sh](https://skills.sh) as copies in
-`.agents/skills` and `.claude/skills`. `skills-lock.json` records their sources.
-Restore them with `npx skills experimental_install`. Update them with
-`npx skills update -p`.
-
 ## License
 
 [MIT](LICENSE)

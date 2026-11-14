@@ -65,7 +65,7 @@ const reversible = Migration.withRevert(toV2)`${restoreTimeout}`;
 const history = History.make({ versions: [v1, v2], migrations: [toV2] });
 const widgets = Package.make("@acme/widgets", { history });
 
-// Effect handlers, as in the README. Both work on the in-memory file map.
+// The Effect handler, as in the README, working on the in-memory file map.
 const ConfigFiles = Context.Service<{
 	readonly renameKey: (file: string, from: string, to: string) => Effect.Effect<void>;
 }>("app/ConfigFiles");
@@ -77,21 +77,10 @@ const effectHandler = Handler.effect(renameTimeout, ({ file, from, to }) =>
 	}),
 );
 
-const AsyncConfigFiles = Context.Service<{
-	readonly renameKey: (
-		file: string,
-		from: string,
-		to: string,
-		options: { readonly signal: AbortSignal },
-	) => Promise<void>;
-}>("app/AsyncConfigFiles");
-
-const promiseHandler = Handler.promise(
-	renameTimeout,
-	({ file, from, to }, { signal, services: { files: configFiles } }) =>
-		configFiles.renameKey(file, from, to, { signal }),
-	{ services: { files: AsyncConfigFiles } },
-);
+const configFiles = ConfigFiles.of({
+	renameKey: (file, from, to) =>
+		Effect.promise(() => renameKey(file, from, to, { signal: new AbortController().signal })),
+});
 
 // Consumer code.
 const handlers = [
@@ -142,39 +131,18 @@ describe("README examples", () => {
 		);
 	});
 
-	it.effect("runs the Effect example", () =>
-		Effect.gen(function* () {
-			files.set("app.json", { timeout: 5000 });
-			const resolved = History.resolve(history, { from: "1.0.0", to: "2.0.0" });
-			if (Result.isFailure(resolved)) throw resolved.failure;
-			const execution = Executor.effect(resolved.success, { handlers: [effectHandler] });
-			expectTypeOf<Effect.Services<typeof execution>>().toEqualTypeOf<
-				Context.Service.Identifier<typeof ConfigFiles>
-			>();
-
-			const report = yield* execution.pipe(
-				Effect.provideService(ConfigFiles, {
-					renameKey: (file, from, to) =>
-						Effect.promise(() =>
-							renameKey(file, from, to, { signal: new AbortController().signal }),
-						),
-				}),
-			);
-
-			expect(report.status).toBe("completed");
-			expect(files.get("app.json")).toEqual({ requestTimeout: 5000 });
-		}),
-	);
-
-	it("runs the Promise handler with declared services", async () => {
+	it("runs the Effect example", async () => {
 		files.set("app.json", { timeout: 5000 });
 		const resolved = History.resolve(history, { from: "1.0.0", to: "2.0.0" });
 		if (Result.isFailure(resolved)) throw resolved.failure;
+		const execution = Executor.effect(resolved.success, { handlers: [effectHandler] });
+		expectTypeOf<Effect.Services<typeof execution>>().toEqualTypeOf<
+			Context.Service.Identifier<typeof ConfigFiles>
+		>();
 
-		const report = await Executor.runPromise(resolved.success, {
-			handlers: [promiseHandler],
-			services: Context.make(AsyncConfigFiles, { renameKey }),
-		});
+		const report = await Effect.runPromise(
+			execution.pipe(Effect.provideService(ConfigFiles, configFiles)),
+		);
 
 		expect(report.status).toBe("completed");
 		expect(files.get("app.json")).toEqual({ requestTimeout: 5000 });
@@ -201,7 +169,24 @@ describe("README examples", () => {
 	it("renders the guide and the changelog", () => {
 		const resolved = History.resolve(history, { from: "1.0.0", to: "2.0.0" });
 		if (Result.isFailure(resolved)) throw resolved.failure;
-		const changelog = Changelog.make<{ readonly date: string }>({
+		const changelog = Changelog.make();
+
+		expect(Markdown.render(changelog.upgrade(resolved.success, { package: widgets }))).toBe(
+			"# Upgrade @acme/widgets from 1.0.0 to 2.0.0\n\n## 1.0.0 to 2.0.0\n\nRename the timeout option. Its value stays in milliseconds.\n",
+		);
+		expect(
+			Markdown.render(
+				changelog.history(widgets, {
+					releases: [Version.withMetadata(v1, {}), Version.withMetadata(v2, {})],
+				}),
+			),
+		).toBe(
+			"# @acme/widgets\n\n## 2.0.0\n\n### Changes\n\n- Rename the timeout option to requestTimeout.\n\n## 1.0.0\n",
+		);
+	});
+
+	it("renders sections with release metadata", () => {
+		const sectioned = Changelog.make<{ date: string }>({
 			sections: [
 				Changelog.section("breaking", {
 					title: "Breaking changes",
@@ -210,12 +195,9 @@ describe("README examples", () => {
 			],
 		});
 
-		expect(Markdown.render(changelog.upgrade(resolved.success, { package: widgets }))).toBe(
-			"# Upgrade @acme/widgets from 1.0.0 to 2.0.0\n\n## 1.0.0 to 2.0.0\n\nRename the timeout option. Its value stays in milliseconds.\n",
-		);
 		expect(
 			Markdown.render(
-				changelog.history(widgets, {
+				sectioned.history(widgets, {
 					releases: [
 						Version.withMetadata(v1, { date: "2026-10-01" }),
 						Version.withMetadata(v2, { date: "2026-11-06" }),

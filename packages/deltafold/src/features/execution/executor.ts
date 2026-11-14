@@ -106,7 +106,10 @@ export type CoverageIssue = {
 const HandlerCoverageBase = Data.TaggedError("HandlerCoverageError");
 
 /**
- * Handler coverage failed before any precondition or body ran.
+ * Handler coverage failed before any precondition or body ran. Every occurrence needs
+ * exactly one handler, for the same action definition: the same identifier, kind, and
+ * payload. For an occurrence that a rule produced, the issue names the rule and the
+ * occurrences it replaced.
  *
  * @since @next
  */
@@ -233,7 +236,11 @@ export type Requirements<H> = Handler.Services<H>;
 /** @since @next */
 export type Options<H extends Handler.Any> = {
 	readonly handlers?: ReadonlyArray<H>;
-	/** Evaluate preconditions without running any action body. */
+	/**
+	 * Evaluate preconditions without running any action body. A precondition that may
+	 * depend on an earlier action is reported `Undetermined`, because the dry run does not
+	 * apply that action.
+	 */
 	readonly dryRun?: boolean;
 	/**
 	 * Per-occurrence limit for a precondition or body. Exceeding it interrupts that action

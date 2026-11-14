@@ -2,19 +2,23 @@
 
 deltafold models a package's version history and resolves the migration
 instructions between two versions. You declare changes, actions, versions, and
-migrations once. deltafold then plans the route between any two supported
-versions, runs your handlers for the planned actions, and renders release notes
-and upgrade guides from the same declarations.
+migrations once. deltafold plans the route between two supported versions, runs
+your handlers for the planned actions, and renders release notes and upgrade
+guides from the same declarations.
 
-The planner never reads or writes your consumers' files. Handlers that you or
-your consumers supply do the work, and they can be Promise callbacks or native
-Effect programs.
-
-The API is experimental and may change before 1.0.
-
-deltafold is in early development. Expect API changes before 1.0. Behavior that
-is still a prototype choice is listed in the repository's
+The planner never reads or writes your consumers' files: handlers that you or
+your consumers supply do the work, as Promise callbacks or Effect programs. The
+API is experimental and may change before 1.0; open design choices are listed in
+the repository's
 [decisions](https://github.com/YLfjuk/deltafold/blob/main/notes/decisions.md).
+
+- [Install](#install)
+- [Declare a history](#declare-a-history)
+- [Resolve a plan](#resolve-a-plan)
+- [Run a plan with Promise handlers](#run-a-plan-with-promise-handlers)
+- [Run a plan with Effect handlers](#run-a-plan-with-effect-handlers)
+- [Simplify routes with rules and shortcuts](#simplify-routes-with-rules-and-shortcuts)
+- [Render changelogs and guides](#render-changelogs-and-guides)
 
 ## Install
 
@@ -26,12 +30,9 @@ deltafold requires `effect` 4 as a peer dependency and a runtime with a global
 `AbortSignal`, such as Node.js 22.18 or later, Deno, Bun, or a browser. Type
 checking needs DOM or Node.js types for `AbortSignal`.
 
-| Entry point           | Contents                                                                                                            |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `deltafold`           | `Action`, `Change`, `Version`, `Migration`, `Rule`, `Shortcut`, `History`, `Package`, `Plan`, `Handler`, `Executor` |
-| `deltafold/changelog` | `Changelog` and `Document` builders                                                                                 |
-| `deltafold/markdown`  | `Markdown.render`                                                                                                   |
-| `deltafold/html`      | `Html.render`                                                                                                       |
+- `deltafold`: declarations, planning, handlers, and executors.
+- `deltafold/changelog`: changelog and document builders.
+- `deltafold/markdown` and `deltafold/html`: renderers for those documents.
 
 ## Declare a history
 
@@ -69,14 +70,14 @@ export const history = History.make({ versions: [v1, v2], migrations: [toV2] });
 export const widgets = Package.make("@acme/widgets", { history });
 ```
 
-`Version.changes` records what shipped in a release. `Migration.addresses`
+`Version.changes` records what shipped in a release, and `Migration.addresses`
 records which changes a transition handles. `Migration.instruction(action)`
 attaches prose to one action, so the prose disappears from guides when a rule
 removes that action. Use `Action.ref(action)` to mention an action without
 running it again.
 
-Some transitions need no work. Declare them with `Migration.noop`, so that
-"no work" never has to be inferred from a missing migration:
+Declare a transition that needs no work with `Migration.noop`, so that "no
+work" is never inferred from a missing migration:
 
 ```ts
 const v201 = Version.make("2.0.1", { previous: v2, changes: [] });
@@ -95,9 +96,7 @@ const restoreTimeout = RenameKey.make("restore-timeout", {
 const reversible = Migration.withRevert(toV2)`${restoreTimeout}`;
 ```
 
-`History.validate(history)` returns every declaration problem at once, such as
-duplicate identifiers, conflicting definitions, unregistered versions, an
-action repeated in one migration, or an invalid shortcut.
+`History.validate(history)` returns every declaration problem at once.
 
 ## Resolve a plan
 
@@ -112,17 +111,13 @@ plan.route.id; // "1.0.0>2.0.0"
 plan.occurrences.map((occurrence) => occurrence.id); // ["1.0.0-to-2.0.0/rename-timeout"]
 ```
 
-Resolution returns a `Result` and needs no handlers. A plan with no actions is
-valid. Failures have a `_tag`:
-
-- `UnsupportedRoute`: no declared route connects the versions. It lists the
-  reachable versions, the closest ones by release ancestry, and blockers.
-- `AmbiguousRoute`: several routes connect the versions. Pass one of the listed
-  route identifiers as `route`, or choose a `policy`: `"fewest-actions"`,
-  `"fewest-migrations"`, `"lowest-cost"`, or `"prefer-shortcuts"`. A policy that
-  leaves a tie still fails.
-- `InvalidHistory`, `UnknownVersion`, `UnknownRoute`, `TooManyRoutes`,
-  `RewriteCycle`, `ConflictingRewrites`, and `RewriteLimitExceeded`.
+Resolution returns a `Result` and needs no handlers; a plan with no actions is
+valid. When several routes connect the versions, it fails with
+`AmbiguousRoute`: pass one of the listed route identifiers as `route`, or
+choose a
+[route policy](https://github.com/YLfjuk/deltafold/blob/main/packages/deltafold/src/features/planning/resolve.ts)
+with `policy`. The other failures are described by
+[`ResolveError`](https://github.com/YLfjuk/deltafold/blob/main/packages/deltafold/src/features/planning/resolve-error.ts).
 
 A route that deltafold finds never goes down to a shared ancestor and back up
 to another branch. Moving between release branches needs a migration declared
@@ -133,8 +128,8 @@ ancestor, because its author asserts that it is equivalent.
 ## Run a plan with Promise handlers
 
 Handlers bind to action instances. A precondition that returns `false` skips the
-action and reports the reason. A precondition that throws fails the run. In this
-example, `renameKey` and `fileExists` stand for your own file access.
+action and reports the reason. In this example, `renameKey` and `fileExists`
+stand for your own file access.
 
 ```ts
 import { Executor, Handler } from "deltafold";
@@ -164,36 +159,27 @@ try {
 }
 ```
 
-Before any precondition or body runs, the executor checks that every occurrence
-has exactly one handler for the same action definition. It rejects with
-`HandlerCoverageError` otherwise. For an action produced by a rule, the error
-names the rule and the actions it replaced.
+- The executor checks that every action has one matching handler before any
+  action starts, and rejects with `HandlerCoverageError` otherwise.
+- Migrations run one after another. On failure, no new action starts, actions
+  that already started finish, and the run rejects with `ExecutionFailed` and
+  the partial report.
+- Nothing is rolled back and progress is not saved: running the plan again
+  repeats completed actions.
+- `dryRun: true` evaluates preconditions without running any action body.
+- `signal` cancels and `timeout` limits each action; both reject with
+  `ExecutionInterrupted`. Cancellation is cooperative: a callback that ignores
+  its signal can keep running after the run ends, and the report marks it as
+  possibly still running.
 
-Migrations run one after another. On failure, the executor starts no new
-action, lets actions that already started finish, and rejects with
-`ExecutionFailed`. The report lists completed, skipped, failed, and
-unattempted occurrences. Completed actions are not rolled back, and progress is
-not saved: running the plan again repeats them.
-
-Rejections that none of a handler's `errors` guards recognize become
-`UnexpectedHandlerError`, which keeps the cause and the action identifier.
-
-Pass `dryRun: true` to evaluate preconditions without running any action body.
-A precondition that depends on an earlier action reports `Undetermined`
-because the dry run does not apply that action.
-
-Pass `signal` to cancel. Cancellation stops new actions, interrupts running
-ones, aborts the `signal` passed to Promise callbacks, and rejects with
-`ExecutionInterrupted`. `timeout` interrupts one action that takes too long and
-stops new ones. Both apply to dry-run preconditions too. Interrupted Promise
-callbacks that ignore the signal may keep running; the report marks them
-`settled: false` after `settleTimeout`.
+Options, errors, and outcomes are documented on
+[`Executor`](https://github.com/YLfjuk/deltafold/blob/main/packages/deltafold/src/features/execution/executor.ts)
+and [`Handler`](https://github.com/YLfjuk/deltafold/blob/main/packages/deltafold/src/features/execution/handler.ts).
 
 ## Run a plan with Effect handlers
 
-`Handler.effect` keeps the errors and services of its Effect.
-`Handler.promise` can declare services too, and receives them resolved. Either
-handler below can perform `renameTimeout`:
+`Handler.effect` keeps the typed errors and services of its Effect. The
+execution requires the handlers' services; provide them, then run it:
 
 ```ts
 import { Context, Effect } from "effect";
@@ -209,38 +195,21 @@ const effectHandler = Handler.effect(renameTimeout, ({ file, from, to }) =>
 	}),
 );
 
-const AsyncConfigFiles = Context.Service<{
-	readonly renameKey: (
-		file: string,
-		from: string,
-		to: string,
-		options: { readonly signal: AbortSignal },
-	) => Promise<void>;
-}>("app/AsyncConfigFiles");
-
-const promiseHandler = Handler.promise(
-	renameTimeout,
-	({ file, from, to }, { signal, services: { files } }) =>
-		files.renameKey(file, from, to, { signal }),
-	{ services: { files: AsyncConfigFiles } },
+const report = await Effect.runPromise(
+	Executor.effect(plan, { handlers: [effectHandler] }).pipe(
+		Effect.provideService(ConfigFiles, configFiles),
+	),
 );
-
-const execution = Executor.effect(plan, { handlers: [effectHandler] });
 ```
 
-To cancel an Effect execution, interrupt its fiber. Running actions are
-interrupted and Promise callbacks receive an aborted signal; the effect ends as
-interrupted, without a report.
+Here `configFiles` is your implementation of the service. To cancel an Effect
+execution, interrupt its fiber; it ends as interrupted, without a report.
 
-The execution's requirements are the handlers' services. `Executor.runPromise`
-requires a `services` context or layer that covers them.
-
-The handler array must cover every action of the history: a missing handler is a
-type error that names the action. Use `Plan.withRuntimeCoverage(plan)` to check
-coverage only at run time, before any action starts.
-
-Integration modules can export their own handler factories. They return the same
-`Handler` values and work with both executors.
+The handler array must cover every action of the history: a missing handler is
+a type error that names the action. Use `Plan.withRuntimeCoverage(plan)` to
+check coverage only at run time, before any action starts. `Handler.promise` can
+declare services too, and `Executor.runPromise` then needs a `services` context
+or layer that covers them.
 
 ## Simplify routes with rules and shortcuts
 
@@ -268,7 +237,27 @@ it covers.
 import { Changelog } from "deltafold/changelog";
 import * as Markdown from "deltafold/markdown";
 
-const changelog = Changelog.make<{ date: string }>({
+const changelog = Changelog.make();
+
+Markdown.render(changelog.upgrade(plan, { package: widgets }));
+Markdown.render(
+	changelog.history(widgets, {
+		releases: [Version.withMetadata(v1, {}), Version.withMetadata(v2, {})],
+	}),
+);
+```
+
+`changelog.upgrade` prints the plan's resolved instructions; pass
+`explain: true` to list what rules removed. `changelog.history` keeps every
+historical change, including reverted ones, and needs one
+`Version.withMetadata` annotation per release. `Html.render` from
+`deltafold/html` renders the same documents as HTML.
+
+Sections group changes by their metadata, and annotations can carry release
+metadata, such as dates, for plugins:
+
+```ts
+const sectioned = Changelog.make<{ date: string }>({
 	sections: [
 		Changelog.section("breaking", {
 			title: "Breaking changes",
@@ -276,31 +265,12 @@ const changelog = Changelog.make<{ date: string }>({
 		}),
 	],
 });
-
-Markdown.render(changelog.upgrade(plan, { package: widgets }));
-Markdown.render(
-	changelog.history(widgets, {
-		releases: [
-			Version.withMetadata(v1, { date: "2026-10-01" }),
-			Version.withMetadata(v2, { date: "2026-11-06" }),
-		],
-	}),
-);
 ```
 
-`changelog.history` keeps every historical change, including reverted ones.
-`changelog.upgrade` prints the plan's resolved instructions; pass
-`explain: true` to list what rules removed. Release metadata stays outside the
-history as `Version.withMetadata` annotations. Missing, duplicate, or unrelated
-annotations throw `ReleaseMetadataError`.
-
-`Changelog.make` configures change sections and plugins. Each section selects
-changes by their metadata, and changes that no section selects go to "Other
-changes". Without sections, a release lists all of its changes under "Changes".
-`Document.Plugin.make` adds content at `Document.Title.pre`,
-`Document.Title.post`, `Document.Body.pre`, or `Document.Body.post`, once per
-release or once per history. `Html.render` from `deltafold/html` renders the
-same documents as HTML.
+Sections, plugins, and release annotations are documented on
+[`Changelog`](https://github.com/YLfjuk/deltafold/blob/main/packages/deltafold/src/features/documents/changelog.ts)
+and
+[`Document`](https://github.com/YLfjuk/deltafold/blob/main/packages/deltafold/src/features/documents/document.ts).
 
 ## License
 

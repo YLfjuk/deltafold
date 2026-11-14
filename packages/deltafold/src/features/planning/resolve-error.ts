@@ -184,7 +184,13 @@ export class TooManyRoutes extends Data.TaggedError("TooManyRoutes")<{
 /** @since @next */
 export type RewriteError = RewriteCycle | ConflictingRewrites | RewriteLimitExceeded;
 
-/** @since @next */
+/**
+ * Why a plan could not be resolved. `UnsupportedRoute` lists the reachable versions, the
+ * closest ones by release ancestry, and blockers. `AmbiguousRoute` lists the candidate
+ * routes: pass one as `route`, or choose a `policy`.
+ *
+ * @since @next
+ */
 export type ResolveError =
 	| InvalidHistory
 	| UnknownVersion

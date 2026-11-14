@@ -312,7 +312,15 @@ export type HistoryContext<M> = {
  */
 export type PluginOutput = Block | ReadonlyArray<Block> | null;
 
-/** @since @next */
+/**
+ * Where a plugin's content goes. `scope` is `Document.Release`, once per included
+ * release, or `Document.History`, once per history document. `at` is
+ * `Document.Title.pre`, `Document.Title.post`, `Document.Body.pre`, or
+ * `Document.Body.post` of that scope's section. Each insertion point receives every
+ * plugin's content in configuration order.
+ *
+ * @since @next
+ */
 export type PluginOptions<M> =
 	| {
 			readonly scope: typeof Release;

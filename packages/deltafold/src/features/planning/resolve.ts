@@ -34,7 +34,14 @@ import { itemsOf, occurrencesOf, rewrite, type Item, type MakeOccurrence } from 
 import { actionsOfSteps, hasProse, stepsOf, type Declarations } from "./validate.ts";
 
 /**
- * Route policies for choosing between candidate routes. Each one is opt-in.
+ * Route policies for choosing between candidate routes. Each one is opt-in, and a policy
+ * that leaves a tie still fails as ambiguous.
+ *
+ * - `fewest-actions`: the fewest action occurrences after optimization.
+ * - `fewest-migrations`: the fewest migration steps.
+ * - `lowest-cost`: the lowest total cost. A migration costs 1 unless it declares
+ *   `cost`; a shortcut costs its declared `cost` or the total of its migrations.
+ * - `prefer-shortcuts`: a route through a shortcut over the route the shortcut replaces.
  *
  * @since @next
  */

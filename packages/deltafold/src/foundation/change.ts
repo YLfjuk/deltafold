@@ -10,11 +10,7 @@ import { describeValue, dedent, isScalar, type Scalar } from "./template.ts";
  */
 export type Metadata = { readonly [field: string]: unknown };
 
-/**
- * The metadata of a change declared without any.
- *
- * @since @next
- */
+/** @since @next */
 export type NoMetadata = { readonly [field: string]: undefined };
 
 /**
