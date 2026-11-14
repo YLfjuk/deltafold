@@ -3,8 +3,7 @@ import { Predicate } from "effect";
 import { describeValue, dedent, isScalar, type Scalar } from "./template.ts";
 
 /**
- * The metadata of a change whose shape is not known statically. Reading a field gives
- * `unknown`.
+ * The metadata of a change whose shape is not known statically.
  *
  * @since @next
  */
