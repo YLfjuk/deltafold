@@ -740,6 +740,11 @@ export type PromiseOptions<H extends Handler.Any> = Options<H> & {
  * Building a supplied services layer can also reject with the layer's own error,
  * without a report.
  *
+ * A services layer is built for this run and finalized when the run ends. A services
+ * context stays owned by the caller. A Promise callback that ignores its signal can keep
+ * running after cancellation or a timeout, beyond `settleTimeout`, and so after the
+ * run's layer resources are finalized; the report marks it as possibly still running.
+ *
  * @since @next
  */
 export const runPromise = <
