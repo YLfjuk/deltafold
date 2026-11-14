@@ -134,8 +134,10 @@ erases release history.
   release lists all of its changes in one section.
 - **DOC-3.** A history keeps every historical change, including reverted ones, and
   is titled with the package name. A guide omits instructions that optimization
-  removed, keeps shared and prose-only instructions, and can explain the
-  omissions.
+  removed, keeps shared and prose-only instructions of steps that still have
+  work, and can explain the omissions. A step whose actions were all removed is
+  omitted with its shared prose; prose that must always appear belongs in an
+  action.
 - **DOC-4.** Release metadata, such as dates or commits, stays outside the
   history. Missing, duplicate, or unrelated metadata is an error.
 - **DOC-5.** Extensions add content at defined points of a release or a history,

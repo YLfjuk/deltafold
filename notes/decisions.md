@@ -101,6 +101,11 @@ reached). Rules that keep nesting groups hit the same limits.
 **Replacement placement.** A replacement belongs to the step of the first
 occurrence it replaced, and the guide renders it there.
 
+**Fully optimized steps.** When rules remove every action of a step, the guide
+omits the step, including prose written outside any `Migration.instruction`.
+Advice that must survive optimization belongs in an action, for example one
+with a manual handler.
+
 ## Handlers and execution
 
 **Promise adapter.** `Handler.promise` calls `Effect.tryPromise` with a thunk that
