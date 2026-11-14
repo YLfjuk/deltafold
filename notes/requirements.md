@@ -182,8 +182,10 @@ erases release history.
   Exit statuses distinguish success, operational failure, input the caller must
   correct or choose, and interruption.
 - **CLI-6.** A run that fails or is cancelled still reports which actions
-  completed, failed, were interrupted, or may still be running. The command never
-  prompts.
+  completed, failed, were interrupted, or may still be running. The command only
+  prompts to confirm manual handlers, and only when a person is at a terminal;
+  it never prompts with machine-readable output, in CI, without a terminal, or in
+  a dry run.
 
 ## Non-functional requirements
 

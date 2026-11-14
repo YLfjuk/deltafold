@@ -429,7 +429,9 @@ Cli.run(command, { version: "2.0.0" }).pipe(
 
 `Command.make` returns an ordinary `effect/cli` command, named after the package
 unless you pass `name`. `Cli.run` runs it as the
-program: it reports usage errors, sets exit statuses, and never prompts. The
+program: it reports usage errors and sets exit statuses. It has no interactive
+wizard; the only prompts are the manual-handler confirmations described below,
+and there are none with `--json`, in CI, without a terminal, or in a dry run. The
 command has these subcommands:
 
 | Command     | What it does                                                                                  |

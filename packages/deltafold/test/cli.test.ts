@@ -974,19 +974,33 @@ describe("observers", () => {
 
 	it.effect("reports failure values that cannot be printed", () =>
 		Effect.gen(function* () {
+			// A wrapper whose cause refers back to itself must not recurse.
+			const loop: { _tag: string; message: string; cause?: unknown } = {
+				_tag: "UnexpectedHandlerError",
+				message: "loop",
+			};
+			loop.cause = loop;
 			const observed = widgets.pipe(
 				Package.withObserver(Observer.effect(() => Effect.fail(Object.create(null)))),
+				Package.withObserver(Observer.effect(() => Effect.fail(loop))),
 			);
 			const command = Command.make(observed, { handlers: () => handlersFor([]) });
 			const argv = ["migrate", "--from", "1.0.0", "--to", "2.0.0"];
 			const machine = yield* capture(start(command, [...argv, "--json"]));
 			const human = yield* capture(start(command, argv));
+			const { observation } = json(machine.stdout).report;
 
 			expect(machine.code).toBe(0);
-			expect(json(machine.stdout).report.observation[0].error).toEqual({
+			expect(observation[0].error).toEqual({
 				tag: "object",
 				message: "Unprintable value",
 				code: null,
+			});
+			expect(observation[1].error).toEqual({
+				tag: "UnexpectedHandlerError",
+				message: "loop",
+				code: null,
+				cause: { tag: "UnexpectedHandlerError", message: "loop", code: null },
 			});
 			expect(human.code).toBe(0);
 			expect(human.stderr).toContain(

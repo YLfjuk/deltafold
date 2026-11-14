@@ -130,7 +130,9 @@ const wrappers = new Set(["UnexpectedHandlerError", "UnexpectedInteractionError"
  * fields. A wrapper of an unrecognized rejection keeps one reduced level of its cause.
  * Never throws: a value that cannot be read or converted is reported as unprintable.
  */
-export const error = (value: unknown): EncodedError => {
+export const error = (value: unknown): EncodedError => reduce(value, true);
+
+const reduce = (value: unknown, withCause: boolean): EncodedError => {
 	const tag =
 		stringField(value, "_tag") ??
 		stringField(value, "name") ??
@@ -138,10 +140,13 @@ export const error = (value: unknown): EncodedError => {
 	const message =
 		stringField(value, "message") ?? attempt(() => String(value), "Unprintable value");
 	const base = { tag, message, code: stringField(value, "code") ?? null };
-	if (!wrappers.has(tag) || typeof value !== "object" || value === null) return base;
+	if (!withCause || !wrappers.has(tag) || typeof value !== "object" || value === null) {
+		return base;
+	}
 	const cause: unknown = attempt(() => Reflect.get(value, "cause"), undefined);
 
-	return cause === undefined ? base : { ...base, cause: error(cause) };
+	// One level only, so a cause that refers back to its wrapper cannot recurse.
+	return cause === undefined ? base : { ...base, cause: reduce(cause, false) };
 };
 
 /** The failure of an outcome: its typed error, or the squashed cause for defects. */
