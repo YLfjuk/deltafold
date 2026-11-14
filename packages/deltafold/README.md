@@ -257,8 +257,8 @@ historical change, including reverted ones, and needs one
 
 Without sections, a release lists all of its changes under "Changes". Sections
 group changes by their metadata, changes that no section selects go under "Other
-changes", and annotations can carry release
-metadata, such as dates, for plugins:
+changes", and annotations can carry release metadata, such as dates, for
+plugins:
 
 ```ts
 const sectioned = Changelog.make<{ date: string }>({
