@@ -98,8 +98,10 @@ erases release history.
   work in one run. Effect handlers keep their typed errors, services, and
   interruption. Promise handlers receive a cancellation signal and the services
   they declare.
-- **EXEC-2.** A handler's declared failures keep their types. Any other failure
-  becomes an unexpected-handler error that names the action.
+- **EXEC-2.** A handler's declared failures keep their types. Any other rejection
+  of a Promise handler becomes an unexpected-handler error that names the action.
+  Effect handlers keep Effect's distinction: typed failures appear as the
+  outcome's error, and defects appear only in its cause.
 - **EXEC-3.** Integration modules, official or third party, provide handlers in
   the same form. The executor needs no registry of engines and never inspects a
   handler's internals. The core assumes no language, file type, parser, or
