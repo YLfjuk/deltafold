@@ -36,6 +36,9 @@ jobs:
         name: Publish
         if: github.event_name == 'push'
         runs-on: ubuntu-latest
+        # Repository settings restrict this environment to main, and npm's trusted
+        # publisher requires it, so an edited workflow on another branch cannot publish.
+        environment: npm-publish
         permissions:
             contents: write # release tags and GitHub releases
             id-token: write # npm trusted publishing

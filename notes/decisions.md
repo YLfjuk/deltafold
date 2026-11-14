@@ -243,6 +243,11 @@ not have yet with `pnpm publish`, so `publishConfig.exports` applies. It uses np
 trusted publishing, without a stored token, and creates release tags and GitHub
 releases. The 0.0.0 placeholder was published manually.
 
+The publish job runs in the `npm-publish` GitHub environment. Repository settings
+allow that environment only on `main`, and npm's trusted publisher requires it.
+The workflow's own conditions are editable on any branch, so the two settings,
+not the YAML, keep unreviewed branches from publishing.
+
 A rerun publishes only versions npm does not have yet. If publishing succeeds but
 creating the release tag fails, a rerun does not recreate the tag. That case is
 recovered by hand: tag the release commit with `git tag deltafold@<version>
