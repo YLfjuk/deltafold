@@ -7,6 +7,8 @@ export * as Executor from "./features/execution/executor.ts";
 /** @since @next */
 export * as Handler from "./features/execution/handler.ts";
 /** @since @next */
+export * as Interaction from "./features/execution/interaction.ts";
+/** @since @next */
 export * as History from "./features/planning/history.ts";
 /** @since @next */
 export * as Migration from "./foundation/migration.ts";

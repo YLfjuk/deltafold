@@ -518,8 +518,8 @@ describe("Executor behavior", () => {
 			if (error._tag !== "ExecutionInterrupted") return;
 			expect(error.report.occurrences.map((entry) => entry.outcome)).toEqual([
 				{ _tag: "Interrupted", phase: "apply", reason: "timeout", settled: true },
-				{ _tag: "Completed" },
-				{ _tag: "Completed" },
+				{ _tag: "Completed", performer: "automated" },
+				{ _tag: "Completed", performer: "automated" },
 				{ _tag: "Unattempted" },
 			]);
 		}),
@@ -725,8 +725,8 @@ describe("Executor admission, cancellation, and settlement", () => {
 					error.report.occurrences.map((entry) => entry.outcome),
 			).toEqual([
 				{ _tag: "Interrupted", phase: "apply", reason: "timeout", settled: false },
-				{ _tag: "Completed" },
-				{ _tag: "Completed" },
+				{ _tag: "Completed", performer: "automated" },
+				{ _tag: "Completed", performer: "automated" },
 				{ _tag: "Unattempted" },
 			]);
 		}),
@@ -1083,6 +1083,7 @@ describe("Executor dry runs", () => {
 			const undetermined = {
 				_tag: "Undetermined",
 				reason: "The prepare phase depends on earlier actions that a dry run does not apply.",
+				performer: "automated",
 			};
 
 			expect(events).toEqual(["prepare:skips", "prepare:independent"]);
@@ -1093,9 +1094,9 @@ describe("Executor dry runs", () => {
 			});
 			expect(result.occurrences.map((entry) => entry.outcome)).toEqual([
 				{ _tag: "WouldSkip", reason: "skips does not apply" },
-				{ _tag: "WouldExecute", evaluated: false },
+				{ _tag: "WouldExecute", evaluated: false, performer: "automated" },
 				undetermined,
-				{ _tag: "WouldExecute", evaluated: true },
+				{ _tag: "WouldExecute", evaluated: true, performer: "automated" },
 				undetermined,
 			]);
 		}),

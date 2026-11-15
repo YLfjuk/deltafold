@@ -84,7 +84,7 @@ prove that consumer behavior is equivalent. Ordinary rules match consecutive
 occurrences on the route's sequential spine, including across migration
 boundaries, and inside one parallel branch. A parallel pattern matches a whole
 group by its branch structure, which makes a structural rule explicit. A
-text-only migration is manual work, so rules do not match around it.
+text-only migration holds prose instructions, so rules do not match around it.
 
 **Exhaustive rewriting.** The resolver searches one state space for the whole
 route. A state is the full sequence, nested groups included, and each transition
@@ -174,6 +174,34 @@ still apply. Admission stops as soon as a timeout or cancellation
 fires, before the interrupted work finishes settling. Effect stops waiting for an
 interrupted Promise immediately, so the adapter waits up to `settleTimeout` for
 the Promise itself and the report records whether it settled.
+
+**Manual handlers.** `Handler.manual` binds an action to a person. Who performs
+an action is a property of the binding, never of the action, so `Action` and
+`Migration` have no manual marker. A manual handler has no prepare or apply
+phase, so it cannot skip: its step after the empty prepare is a confirmation.
+It carries no instruction text. The interaction receives the plan's occurrence,
+whose instruction or description is the text the guide renders.
+`Handler.manual` takes a Promise `verify` check and `Handler.manualEffect` an
+Effect one, which runs in the occurrence's scope.
+
+**Interaction.** The `interaction` executor option is the only way to answer for
+manual work. Its answers are `"confirmed"` and `"declined"`. Any other value
+fails the occurrence with `UnexpectedInteractionError`, which never keeps the
+value, because it may be text that the person typed. The check for a missing
+interaction runs after handler coverage and before any handler phase. When the
+consumer can ask a person is the consumer's decision. Observers report progress
+and cannot answer.
+
+**Manual phases.** A manual occurrence runs the `confirmation` phase, then
+`verification` when the handler has a `verify` check. `verify` never runs before
+the confirmation and is never retried. A check that returns `false` fails with
+`VerificationFailed`. A decline stops admission like a failure and ends the run
+as `ExecutionFailed` with status `failed`; the occurrence is `Declined`.
+`bodiesStarted` becomes true when a person is asked. `timeout` limits
+`verification` and never `confirmation`. Cancellation that arrives with the
+confirmation keeps `verify` from starting, even after a sibling failure, and
+the occurrence is `Interrupted` in `verification`. A failure or a decline in a
+parallel branch does not withdraw a request that was already made.
 
 **Cancellation per executor.** `Executor.effect` uses fiber interruption, so
 cancelling it ends the effect as interrupted, without a report.
@@ -335,6 +363,10 @@ These work today but need confirmation before 1.0:
 - Change metadata is checked only by TypeScript. deltafold compares it
   structurally but does not validate it at run time.
 - Merge ancestry and prerelease policy are not modeled.
+- A person's confirmation is not checked unless the handler has a `verify`
+  check, and the report says which of the two supports a completion.
+- A run that waits for a person holds no state outside its process. Stopping the
+  process loses the wait with the rest of the progress.
 - A skip only skips its own action. An unmet requirement that must block later
   actions has to fail its prepare phase.
 
