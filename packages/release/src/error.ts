@@ -18,7 +18,7 @@ export type Reason =
 	| "BaselineMismatch"
 	| "Downgrade"
 	| "ExistingVersion"
-	| "ExplicitTargetWithPre"
+	| "PrereleaseTarget"
 	| "NoIntent"
 	| "PrereleaseContext"
 	| "NotPrerelease"

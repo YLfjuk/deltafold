@@ -3,6 +3,7 @@ import { Result, SemVer } from "effect";
 import { Version, type Change, type Package } from "deltafold";
 import type { Policy, Proposal, Requirement } from "./dependents-policy.ts";
 import { issue, PlanError } from "./error.ts";
+import { highest, prerelease } from "./line.ts";
 import {
 	parse,
 	type Calculation,
@@ -170,16 +171,25 @@ const calculate = <M extends object>(
 	pre: Pre | undefined,
 ): Calculation => {
 	if (typeof setting === "string") {
-		if (pre !== undefined) {
+		const target = parse(setting);
+		if (pre === undefined) return { version: setting, unchanged: "align" };
+		// With pre, a literal is the stable version the prerelease line prepares.
+		if (SemVer.isPrerelease(target)) {
 			fail(
-				"ExplicitTargetWithPre",
-				`The literal target ${setting} is already a complete version; omit pre or use a strategy.`,
+				"PrereleaseTarget",
+				`With pre, the literal target is the stable version the line prepares; use ${SemVer.format(SemVer.release(target))} instead of ${setting}.`,
 				[setting],
 			);
 		}
-		parse(setting);
 
-		return { version: setting, unchanged: "align" };
+		return prerelease({
+			participants,
+			pre,
+			baseline: highest(participants),
+			bumps: [],
+			target,
+			unchanged: "align",
+		});
 	}
 	const result: unknown = setting({ participants, pre });
 	if (

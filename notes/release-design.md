@@ -122,6 +122,13 @@ Example from stable 1.5.2: patch starts 1.5.3-beta.0; another patch continues at
 otherwise increment it. No-downgrade checks still apply to tag transitions.
 Continue without an existing prerelease line is a planning error.
 
+A literal target given with pre is the stable version the line prepares, not the
+prerelease itself: from 1.5.2, `version: "3.0.0"` with
+`pre: { tag: "beta", continue: false }` gives 3.0.0-beta.0, and continuing gives
+3.0.0-beta.1. Continuing never lowers a line's target, so a later calculated
+target below 3.0.0 keeps 3.0.0. A prerelease literal with pre is an error, and a
+literal below the line fails the no-downgrade check.
+
 The plan's configured tag determines the output identifier even with mixed
 baselines. A shared calculation uses a consistent stage choice. Exact handling
 of independent line contexts within one group must be exercised in prototypes.
@@ -273,8 +280,6 @@ Product gaps that need a decision:
 
 - The command that lists a line's changes for selection. It belongs to the
   release CLI, which is not built.
-- A literal target together with `pre`. The prototype refuses with
-  `ExplicitTargetWithPre`.
 - Dependents: proposals are reported, but a `release` proposal does not add a
   version and dependency ranges are not edited.
 - `Release.Source.packageJson()` and loading recorded line state are not built.
