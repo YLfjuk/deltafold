@@ -21,7 +21,7 @@ export type Reason =
 	| "ExplicitTargetWithPre"
 	| "NoIntent"
 	| "PrereleaseContext"
-	| "StablePromotionUnsupported"
+	| "NotPrerelease"
 	| "MissingSource"
 	| "UnplannedPending"
 	| "UnsupportedRelocation"

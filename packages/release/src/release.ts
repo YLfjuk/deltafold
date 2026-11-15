@@ -344,6 +344,102 @@ const buildPlan = <M extends object>(release: Release<M>, input: Input<M>): Plan
 };
 
 /**
+ * One change found on a prerelease line.
+ *
+ * @since @next
+ */
+export type LineChange = {
+	readonly change: Change.Any;
+	/** The prerelease versions that contain it, oldest first. */
+	readonly versions: ReadonlyArray<string>;
+	/** Changes on the line that revert it. */
+	readonly revertedBy: ReadonlyArray<string>;
+	/** Changes on the line that it reverts. */
+	readonly reverts: ReadonlyArray<string>;
+};
+
+/**
+ * The changes of a prerelease line since its last stable ancestor.
+ *
+ * @since @next
+ */
+export type PrereleaseChanges = {
+	readonly package: string;
+	readonly from: string;
+	/** The last stable ancestor, absent when the line starts at the root of the history. */
+	readonly stable: string | undefined;
+	/** The prerelease versions of the line, oldest first. */
+	readonly versions: ReadonlyArray<string>;
+	/** Each change once, in order of first appearance. */
+	readonly changes: ReadonlyArray<LineChange>;
+};
+
+/**
+ * Lists the changes on the prerelease line that ends at `from`, back to its last stable
+ * ancestor, following `previous`. It chooses nothing: a stable plan records exactly the
+ * changes passed to it, so this listing is for deciding which ones to pass.
+ *
+ * @example
+ * ```ts
+ * const line = Release.prereleaseChanges(widgets, "2.0.0-rc.1");
+ * ```
+ *
+ * @since @next
+ */
+export const prereleaseChanges = (
+	pkg: Package.Package,
+	from: Version.Version | string,
+): Result.Result<PrereleaseChanges, PlanError> =>
+	Result.try({
+		try: () => {
+			const id = typeof from === "string" ? from : from.id;
+			const start =
+				pkg.history.versions.find((version) => version.id === id) ??
+				fail("UnknownPrevious", `${pkg.name}@${id} is not in the package history.`, [
+					pkg.name,
+					id,
+				]);
+			if (!SemVer.isPrerelease(parse(start.id))) {
+				fail("NotPrerelease", `${pkg.name}@${id} is not a prerelease.`, [pkg.name, id]);
+			}
+			const line: Array<Version.Version> = [];
+			let current: Version.Version | undefined = start;
+			while (current !== undefined && SemVer.isPrerelease(parse(current.id))) {
+				line.unshift(current);
+				current = current.previous;
+			}
+			const found = new Map<string, { change: Change.Any; versions: Array<string> }>();
+			for (const version of line) {
+				for (const change of version.changes) {
+					const entry = found.get(change.id) ?? { change, versions: [] };
+					entry.versions.push(version.id);
+					found.set(change.id, entry);
+				}
+			}
+			const onLine = (ids: ReadonlyArray<string>) => ids.filter((other) => found.has(other));
+
+			return {
+				package: pkg.name,
+				from: id,
+				stable: current?.id,
+				versions: line.map((version) => version.id),
+				changes: [...found.values()].map(({ change, versions }) => ({
+					change,
+					versions,
+					reverts: onLine(change.reverts.map((reverted) => reverted.id)),
+					revertedBy: [...found.values()]
+						.filter((other) => other.change.reverts.some((r) => r.id === change.id))
+						.map((other) => other.change.id),
+				})),
+			};
+		},
+		catch: (error) => {
+			if (error instanceof PlanError) return error;
+			throw error;
+		},
+	});
+
+/**
  * Declares a bounded release group with a stable identifier. Plans can only release its
  * registered packages.
  *

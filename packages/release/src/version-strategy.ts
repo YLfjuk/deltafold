@@ -136,8 +136,10 @@ const identifier = /^[0-9A-Za-z-]+$/;
  * `continue` keeps the line's target unless stronger accumulated intent raises it, and
  * the counter restarts at 0 whenever the tag or the target changes.
  *
- * A stable plan from a prerelease baseline is stable promotion, whose contents are not
- * decided yet; it fails with `StablePromotionUnsupported`.
+ * A stable plan from a prerelease baseline promotes the recorded line: the version is the
+ * line's target, raised by stronger selected changes. The plan's changes are exactly the
+ * ones the stable version records; `Release.prereleaseChanges` lists the line's changes
+ * to choose from.
  *
  * @example
  * ```ts
@@ -189,15 +191,34 @@ export const semver =
 		);
 		const intent = strongest(bumps);
 
-		if (pre === undefined) {
-			if (SemVer.isPrerelease(baseline)) {
+		const lines = participants.map((participant) => participant.line);
+		const prior = lines[0];
+		const requireSharedLine = (purpose: string) => {
+			if (
+				prior === undefined ||
+				lines.some((line) => line === undefined || !sameLine(line, prior))
+			) {
 				throw new PlanError(
 					issue(
-						"StablePromotionUnsupported",
-						`A stable release from ${SemVer.format(baseline)} promotes a prerelease line. Choosing its contents is not supported yet; start or continue a prerelease, or pass an explicit target.`,
+						"PrereleaseContext",
+						`${purpose} needs one recorded prerelease line shared by every participant of the calculation. Calculate independent lines separately.`,
 						participants.map((participant) => participant.package),
 					),
 				);
+			}
+
+			return prior;
+		};
+
+		if (pre === undefined) {
+			if (SemVer.isPrerelease(baseline)) {
+				const line = requireSharedLine("Promoting a prerelease to stable");
+				const bump = strongest([...bumps, line.bump]) ?? line.bump;
+
+				return {
+					version: SemVer.format(bumpStable(parse(line.baseline), bump)),
+					unchanged,
+				};
 			}
 
 			return {
@@ -221,22 +242,8 @@ export const semver =
 				),
 			);
 		}
-		const lines = participants.map((participant) => participant.line);
-		const prior = lines[0];
-		if (pre.continue) {
-			if (
-				prior === undefined ||
-				lines.some((line) => line === undefined || !sameLine(line, prior))
-			) {
-				throw new PlanError(
-					issue(
-						"PrereleaseContext",
-						"Continuing needs one recorded prerelease line shared by every participant of the calculation. Start a line with continue: false, or calculate independent lines separately.",
-						participants.map((participant) => participant.package),
-					),
-				);
-			}
-		} else if (SemVer.isPrerelease(baseline) && prior === undefined) {
+		if (pre.continue) requireSharedLine("Continuing a prerelease line");
+		else if (SemVer.isPrerelease(baseline) && prior === undefined) {
 			throw new PlanError(
 				issue(
 					"PrereleaseContext",

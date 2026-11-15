@@ -2,12 +2,13 @@ import { describe, expect, expectTypeOf, it } from "@effect/vitest";
 import { Result } from "effect";
 
 import { DependentsPolicy, Release, VersionStrategy, type PlanError } from "@deltafold/release";
-import { Change } from "deltafold";
+import { Change, History, Package, Version } from "deltafold";
 import {
 	advance,
 	headers,
 	packageWith,
 	ProjectChange,
+	type ProjectMetadata,
 	retries,
 	timeout,
 } from "./__fixtures__/packages.ts";
@@ -381,7 +382,7 @@ describe("prerelease lines", () => {
 		expect(() => step([headers], { tag: "alpha", continue: true })).toThrow("downgrade");
 	});
 
-	it("refuses continuation without a recorded line, and stable promotion", () => {
+	it("refuses continuation without a recorded line, and literal targets with pre", () => {
 		const stable = packageWith("@acme/solo", ["1.5.2"]);
 		expect(
 			failure(
@@ -400,15 +401,6 @@ describe("prerelease lines", () => {
 			tag: "beta",
 			counter: 0,
 		} as const;
-		expect(
-			failure(
-				lineGroup(pre).plan({
-					packages: [
-						{ package: pre, previous: "1.5.3-beta.0", changes: [headers], line },
-					],
-				}),
-			).reason,
-		).toBe("StablePromotionUnsupported");
 		expect(
 			failure(
 				Release.make("solo", {
@@ -484,5 +476,118 @@ describe("dependents", () => {
 			"@acme/docs-site:cross-group",
 		]);
 		expect(summary(plan)).toEqual(["@acme/widgets@1.6.0<1.5.2"]);
+	});
+});
+
+describe("stable promotion", () => {
+	const revertRetries = ProjectChange.make(
+		"revert-retries",
+		{ bump: "patch", area: "api" },
+		{ reverts: [retries] },
+	)`Remove the retry limit option again.`;
+	const betaCrash = ProjectChange.make("fix-beta-crash", { bump: "patch", area: "api" })`
+		Fix a crash introduced in 2.0.0-beta.0.
+	`;
+	const v152 = Version.make("1.5.2", { changes: [] });
+	const beta0 = Version.make("2.0.0-beta.0", { previous: v152, changes: [timeout, retries] });
+	const beta1 = Version.make("2.0.0-beta.1", {
+		previous: beta0,
+		changes: [revertRetries, betaCrash, timeout],
+	});
+	const solo = Package.make("@acme/solo", {
+		history: History.make({ versions: [v152, beta0, beta1], migrations: [] }),
+	});
+	const line = {
+		baseline: "1.5.2",
+		bump: "major",
+		target: "2.0.0",
+		tag: "beta",
+		counter: 1,
+	} as const;
+	const promote = (
+		changes: ReadonlyArray<Change.Change<ProjectMetadata>>,
+		promoted: VersionStrategy.Line | null = line,
+	) =>
+		Release.make("solo", {
+			packages: [{ package: solo }],
+			change: ProjectChange,
+			version: VersionStrategy.semver({ bump: (change) => change.metadata.bump }),
+		}).plan({
+			packages: [
+				{
+					package: solo,
+					previous: "2.0.0-beta.1",
+					changes,
+					...(promoted === null ? {} : { line: promoted }),
+				},
+			],
+		});
+
+	it("lists the line's changes since the last stable ancestor without choosing", () => {
+		const listed = success(Release.prereleaseChanges(solo, "2.0.0-beta.1"));
+
+		expect(listed.stable).toBe("1.5.2");
+		expect(listed.versions).toEqual(["2.0.0-beta.0", "2.0.0-beta.1"]);
+		expect(
+			listed.changes.map((entry) => ({
+				id: entry.change.id,
+				versions: entry.versions,
+				revertedBy: entry.revertedBy,
+				reverts: entry.reverts,
+			})),
+		).toEqual([
+			{
+				id: "rename-timeout",
+				versions: ["2.0.0-beta.0", "2.0.0-beta.1"],
+				revertedBy: [],
+				reverts: [],
+			},
+			{
+				id: "add-retries",
+				versions: ["2.0.0-beta.0"],
+				revertedBy: ["revert-retries"],
+				reverts: [],
+			},
+			{
+				id: "revert-retries",
+				versions: ["2.0.0-beta.1"],
+				revertedBy: [],
+				reverts: ["add-retries"],
+			},
+			{ id: "fix-beta-crash", versions: ["2.0.0-beta.1"], revertedBy: [], reverts: [] },
+		]);
+		expect(failure(Release.prereleaseChanges(solo, "1.5.2")).reason).toBe("NotPrerelease");
+		expect(failure(Release.prereleaseChanges(solo, "9.9.9")).reason).toBe("UnknownPrevious");
+	});
+
+	it("records exactly the selected changes at the line's target", () => {
+		const plan = success(promote([timeout]));
+		const [planned] = plan.versions;
+
+		expect(planned?.version.id).toBe("2.0.0");
+		expect(planned?.version.previous?.id).toBe("2.0.0-beta.1");
+		expect(planned?.version.changes.map((change) => change.id)).toEqual(["rename-timeout"]);
+		expect(planned?.line).toBeUndefined();
+	});
+
+	it("raises the target for stronger selected changes and needs the recorded line", () => {
+		const patchOnly = packageWith("@acme/patch", ["1.5.2", "1.5.3-beta.0"]);
+		const raised = Release.make("patch", {
+			packages: [{ package: patchOnly }],
+			change: ProjectChange,
+			version: VersionStrategy.semver({ bump: (change) => change.metadata.bump }),
+		}).plan({
+			packages: [
+				{
+					package: patchOnly,
+					previous: "1.5.3-beta.0",
+					changes: [headers, retries],
+					line: { ...line, bump: "patch", target: "1.5.3", counter: 0 },
+				},
+			],
+		});
+
+		expect(success(raised).versions[0]?.version.id).toBe("1.6.0");
+		expect(failure(promote([timeout], null)).reason).toBe("PrereleaseContext");
 	});
 });
