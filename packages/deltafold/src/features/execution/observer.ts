@@ -9,7 +9,7 @@ const TypeId = "~deltafold/Observer";
 /**
  * The run that emitted an event.
  *
- * @since @next
+ * @since 0.2.1
  */
 export type Run = {
 	/** The `runId` passed to the executor, if any. Shared observers use it to tell runs apart. */
@@ -23,7 +23,7 @@ export type Run = {
 /**
  * Counters at the moment an event was emitted. Counters never decrease during a run.
  *
- * @since @next
+ * @since 0.2.1
  */
 export type Progress = {
 	/** Steps with actions and prose-only steps. Omitted steps are not counted. */
@@ -44,7 +44,7 @@ export type Progress = {
  *   for it and does not wait at it.
  * - `omitted`: a noop, or a step whose actions rules removed or moved into another step.
  *
- * @since @next
+ * @since 0.2.1
  */
 export type StepInfo = {
 	/** The plan step's `id`. */
@@ -70,7 +70,7 @@ export type StepInfo = {
 /**
  * One occurrence of the plan, as observers see it.
  *
- * @since @next
+ * @since 0.2.1
  */
 export type ActionInfo = {
 	readonly occurrence: string;
@@ -98,7 +98,7 @@ export type ActionInfo = {
  * added to the report's outcome never reaches observers unreviewed. A failure keeps only
  * the error's string `_tag`; the full error is in the execution's report.
  *
- * @since @next
+ * @since 0.2.1
  */
 export type OutcomeSummary =
 	| { readonly _tag: "Completed"; readonly performer: "automated" }
@@ -138,7 +138,7 @@ export type OutcomeSummary =
  * Occurrences by outcome tag. `unsettled` counts interrupted occurrences that may still be
  * running.
  *
- * @since @next
+ * @since 0.2.1
  */
 export type Counts = { readonly [K in Outcome["_tag"]]: number } & {
 	readonly unsettled: number;
@@ -158,14 +158,14 @@ type Base = {
  * ask with. A run that fails either check emits no events. Lists every step of the route,
  * including omitted ones.
  *
- * @since @next
+ * @since 0.2.1
  */
 export type RunStarted = Base & {
 	readonly _tag: "RunStarted";
 	readonly steps: ReadonlyArray<StepInfo>;
 };
 
-/** @since @next */
+/** @since 0.2.1 */
 export type StepStarted = Base & { readonly _tag: "StepStarted"; readonly step: StepInfo };
 
 /**
@@ -174,7 +174,7 @@ export type StepStarted = Base & { readonly _tag: "StepStarted"; readonly step: 
  * prepare phase. `confirmation` means the run is waiting for a person. An occurrence
  * emits this once per phase that starts.
  *
- * @since @next
+ * @since 0.2.1
  */
 export type ActionPhaseStarted = Base & {
 	readonly _tag: "ActionPhaseStarted";
@@ -190,7 +190,7 @@ export type ActionPhaseStarted = Base & {
  * reported outcome is already final, and a later cleanup failure is only logged. Dry-run
  * outcomes that need no prepare phase arrive without a start.
  *
- * @since @next
+ * @since 0.2.1
  */
 export type ActionSettled = Base & {
 	readonly _tag: "ActionSettled";
@@ -201,7 +201,7 @@ export type ActionSettled = Base & {
 /**
  * A started step ended. `counts` covers the step's occurrences.
  *
- * @since @next
+ * @since 0.2.1
  */
 export type StepSettled = Base & {
 	readonly _tag: "StepSettled";
@@ -217,7 +217,7 @@ export type StepSettled = Base & {
  * received it get the report-less one with the same `seq`, so each observer receives
  * exactly one.
  *
- * @since @next
+ * @since 0.2.1
  */
 export type RunFinished = Base & {
 	readonly _tag: "RunFinished";
@@ -235,7 +235,7 @@ export type RunFinished = Base & {
  * Events carry identifiers and plain data, never payloads, errors, or causes. Action
  * descriptions are included, so they must not contain secrets.
  *
- * @since @next
+ * @since 0.2.1
  */
 export type Event =
 	| RunStarted
@@ -251,7 +251,7 @@ export type Event =
  * interrupted but not awaited, so one that cannot be interrupted may keep running. The
  * cause can hold arbitrary values, so do not serialize it as a whole.
  *
- * @since @next
+ * @since 0.2.1
  */
 export type ObservationFailure = {
 	/** Position of the observer in the `observers` array. */
@@ -273,7 +273,7 @@ export type ObservationFailure = {
  * never changes an outcome. Observers only receive events: they cannot answer a manual
  * confirmation.
  *
- * @since @next
+ * @since 0.2.1
  */
 export type Observer<out R = never> = {
 	readonly [TypeId]: typeof TypeId;
@@ -284,18 +284,18 @@ export type Observer<out R = never> = {
 /**
  * Any observer.
  *
- * @since @next
+ * @since 0.2.1
  */
 export type Any = Observer<any>;
 
 /**
  * The Effect services of an observer or a union of observers.
  *
- * @since @next
+ * @since 0.2.1
  */
 export type Services<O> = O extends Observer<infer R> ? R : never;
 
-/** @since @next */
+/** @since 0.2.1 */
 export const isObserver = (value: unknown): value is Any => Predicate.hasProperty(value, TypeId);
 
 class AsyncSyncObserver extends Error {
@@ -315,7 +315,7 @@ class AsyncSyncObserver extends Error {
  * });
  * ```
  *
- * @since @next
+ * @since 0.2.1
  */
 export const sync = (callback: (event: Event) => void): Observer => ({
 	[TypeId]: TypeId,
@@ -341,7 +341,7 @@ export const sync = (callback: (event: Event) => void): Observer => ({
  * settlement grace period has passed, or when the execution is interrupted. A services
  * layer that `Executor.runPromise` built stays open until an abandoned Promise settles.
  *
- * @since @next
+ * @since 0.2.1
  */
 export const promise = (
 	callback: (event: Event, context: { readonly signal: AbortSignal }) => PromiseLike<unknown>,
@@ -385,7 +385,7 @@ export const promise = (
  * Observer.effect((event) => Effect.logDebug(event._tag));
  * ```
  *
- * @since @next
+ * @since 0.2.1
  */
 export const effect = <E = never, R = never>(
 	callback: (event: Event) => Effect.Effect<unknown, E, R>,
