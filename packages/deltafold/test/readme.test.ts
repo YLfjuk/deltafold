@@ -12,6 +12,7 @@ import {
 	Interaction,
 	Migration,
 	Package,
+	type Plan,
 	Rule,
 	Version,
 } from "deltafold";
@@ -112,6 +113,12 @@ const migrate = async (from: string, to: string) => {
 	}
 };
 
+// The migration's instruction for an action, or the action's description.
+const textOf = ({ action, instruction }: Plan.Occurrence) =>
+	instruction?.content
+		.map((part) => (part._tag === "Text" ? part.text : part.action.description))
+		.join("") ?? action.description;
+
 describe("README examples", () => {
 	it("runs the Promise example", async () => {
 		files.set("app.json", { timeout: 5000 });
@@ -164,7 +171,7 @@ describe("README examples", () => {
 			}),
 		];
 		const interaction = Interaction.promise(async ({ occurrence }, { signal }) =>
-			(await ask(occurrence.action.description, { signal })) ? "confirmed" : "declined",
+			(await ask(textOf(occurrence), { signal })) ? "confirmed" : "declined",
 		);
 
 		files.set("app.json", { timeout: 5000 });
@@ -173,7 +180,7 @@ describe("README examples", () => {
 			interaction,
 		});
 
-		expect(asked).toEqual(['In app.json, rename "timeout" to "requestTimeout"']);
+		expect(asked).toEqual(["Rename the timeout option. Its value stays in milliseconds."]);
 		expect(report.occurrences[0]?.outcome).toEqual({
 			_tag: "Completed",
 			performer: "manual",

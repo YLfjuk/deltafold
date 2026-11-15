@@ -116,8 +116,14 @@ export type PromiseOptions<
  *
  * @example
  * ```ts
+ * // The migration's instruction for this action, or the action's description.
+ * const textOf = ({ action, instruction }: Plan.Occurrence) =>
+ * 	instruction?.content
+ * 		.map((part) => (part._tag === "Text" ? part.text : part.action.description))
+ * 		.join("") ?? action.description;
+ *
  * const interaction = Interaction.promise(async ({ occurrence }, { signal }) =>
- * 	(await ask(occurrence.action.description, { signal })) ? "confirmed" : "declined",
+ * 	(await ask(textOf(occurrence), { signal })) ? "confirmed" : "declined",
  * );
  * ```
  *

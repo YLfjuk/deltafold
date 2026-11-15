@@ -92,6 +92,12 @@ const typeOnly = (_check: () => void) => {};
 const checks = (strict: boolean): Handler.ManualOptions<{ readonly service: string }, {}, []> =>
 	strict ? { verify: () => false } : {};
 
+// A union whose members do not all hold a check may still hold one.
+const either = (strict: boolean): {} | { verify: () => boolean } =>
+	strict ? { verify: () => false } : {};
+const eitherEffect = (strict: boolean): {} | { verify: () => Effect.Effect<boolean> } =>
+	strict ? { verify: () => Effect.succeed(false) } : {};
+
 describe("Manual handler typing", () => {
 	it("keeps a bare manual handler free of errors and services", () => {
 		const handler = Handler.manual(rotate);
@@ -149,6 +155,16 @@ describe("Manual handler typing", () => {
 		expectTypeOf<Handler.Error<typeof produced>>().toEqualTypeOf<
 			Handler.UnexpectedHandlerError | Handler.VerificationFailed
 		>();
+
+		const fromUnion = Handler.manual(rotate, either(true));
+		const fromEffectUnion = Handler.manualEffect(rotate, eitherEffect(true));
+
+		expectTypeOf<Handler.Error<typeof fromUnion>>().toEqualTypeOf<
+			Handler.UnexpectedHandlerError | Handler.VerificationFailed
+		>();
+		expectTypeOf<
+			Handler.Error<typeof fromEffectUnion>
+		>().toEqualTypeOf<Handler.VerificationFailed>();
 	});
 
 	it("adds the interaction's errors and services to an ordinary handler array", () => {
@@ -192,6 +208,27 @@ describe("Manual handler typing", () => {
 
 		// @ts-expect-error a manual handler has no prepare phase.
 		Handler.manual(rotate, { prepare: () => Handler.skip("done already") });
+
+		Handler.manual(rotate, {
+			verify: () => true,
+			// @ts-expect-error a manual handler has no prepare phase, with or without a check.
+			prepare: () => Handler.skip("done already"),
+		});
+
+		// @ts-expect-error a manual handler has no apply phase.
+		Handler.manual(rotate, { verify: () => true, apply: () => Effect.void });
+
+		// @ts-expect-error a manual handler has no precondition.
+		Handler.manual(rotate, { verify: () => true, when: () => false });
+
+		Handler.manualEffect(rotate, {
+			verify: () => Effect.succeed(true),
+			// @ts-expect-error a manual handler has no prepare phase.
+			prepare: () => Effect.succeed(Handler.skip("done already")),
+		});
+
+		// @ts-expect-error a manual handler has no skip option.
+		Handler.manualEffect(rotate, { skip: true });
 
 		Handler.manual(rotate, {
 			// @ts-expect-error services that were not declared are absent from the context.

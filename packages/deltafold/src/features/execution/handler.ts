@@ -505,11 +505,6 @@ export type ManualOptions<Payload, S extends ServiceMap, G extends ReadonlyArray
 	) => boolean | PromiseLike<boolean>;
 };
 
-// An optional `verify` key may hold a check, so it counts as declared.
-type ManualErrors<O, G extends ReadonlyArray<ErrorGuard>> = "verify" extends keyof O
-	? GuardedError<G[number]> | UnexpectedHandlerError | VerificationFailed
-	: never;
-
 /**
  * Declares that a person performs the action. A manual handler has no prepare or apply
  * phase. In a real run the executor asks its `interaction` to confirm the work, showing
@@ -530,43 +525,47 @@ type ManualErrors<O, G extends ReadonlyArray<ErrorGuard>> = "verify" extends key
  *
  * @since @next
  */
-export const manual = <
+export function manual<A extends Action.Any>(action: A): Handler<A>;
+export function manual<
 	A extends Action.Any,
 	const S extends ServiceMap = NoServices,
 	const G extends ReadonlyArray<ErrorGuard> = [],
-	const O extends ManualOptions<A["payload"], S, G> = NoServices,
 >(
 	action: A,
-	options?: O & ManualOptions<A["payload"], S, G>,
-): Handler<A, ManualErrors<O, G>, ServiceIds<S>> => {
+	options: ManualOptions<A["payload"], S, G>,
+): Handler<A, GuardedError<G[number]> | UnexpectedHandlerError | VerificationFailed, ServiceIds<S>>;
+export function manual<
+	A extends Action.Any,
+	S extends ServiceMap,
+	G extends ReadonlyArray<ErrorGuard>,
+>(
+	action: A,
+	options?: ManualOptions<A["payload"], S, G>,
+): Handler<
+	A,
+	GuardedError<G[number]> | UnexpectedHandlerError | VerificationFailed,
+	ServiceIds<S>
+> {
 	const adapt = adaptPromise(options ?? {});
 	const verify = options?.verify;
-	const check =
-		verify === undefined
-			? undefined
-			: verified(
-					action,
-					adapt(
-						(context) => verify(action.payload, context),
-						(cause) =>
-							new UnexpectedHandlerError({
-								actionId: action.id,
-								kind: action.kind,
-								phase: "verification",
-								cause,
-							}),
-					),
-				);
+	if (verify === undefined) return makeManual(action, undefined);
 
-	// `ManualErrors` is `never` only when the options cannot hold a check, and then
-	// `check` is undefined and the handler has no errors.
-	// oxlint-disable-next-line typescript/no-unsafe-type-assertion
-	return makeManual(action, check === undefined ? undefined : () => check) as Handler<
-		A,
-		ManualErrors<O, G>,
-		ServiceIds<S>
-	>;
-};
+	const check = verified(
+		action,
+		adapt(
+			(context) => verify(action.payload, context),
+			(cause) =>
+				new UnexpectedHandlerError({
+					actionId: action.id,
+					kind: action.kind,
+					phase: "verification",
+					cause,
+				}),
+		),
+	);
+
+	return makeManual(action, () => check);
+}
 
 /** @since @next */
 export type ManualEffectOptions<Payload, E, R> = {
@@ -577,38 +576,31 @@ export type ManualEffectOptions<Payload, E, R> = {
 	readonly verify?: (payload: Payload) => Effect.Effect<boolean, E, R>;
 };
 
-type VerifyError<O> = "verify" extends keyof O ? VerificationFailed : never;
-
 /**
  * `Handler.manual` with an Effect `verify` check, which keeps its own errors and
  * services.
  *
  * @since @next
  */
-export const manualEffect = <
-	A extends Action.Any,
-	E = never,
-	R = never,
-	const O extends ManualEffectOptions<A["payload"], E, R> = NoServices,
->(
+export function manualEffect<A extends Action.Any>(action: A): Handler<A>;
+export function manualEffect<A extends Action.Any, E = never, R = never>(
 	action: A,
-	options?: O & ManualEffectOptions<A["payload"], E, R>,
-): Handler<A, E | VerifyError<O>, Exclude<R, Scope.Scope>> => {
+	options: ManualEffectOptions<A["payload"], E, R>,
+): Handler<A, E | VerificationFailed, Exclude<R, Scope.Scope>>;
+export function manualEffect<A extends Action.Any, E, R>(
+	action: A,
+	options?: ManualEffectOptions<A["payload"], E, R>,
+): Handler<A, E | VerificationFailed, Exclude<R, Scope.Scope>> {
 	const verify = options?.verify;
+	if (verify === undefined) return makeManual(action, undefined);
 
-	// `VerifyError` is `never` only when the options cannot hold a check.
-	// oxlint-disable-next-line typescript/no-unsafe-type-assertion
-	return makeManual(
-		action,
-		verify === undefined
-			? undefined
-			: (scope) =>
-					Scope.provide(
-						verified(
-							action,
-							Effect.suspend(() => verify(action.payload)),
-						),
-						scope,
-					),
-	) as Handler<A, E | VerifyError<O>, Exclude<R, Scope.Scope>>;
-};
+	return makeManual(action, (scope) =>
+		Scope.provide(
+			verified(
+				action,
+				Effect.suspend(() => verify(action.payload)),
+			),
+			scope,
+		),
+	);
+}
