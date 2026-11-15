@@ -286,7 +286,10 @@ for generation and in-memory validation without imposing it on core.
 ## Prototype findings
 
 The prototype in `packages/release` is private and unpublished. It builds on
-headless `Change` from the core.
+headless `Change` from the core. Its public exports carry `@since @next`. When the package
+first receives a version, the version step replaces `@next` with that version on
+the APIs the release includes, before publishing; tags that already name a
+version keep it.
 
 These contracts worked as accepted:
 

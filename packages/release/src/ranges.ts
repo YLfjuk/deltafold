@@ -3,7 +3,6 @@ import { Result, SemVer } from "effect";
 // Dependency ranges in the forms release planning can rewrite: `^x.y.z`, `~x.y.z`, and an
 // exact `x.y.z`. `workspace:` ranges are resolved by the package manager at publish time.
 
-/** @since @next */
 export type Form =
 	| { readonly _tag: "Workspace" }
 	| {
