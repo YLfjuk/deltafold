@@ -1,4 +1,4 @@
-import { type Cause, Effect, type Exit, Predicate } from "effect";
+import { type Cause, Effect, Exit, Predicate } from "effect";
 
 import type * as Plan from "../../foundation/plan.ts";
 import type { InterruptReason, Outcome, Report } from "./executor.ts";
@@ -299,19 +299,19 @@ class AsyncSyncObserver extends Error {
 export const sync = (callback: (event: Event) => void): Observer => ({
 	[TypeId]: TypeId,
 	notify: (event) =>
-		Effect.exit(
-			Effect.try({
-				try: () => {
-					const result: unknown = callback(event);
-					if (Predicate.isPromiseLike(result)) {
-						// Keep a rejection from going unhandled; the misuse is reported instead.
-						Promise.resolve(result).catch(() => undefined);
-						throw new AsyncSyncObserver();
-					}
-				},
-				catch: (cause) => cause,
-			}),
-		),
+		Effect.sync((): Exit.Exit<void, unknown> => {
+			try {
+				const result: unknown = callback(event);
+				if (!Predicate.isPromiseLike(result)) return Exit.void;
+				// Keep a rejection from going unhandled; the misuse is reported instead.
+				Promise.resolve(result).catch(() => undefined);
+
+				return Exit.fail(new AsyncSyncObserver());
+			} catch (cause) {
+				// The thrown value is the failure, exactly as the observer threw it.
+				return Exit.fail(cause);
+			}
+		}),
 });
 
 /**
@@ -326,12 +326,13 @@ export const promise = (
 ): Observer => ({
 	[TypeId]: TypeId,
 	notify: (event) =>
-		Effect.exit(
-			Effect.tryPromise({
-				// Declaring `signal` makes Effect.tryPromise allocate an AbortController.
-				try: (signal) => Promise.resolve(callback(event, { signal })),
-				catch: (cause) => cause,
-			}),
+		// Declaring `signal` makes Effect.promise allocate an AbortController. The rejection
+		// is the failure, exactly as the observer rejected.
+		Effect.promise((signal): Promise<Exit.Exit<unknown, unknown>> =>
+			new Promise<unknown>((resolve) => resolve(callback(event, { signal }))).then(
+				() => Exit.void,
+				(cause: unknown) => Exit.fail(cause),
+			),
 		),
 });
 

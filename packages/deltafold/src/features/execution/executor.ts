@@ -649,7 +649,7 @@ const observed = <A extends Action.Any, T, E, R>(
 	mode: Report["mode"],
 	observation: Observation<R>,
 	control: Effect.Success<ReturnType<typeof makeControl>>,
-	outcomes: ReadonlyMap<string, Outcome<unknown>>,
+	outcomes: ReadonlyMap<string, Outcome>,
 	body: (emitter: Emitter<R>) => Effect.Effect<T, E, R>,
 ): Effect.Effect<T, E, R> =>
 	Effect.gen(function* () {
@@ -706,7 +706,10 @@ const execute = <A extends Action.Any, E, R>(
 							let step: Handler.Step<E, R>;
 							if (handler.prepares) {
 								yield* emitter.phaseStarted(occurrence, "prepare");
-								const preparation = yield* runPhase(handler.prepare(scope), unsettled);
+								const preparation = yield* runPhase(
+									handler.prepare(scope),
+									unsettled,
+								);
 								const stopped = unsuccessful("prepare", preparation, stop);
 								if (stopped !== undefined) return end(stopped);
 								if (preparation._tag !== "Done") return Exit.void;
@@ -851,7 +854,11 @@ const execute = <A extends Action.Any, E, R>(
 
 				const reason = halt.reason;
 				const status =
-					reason === undefined ? "completed" : reason === "failure" ? "failed" : "interrupted";
+					reason === undefined
+						? "completed"
+						: reason === "failure"
+							? "failed"
+							: "interrupted";
 				yield* emitter.runFinished(status);
 				const result = report(
 					plan,
@@ -864,7 +871,9 @@ const execute = <A extends Action.Any, E, R>(
 				if (reason === undefined) return result;
 				if (reason === "failure") {
 					return yield* new ExecutionFailed({
-						failures: result.occurrences.filter((entry) => entry.outcome._tag === "Failed"),
+						failures: result.occurrences.filter(
+							(entry) => entry.outcome._tag === "Failed",
+						),
 						declined: result.occurrences.filter(
 							(entry) => entry.outcome._tag === "Declined",
 						),
@@ -965,7 +974,8 @@ const dryRun = <A extends Action.Any, E, R>(
 					Effect.gen(function* () {
 						if (node._tag === "Sequence") {
 							let current = dirty;
-							for (const child of node.children) current = yield* visit(child, current);
+							for (const child of node.children)
+								current = yield* visit(child, current);
 
 							return current;
 						}
@@ -1031,7 +1041,14 @@ const dryRun = <A extends Action.Any, E, R>(
 
 					return yield* new ExecutionInterrupted({
 						reason,
-						report: report(plan, "dry-run", "interrupted", outcomes, false, emitter.failures),
+						report: report(
+							plan,
+							"dry-run",
+							"interrupted",
+							outcomes,
+							false,
+							emitter.failures,
+						),
 					});
 				}
 
@@ -1065,9 +1082,8 @@ const run = <
 	// on the compiler checks both channels.
 	const handlers: ReadonlyArray<Internal<Errors<H, I>, Requirements<H, I, O>>> =
 		options.handlers ?? [];
-	const interaction:
-		| Interaction.Interaction<Errors<H, I>, Requirements<H, I, O>>
-		| undefined = options.interaction;
+	const interaction: Interaction.Interaction<Errors<H, I>, Requirements<H, I, O>> | undefined =
+		options.interaction;
 	const observation: Observation<Requirements<H, I, O>> = {
 		observers: options.observers ?? [],
 		runId: options.runId,
@@ -1149,11 +1165,7 @@ export const effect = <
 >(
 	plan: Plan.Plan<A, C>,
 	options: Options<H, I, O> & CoverageCheck<A, H, C>,
-): Effect.Effect<
-	Report<A, Errors<H, I>>,
-	ExecutionError<A, Errors<H, I>>,
-	Requirements<H, I, O>
-> =>
+): Effect.Effect<Report<A, Errors<H, I>>, ExecutionError<A, Errors<H, I>>, Requirements<H, I, O>> =>
 	run(plan, options, undefined, () => {});
 
 type ServicesOption<R, LE> = [R] extends [never]
