@@ -236,9 +236,14 @@ observer's position and the event, and that observer still receives later
 events. Observation never changes outcomes or status. Before a cancellation or
 timeout, deliveries have no time limit, so a hanging observer stalls the run.
 After one, each delivery waits at most `settleTimeout` and is then abandoned and
-recorded; a Promise observer's `signal` aborts. When the fiber of
-`Executor.effect` is interrupted, a finalizer sends one `RunFinished` without a
-report, bounded the same way.
+recorded; a Promise observer's `signal` aborts. An abandoned callback is
+interrupted without waiting, because an Effect observer may not be interruptible,
+and a services layer that `runPromise` built stays open until it stops. Admission is checked again after
+each phase-start delivery, so a cancellation that arrives while observers are
+notified keeps the phase from starting. When the fiber of `Executor.effect` is
+interrupted, a finalizer sends one `RunFinished` without a report, bounded the
+same way. If the interruption cuts short the delivery of `RunFinished`, the
+observers that had not received it get the report-less one with the same `seq`.
 
 **Steps and provenance.** Step progress counts steps that keep actions after
 optimization, plus prose-only steps, which settle at once as `prose` because the
@@ -253,7 +258,8 @@ migration identifier, followed by `/revert` for a reverse migration.
 **Event contents.** Events hold identifiers, descriptions, and outcome tags. Each
 outcome summary copies its fields explicitly, so a field added to the report's
 outcome reaches observers only after review. A failed outcome keeps only the
-error's string `_tag`; typed errors and causes stay in the report. Manual outcomes
+error's string `_tag`, or none when reading it throws; typed errors and causes
+stay in the report. Manual outcomes
 keep their performer and confirmation, which hold no input from the person.
 Action descriptions reach observers and must not hold secrets. `ActionSettled`
 arrives once for each occurrence with an outcome, and as `Unattempted` for an

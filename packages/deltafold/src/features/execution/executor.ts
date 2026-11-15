@@ -650,6 +650,7 @@ const observed = <A extends Action.Any, T, E, R>(
 	observation: Observation<R>,
 	control: Effect.Success<ReturnType<typeof makeControl>>,
 	outcomes: ReadonlyMap<string, Outcome>,
+	retain: Retain,
 	body: (emitter: Emitter<R>) => Effect.Effect<T, E, R>,
 ): Effect.Effect<T, E, R> =>
 	Effect.gen(function* () {
@@ -661,6 +662,7 @@ const observed = <A extends Action.Any, T, E, R>(
 			outcomes,
 			stopped: control.stopped,
 			grace: control.settleTimeout,
+			retain,
 		});
 
 		return yield* Effect.onInterrupt(body(emitter), () => emitter.interrupted);
@@ -681,7 +683,7 @@ const execute = <A extends Action.Any, E, R>(
 		const { halt, stop, runPhase, isCancelled } = control;
 		let bodiesStarted = false;
 
-		return yield* observed(plan, "execute", observation, control, outcomes, (emitter) =>
+		return yield* observed(plan, "execute", observation, control, outcomes, retain, (emitter) =>
 			Effect.gen(function* () {
 				const runOccurrence = (occurrence: Occurrence) => {
 					if (halt.reason !== undefined) return Effect.void;
@@ -701,11 +703,18 @@ const execute = <A extends Action.Any, E, R>(
 						return end({ _tag: "Failed", phase, ...failureOf(cause) });
 					};
 
+					// Observers are awaited before each phase, so admission is checked again after
+					// they hear that it is starting. A handler that prepares has started once
+					// preparation succeeds, and from then on only cancellation keeps it from going on.
+					const admitted = () =>
+						handler.prepares ? !isCancelled() : halt.reason === undefined;
+
 					const use = (scope: Scope.Scope, unsettled: Array<Promise<void>>) =>
 						Effect.gen(function* () {
 							let step: Handler.Step<E, R>;
 							if (handler.prepares) {
 								yield* emitter.phaseStarted(occurrence, "prepare");
+								if (halt.reason !== undefined) return Exit.void;
 								const preparation = yield* runPhase(
 									handler.prepare(scope),
 									unsettled,
@@ -736,9 +745,10 @@ const execute = <A extends Action.Any, E, R>(
 								if (interaction === undefined) return Exit.void;
 
 								phase = "confirmation";
+								yield* emitter.phaseStarted(occurrence, "confirmation");
+								if (!admitted()) return Exit.void;
 								// The person may start changing state as soon as they are asked.
 								bodiesStarted = true;
-								yield* emitter.phaseStarted(occurrence, "confirmation");
 								const asked = yield* runPhase(
 									interaction.confirm({ occurrence }),
 									unsettled,
@@ -762,17 +772,18 @@ const execute = <A extends Action.Any, E, R>(
 								}
 
 								phase = "verification";
-								// Cancellation that arrived with the confirmation keeps the check from
-								// starting.
-								if (isCancelled()) {
-									return end({
+								// Cancellation that arrived with the confirmation, or while observers
+								// heard that the check is starting, keeps the check from starting.
+								const unverified = () =>
+									end({
 										_tag: "Interrupted",
-										phase,
+										phase: "verification",
 										reason: "cancelled",
 										settled: true,
 									});
-								}
+								if (isCancelled()) return unverified();
 								yield* emitter.phaseStarted(occurrence, "verification");
+								if (isCancelled()) return unverified();
 								const checked = yield* runPhase(step.verify, unsettled);
 								const unchecked = unsuccessful("verification", checked, stop);
 								if (unchecked !== undefined) return end(unchecked);
@@ -787,8 +798,9 @@ const execute = <A extends Action.Any, E, R>(
 							}
 
 							phase = "apply";
-							bodiesStarted = true;
 							yield* emitter.phaseStarted(occurrence, "apply");
+							if (!admitted()) return Exit.void;
+							bodiesStarted = true;
 							const applied = yield* runPhase(step.apply, unsettled);
 							const stopped = unsuccessful("apply", applied, stop);
 							if (stopped !== undefined) return end(stopped);
@@ -900,7 +912,7 @@ const dryRun = <A extends Action.Any, E, R>(
 		const { halt, stop, runPhase } = control;
 		let failedAt: string | undefined;
 
-		return yield* observed(plan, "dry-run", observation, control, outcomes, (emitter) =>
+		return yield* observed(plan, "dry-run", observation, control, outcomes, retain, (emitter) =>
 			Effect.gen(function* () {
 				const settle = (occurrence: Occurrence, outcome: Outcome<E>) => {
 					outcomes.set(occurrence.id, outcome);
@@ -919,6 +931,8 @@ const dryRun = <A extends Action.Any, E, R>(
 					const use = (scope: Scope.Scope, unsettled: Array<Promise<void>>) =>
 						Effect.gen(function* () {
 							yield* emitter.phaseStarted(occurrence, "prepare");
+							// Observers are awaited, so the run may have stopped while they heard it.
+							if (halt.reason !== undefined) return Exit.void;
 							const preparation = yield* runPhase(handler.prepare(scope), unsettled);
 							const stopped = unsuccessful("prepare", preparation, stop);
 							if (stopped !== undefined) return end(stopped);
@@ -1213,8 +1227,9 @@ export const runPromise = <
 	C extends Plan.Coverage,
 	H extends Handler.Any = never,
 	I extends Interaction.Any = never,
-	O extends Observer.Any = never,
+	// After `LE`, so explicit type arguments written for earlier releases keep their meaning.
 	LE = never,
+	O extends Observer.Any = never,
 >(
 	plan: Plan.Plan<A, C>,
 	options: PromiseOptions<H, I, O> &

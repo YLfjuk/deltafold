@@ -5,6 +5,7 @@ import {
 	Duration,
 	Effect,
 	Exit,
+	Fiber,
 	Option,
 	Predicate,
 	Semaphore,
@@ -109,8 +110,16 @@ const actionInfoOf = (
 	sources: sourcesOf(occurrence, stepIdOf),
 });
 
-const errorTagOf = (error: unknown) =>
-	Predicate.hasProperty(error, "_tag") && typeof error._tag === "string" ? error._tag : undefined;
+/** Reads a handler error's tag. A tag that cannot be read, even by a throwing getter, is absent. */
+const errorTagOf = (error: unknown): string | undefined => {
+	try {
+		return Predicate.hasProperty(error, "_tag") && typeof error._tag === "string"
+			? error._tag
+			: undefined;
+	} catch {
+		return undefined;
+	}
+};
 
 /** Copies only the fields observers may see. */
 const summaryOf = (outcome: Outcome): Observer.OutcomeSummary => {
@@ -200,6 +209,8 @@ export type EmitterOptions<R> = {
 	/** Completes when cancellation or a timeout stops the run. */
 	readonly stopped: Deferred.Deferred<void>;
 	readonly grace: Duration.Input;
+	/** Receives a fiber that ends when an abandoned callback stops, to keep services open. */
+	readonly retain: (fiber: Fiber.Fiber<void>) => void;
 };
 
 /**
@@ -209,7 +220,7 @@ export type EmitterOptions<R> = {
  */
 export const makeEmitter = <R>(options: EmitterOptions<R>): Effect.Effect<Emitter<R>> =>
 	Effect.gen(function* () {
-		const { plan, observers, outcomes, stopped, grace } = options;
+		const { plan, observers, outcomes, stopped, grace, retain } = options;
 		if (observers.length === 0) return noop;
 		const stepIdOf = stepIdsOf(plan);
 
@@ -227,13 +238,23 @@ export const makeEmitter = <R>(options: EmitterOptions<R>): Effect.Effect<Emitte
 		const ownerOf = new Map<string, string>();
 		for (const info of steps) for (const id of info.occurrences) ownerOf.set(id, info.id);
 
-		const state = {
+		const state: {
+			seq: number;
+			running: Set<string>;
+			actionsFinished: number;
+			stepsFinished: number;
+			started: boolean;
+			finished: boolean;
+			/** The event being delivered and the observer it is with, until every observer has it. */
+			delivering: { readonly event: Observer.Event; readonly observer: number } | undefined;
+		} = {
 			seq: 0,
 			running: new Set<string>(),
 			actionsFinished: 0,
 			stepsFinished: 0,
 			started: false,
 			finished: false,
+			delivering: undefined,
 		};
 		const stepsTotal = steps.filter((info) => info.kind !== "omitted").length;
 		const progress = (): Observer.Progress => ({
@@ -262,22 +283,82 @@ export const makeEmitter = <R>(options: EmitterOptions<R>): Effect.Effect<Emitte
 			return counts;
 		};
 
-		/** Bounds a delivery once the run has been stopped, or always when `bounded` is set. */
+		/**
+		 * Interrupts an abandoned delivery without waiting for it to stop. The run's services
+		 * stay open until it does.
+		 */
+		const abandon = (fiber: Fiber.Fiber<Exit.Exit<unknown, unknown>>) =>
+			Effect.map(Effect.forkDetach(Fiber.interrupt(fiber)), retain);
+
+		/**
+		 * Bounds a delivery once the run has been stopped, or always when `bounded` is set.
+		 * The callback runs in its own fiber, with the run's services, so a delivery that
+		 * cannot be interrupted is still abandoned when the bound passes.
+		 */
 		const deliver = (
 			observer: Observer.Observer<R>,
 			event: Observer.Event,
 			bounded: boolean,
-		): Effect.Effect<Option.Option<Exit.Exit<unknown, unknown>>, never, R> => {
-			const notify = Effect.interruptible(observer.notify(event));
-			const limit = bounded
-				? Effect.sleep(grace)
-				: Effect.andThen(Deferred.await(stopped), Effect.sleep(grace));
+		): Effect.Effect<Option.Option<Exit.Exit<unknown, unknown>>, never, R> =>
+			Effect.uninterruptibleMask((restore) =>
+				Effect.gen(function* () {
+					const fiber = yield* Effect.forkDetach(
+						Effect.interruptible(observer.notify(event)),
+						{
+							startImmediately: true,
+						},
+					);
+					const limit = bounded
+						? Effect.sleep(grace)
+						: Effect.andThen(Deferred.await(stopped), Effect.sleep(grace));
+					const result = yield* restore(
+						Effect.raceFirst(
+							Effect.map(Fiber.await(fiber), (exit) =>
+								Option.some(Exit.isSuccess(exit) ? exit.value : exit),
+							),
+							Effect.as(limit, Option.none<Exit.Exit<unknown, unknown>>()),
+						),
+					).pipe(Effect.onInterrupt(() => abandon(fiber)));
+					if (Option.isNone(result)) yield* abandon(fiber);
 
-			return Effect.raceFirst(
-				Effect.asSome(notify),
-				Effect.as(limit, Option.none<Exit.Exit<unknown, unknown>>()),
+					return result;
+				}),
 			);
+
+		const record = (
+			observer: number,
+			event: Observer.Event,
+			result: Option.Option<Exit.Exit<unknown, unknown>>,
+		) => {
+			if (Option.isNone(result)) {
+				failures.push({
+					observer,
+					event: event._tag,
+					seq: event.seq,
+					reason: "abandoned",
+					cause: Cause.interrupt(),
+				});
+			} else if (Exit.isFailure(result.value)) {
+				failures.push({
+					observer,
+					event: event._tag,
+					seq: event.seq,
+					reason: "failed",
+					cause: result.value.cause,
+				});
+			}
 		};
+
+		/** Delivers an event to each observer from `first` on, in order. */
+		const deliverFrom = (event: Observer.Event, first: number, bounded: boolean) =>
+			Effect.gen(function* () {
+				for (const [offset, observer] of observers.slice(first).entries()) {
+					const index = first + offset;
+					state.delivering = { event, observer: index };
+					record(index, event, yield* deliver(observer, event, bounded));
+				}
+				state.delivering = undefined;
+			});
 
 		const emit = (
 			update: () => void,
@@ -295,26 +376,7 @@ export const makeEmitter = <R>(options: EmitterOptions<R>): Effect.Effect<Emitte
 					const timestamp = yield* Clock.currentTimeMillis;
 					const event = build({ run, seq: state.seq, timestamp, progress: progress() });
 					state.seq += 1;
-					for (const [index, observer] of observers.entries()) {
-						const result = yield* deliver(observer, event, bounded);
-						if (Option.isNone(result)) {
-							failures.push({
-								observer: index,
-								event: event._tag,
-								seq: event.seq,
-								reason: "abandoned",
-								cause: Cause.interrupt(),
-							});
-						} else if (Exit.isFailure(result.value)) {
-							failures.push({
-								observer: index,
-								event: event._tag,
-								seq: event.seq,
-								reason: "failed",
-								cause: result.value.cause,
-							});
-						}
-					}
+					yield* deliverFrom(event, 0, bounded);
 				}),
 			);
 
@@ -336,6 +398,30 @@ export const makeEmitter = <R>(options: EmitterOptions<R>): Effect.Effect<Emitte
 				}),
 				bounded,
 			);
+
+		/**
+		 * Ends the stream after fiber interruption. The delivery the interruption cut short is
+		 * abandoned. If it was `RunFinished`, the observers that had not received it get a
+		 * report-less one with the same `seq` instead, so each observer hears exactly one.
+		 */
+		const interrupted = Effect.suspend(() => {
+			const cut = state.delivering;
+			if (cut !== undefined) {
+				record(cut.observer, cut.event, Option.none());
+				state.delivering = undefined;
+			}
+			if (!state.started) return Effect.void;
+			if (!state.finished) return finish("interrupted", false, true);
+			if (cut?.event._tag !== "RunFinished") return Effect.void;
+			const event: Observer.Event = {
+				...cut.event,
+				status: "interrupted",
+				counts: countsOf(plan.occurrences, true),
+				report: false,
+			};
+
+			return lock.withPermits(1)(deliverFrom(event, cut.observer + 1, true));
+		});
 
 		return {
 			runStarted: emit(
@@ -393,9 +479,7 @@ export const makeEmitter = <R>(options: EmitterOptions<R>): Effect.Effect<Emitte
 							),
 				),
 			runFinished: (status) => finish(status, true, false),
-			interrupted: Effect.suspend(() =>
-				state.started && !state.finished ? finish("interrupted", false, true) : Effect.void,
-			),
+			interrupted,
 			failures,
 		};
 	});

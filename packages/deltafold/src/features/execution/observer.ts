@@ -182,9 +182,11 @@ export type ActionPhaseStarted = Base & {
 
 /**
  * An occurrence has its final outcome. Emitted once for each occurrence whose outcome is
- * known, after its scope has closed, and as `Unattempted` for an occurrence that started
- * but stopped before applying or asking. Dry-run outcomes that need no prepare phase
- * arrive without a start.
+ * known, and as `Unattempted` for an occurrence that started but stopped before applying
+ * or asking. It arrives after the occurrence's scope has closed, except when an
+ * interrupted Promise has not settled: then the scope stays open until it does, the
+ * reported outcome is already final, and a later cleanup failure is only logged. Dry-run
+ * outcomes that need no prepare phase arrive without a start.
  *
  * @since @next
  */
@@ -208,7 +210,10 @@ export type StepSettled = Base & {
 /**
  * The run ended. `status` and `counts` match the execution's report. When the fiber of
  * `Executor.effect` is interrupted, there is no report: `report` is `false`, the status is
- * `"interrupted"`, and running occurrences count as unsettled interruptions.
+ * `"interrupted"`, and running occurrences count as unsettled interruptions. If the
+ * interruption cuts short the delivery of `RunFinished`, the observers that had not yet
+ * received it get the report-less one with the same `seq`, so each observer receives
+ * exactly one.
  *
  * @since @next
  */
@@ -235,8 +240,9 @@ export type Event =
 
 /**
  * An observer that failed, or that was abandoned after cancellation or a timeout because
- * it did not finish within the settlement grace period. The cause can hold arbitrary
- * values, so do not serialize it as a whole.
+ * it did not finish within the settlement grace period. An abandoned callback is
+ * interrupted but not awaited, so one that cannot be interrupted may keep running. The
+ * cause can hold arbitrary values, so do not serialize it as a whole.
  *
  * @since @next
  */

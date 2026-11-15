@@ -1,5 +1,17 @@
 import { describe, expect, expectTypeOf, it } from "@effect/vitest";
-import { Cause, Context, Duration, Effect, Fiber, Option, Result, Schema } from "effect";
+import {
+	Cause,
+	Context,
+	Deferred,
+	Duration,
+	Effect,
+	Exit,
+	Fiber,
+	Layer,
+	Option,
+	Result,
+	Schema,
+} from "effect";
 import { TestClock } from "effect/testing";
 
 import {
@@ -15,6 +27,7 @@ import {
 	Rule,
 	Version,
 } from "deltafold";
+import { abortingAt, checkInvariants, recorder, tags } from "./__fixtures__/observer.ts";
 
 const Touch = Action.define<{ readonly name: string }>("test.touch", {
 	describe: ({ name }) => `Touch ${name}`,
@@ -50,69 +63,6 @@ class Unreadable extends Schema.TaggedError<Unreadable, { readonly brand: unique
 const answering = (answer: Interaction.Answer) => Interaction.promise(async () => answer);
 
 const ok = <A extends Action.Any>(action: A) => Handler.effect(action, () => Effect.void);
-
-const recorder = () => {
-	const events: Array<Observer.Event> = [];
-
-	return { events, observer: Observer.sync((event) => void events.push(event)) };
-};
-
-const tags = (events: ReadonlyArray<Observer.Event>) =>
-	events.map((event) => {
-		switch (event._tag) {
-			case "StepStarted":
-			case "StepSettled":
-				return `${event._tag}:${event.step.id}`;
-			case "ActionPhaseStarted":
-				return `${event._tag}:${event.action.action}:${event.phase}`;
-			case "ActionSettled":
-				return `${event._tag}:${event.action.action}:${event.outcome._tag}`;
-		}
-
-		return event._tag;
-	});
-
-/** Checks the guarantees every event stream must keep, against the final report. */
-const checkInvariants = (events: ReadonlyArray<Observer.Event>, report?: Executor.Report) => {
-	expect(events.map((event) => event.seq)).toEqual(events.map((_, index) => index));
-	expect(events[0]?._tag).toBe("RunStarted");
-	expect(events.filter((event) => event._tag === "RunStarted")).toHaveLength(1);
-	expect(events.filter((event) => event._tag === "RunFinished")).toHaveLength(1);
-	expect(events.at(-1)?._tag).toBe("RunFinished");
-
-	for (const [index, event] of events.entries()) {
-		const previous = events[index - 1];
-		if (previous === undefined) continue;
-		expect(event.progress.actions.finished).toBeGreaterThanOrEqual(
-			previous.progress.actions.finished,
-		);
-		expect(event.progress.steps.finished).toBeGreaterThanOrEqual(
-			previous.progress.steps.finished,
-		);
-	}
-
-	const started = new Set<string>();
-	const settled: Array<string> = [];
-	for (const event of events) {
-		if (event._tag === "ActionPhaseStarted") started.add(event.action.occurrence);
-		if (event._tag === "ActionSettled") settled.push(event.action.occurrence);
-	}
-	expect(new Set(settled).size).toBe(settled.length);
-	const finished = events.at(-1);
-	// After fiber interruption, occurrences that were running never settle.
-	if (finished?._tag === "RunFinished" && !finished.report) return;
-	for (const occurrence of started) expect(settled).toContain(occurrence);
-
-	if (report === undefined || finished?._tag !== "RunFinished") return;
-	expect(finished.status).toBe(report.status);
-	expect(finished.report).toBe(true);
-	const counts: Record<string, number> = {};
-	for (const entry of report.occurrences)
-		counts[entry.outcome._tag] = (counts[entry.outcome._tag] ?? 0) + 1;
-	for (const [tag, count] of Object.entries(finished.counts)) {
-		if (tag !== "unsettled") expect([tag, count]).toEqual([tag, counts[tag] ?? 0]);
-	}
-};
 
 describe("Package.withObserver", () => {
 	const a = touch("a");
@@ -215,6 +165,14 @@ describe("Observer typing", () => {
 				handlers: [ok(a), ok(b)],
 				observers: [Observer.sync(() => {}), Observer.promise(async () => {})],
 			});
+			// Explicit type arguments from earlier releases keep their meaning: the fifth is
+			// the services layer's error.
+			void Executor.runPromise<Action.Any, "runtime", never, never, Unreadable>(
+				Plan.withRuntimeCoverage(plan),
+				{
+					services: Layer.effectDiscard(Effect.fail(new Unreadable())),
+				},
+			);
 		});
 	});
 
@@ -687,6 +645,8 @@ describe("Cancellation", () => {
 			"StepSettled",
 			"RunFinished",
 		]);
+		// Abandoned deliveries are interrupted in the background.
+		await Effect.runPromise(Effect.yieldNow);
 		expect(aborted).toBe(abandoned.length);
 	});
 
@@ -717,6 +677,170 @@ describe("Cancellation", () => {
 				report: false,
 				counts: { Completed: 1, Interrupted: 1, unsettled: 1, Unattempted: 1 },
 			});
+		}),
+	);
+});
+
+describe("Delivery boundaries", () => {
+	const a = touch("a");
+	const history = History.make({
+		versions: [v1, v2],
+		migrations: [Migration.make("1-to-2", { from: v1, to: v2 })`${a}`],
+	});
+	const plan = planOf(history, "2.0.0");
+
+	it.each([
+		{ phase: "prepare", prepares: true, calls: [] },
+		{ phase: "apply", prepares: true, calls: ["prepare"] },
+		{ phase: "apply", prepares: false, calls: [] },
+	])(
+		"does not start $phase (prepare phase: $prepares) when cancellation arrives during its start event",
+		async ({ phase, prepares, calls: expected }) => {
+			const calls: Array<string> = [];
+			const apply = () => Effect.sync(() => void calls.push("apply"));
+			const handler = prepares
+				? Handler.effect(a, {
+						prepare: () =>
+							Effect.sync(() => {
+								calls.push("prepare");
+
+								return Handler.prepared();
+							}),
+						apply,
+					})
+				: Handler.effect(a, apply);
+			const controller = new AbortController();
+			const { events, observer } = recorder();
+			const error: unknown = await Executor.runPromise(plan, {
+				signal: controller.signal,
+				handlers: [handler],
+				observers: [abortingAt(controller, phase), observer],
+			}).catch((cause: unknown) => cause);
+
+			expect(error).toBeInstanceOf(Executor.ExecutionInterrupted);
+			if (!(error instanceof Executor.ExecutionInterrupted)) return;
+			expect(calls).toEqual(expected);
+			checkInvariants(events, error.report);
+			expect(error.report.occurrences.map((entry) => entry.outcome._tag)).toEqual([
+				"Unattempted",
+			]);
+		},
+	);
+
+	it("does not ask or verify when cancellation arrives during the start event", async () => {
+		let asked = 0;
+		let verified = 0;
+		const handler = Handler.manual(a, {
+			verify: async () => {
+				verified += 1;
+
+				return true;
+			},
+		});
+		const interaction = Interaction.promise(async () => {
+			asked += 1;
+
+			return "confirmed" as const;
+		});
+		const outcomes: Array<string> = [];
+		for (const phase of ["confirmation", "verification"]) {
+			const controller = new AbortController();
+			const error: unknown = await Executor.runPromise(plan, {
+				signal: controller.signal,
+				handlers: [handler],
+				interaction,
+				observers: [abortingAt(controller, phase)],
+			}).catch((cause: unknown) => cause);
+			if (error instanceof Executor.ExecutionInterrupted) {
+				outcomes.push(...error.report.occurrences.map((entry) => entry.outcome._tag));
+			}
+		}
+
+		expect([asked, verified]).toEqual([1, 0]);
+		expect(outcomes).toEqual(["Unattempted", "Interrupted"]);
+	});
+
+	it("abandons an uninterruptible Effect observer once the bound passes", async () => {
+		const release = Deferred.makeUnsafe<void>();
+		let released = false;
+		const controller = new AbortController();
+		const stubborn = Observer.effect((event) =>
+			event._tag === "RunStarted"
+				? Effect.uninterruptible(
+						Effect.sync(() => controller.abort()).pipe(
+							Effect.andThen(Deferred.await(release)),
+							Effect.andThen(Effect.sync(() => (released = true))),
+						),
+					)
+				: Effect.void,
+		);
+		const { events, observer } = recorder();
+		const error: unknown = await Executor.runPromise(plan, {
+			signal: controller.signal,
+			settleTimeout: "1 millis",
+			handlers: [ok(a)],
+			observers: [stubborn, observer],
+		}).catch((cause: unknown) => cause);
+
+		expect(released).toBe(false);
+		expect(error).toBeInstanceOf(Executor.ExecutionInterrupted);
+		if (!(error instanceof Executor.ExecutionInterrupted)) return;
+		checkInvariants(events, error.report);
+		expect(error.report.observation[0]).toMatchObject({
+			observer: 0,
+			event: "RunStarted",
+			reason: "abandoned",
+		});
+		Deferred.doneUnsafe(release, Exit.void);
+	});
+
+	it("keeps the outcome when reading a handler error's tag throws", async () => {
+		const unreadable = {
+			get _tag(): string {
+				throw new Error("tag getter failed");
+			},
+		};
+		const handlers = [Handler.effect(a, () => Effect.fail(unreadable))];
+		const unobserved: unknown = await Executor.runPromise(plan, { handlers }).catch(
+			(cause: unknown) => cause,
+		);
+		const { events, observer } = recorder();
+		const observed: unknown = await Executor.runPromise(plan, {
+			handlers,
+			observers: [observer],
+		}).catch((cause: unknown) => cause);
+
+		expect(unobserved).toBeInstanceOf(Executor.ExecutionFailed);
+		expect(observed).toBeInstanceOf(Executor.ExecutionFailed);
+		if (!(observed instanceof Executor.ExecutionFailed)) return;
+		checkInvariants(events, observed.report);
+		const settled = events.find((event) => event._tag === "ActionSettled");
+		expect(settled?._tag === "ActionSettled" && settled.outcome).toEqual({
+			_tag: "Failed",
+			phase: "apply",
+			errorTag: undefined,
+		});
+	});
+
+	it.effect("finishes RunFinished delivery exactly once when interrupted during it", () =>
+		Effect.gen(function* () {
+			const reached = yield* Deferred.make<number>();
+			const hanging = Observer.effect((event) =>
+				event._tag === "RunFinished"
+					? Effect.andThen(Deferred.succeed(reached, event.seq), Effect.never)
+					: Effect.void,
+			);
+			const { events, observer } = recorder();
+			const fiber = yield* Effect.forkChild(
+				Executor.effect(plan, { handlers: [ok(a)], observers: [hanging, observer] }),
+			);
+			const seq = yield* Deferred.await(reached);
+			yield* Fiber.interrupt(fiber);
+
+			checkInvariants(events);
+			expect(events.filter((event) => event._tag === "RunFinished")).toEqual([
+				expect.objectContaining({ seq, status: "interrupted", report: false }),
+			]);
 		}),
 	);
 });

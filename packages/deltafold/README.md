@@ -320,8 +320,10 @@ for each observer at most `settleTimeout`.
 
 A run emits `RunStarted`, then `StepStarted`, `ActionPhaseStarted` for each
 prepare phase, apply phase, confirmation, and verification that starts,
-`ActionSettled` with the outcome once the action's scope has closed,
-`StepSettled`, and finally `RunFinished`. Every event carries progress counted in the optimized
+`ActionSettled` with the final outcome, `StepSettled`, and finally
+`RunFinished`. `ActionSettled` arrives once the action's scope has closed, unless an
+interrupted Promise has not settled: the outcome is final, but cleanup waits for the
+Promise, and a cleanup failure after that is only logged. Every event carries progress counted in the optimized
 plan: steps with actions, prose-only steps (which the executor does not wait
 at), and actions. Steps that rules emptied and noop steps are listed in
 `RunStarted` but not counted. Events carry identifiers and descriptions, never
