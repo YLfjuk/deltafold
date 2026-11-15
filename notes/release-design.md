@@ -166,6 +166,23 @@ propagation before review; apply never discovers new participants.
 A dependent outside the group produces a cross-group requirement; it does not
 silently expand group membership. Cross-group orchestration is not initial scope.
 
+Range edits keep the operator: `^1.5.0` becomes `^2.0.0`, `~` stays `~`, and an
+exact version is replaced. `workspace:` ranges are left to the package manager.
+Other ranges are refused when they need an edit. Both built-in policies take
+`updateRanges`: `"out-of-range"` (the default) edits a range only when the new
+version falls outside it, and `"always"` edits it whenever the dependency is
+released.
+
+A release caused only by dependency updates records no changes. It joins the
+version calculation as patch intent, so a group that aligns moves it to the
+shared version, and a drifting group gives it its own patch. Planning repeats
+until no new dependent release appears, so dependents of dependents are
+included. The generated version module records the range edits as release
+metadata, `Version.withMetadata(version, { dependencies })`, and
+`ReleaseChangelog.dependencies` renders them as "Updated dependencies".
+Preparation refuses when a manifest's range no longer matches the edge the plan
+used, or when `explicit` reports a missing selection.
+
 ## Files, pending inputs, and replacements
 
 Global and package-local pending locations are authoring conveniences; folder
@@ -280,8 +297,9 @@ Product gaps that need a decision:
 
 - The command that lists a line's changes for selection. It belongs to the
   release CLI, which is not built.
-- Dependents: proposals are reported, but a `release` proposal does not add a
-  version and dependency ranges are not edited.
+- Requirements are plan input. No resolver reads them from manifests yet, so a
+  dependent added after resolution is not discovered; preparation only checks the
+  edges the plan used. A `workspace:` range never triggers a dependent release.
 - `Release.Source.packageJson()` and loading recorded line state are not built.
   Previous versions are explicit input, and preparation checks manifests.
 - One shared calculation cannot continue independent prerelease lines; such

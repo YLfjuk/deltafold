@@ -1,5 +1,6 @@
 import type { Version } from "deltafold";
 import { issue, type Issue } from "./error.ts";
+import type { DependencyUpdate } from "./release.ts";
 import type { Line } from "./version-strategy.ts";
 
 /**
@@ -153,6 +154,8 @@ export type RenderInput = {
 	readonly declarations: ReadonlyArray<Declaration>;
 	readonly exportName: string;
 	readonly line: Line | undefined;
+	/** Range edits in the package's manifest, recorded as release metadata. */
+	readonly dependencies: ReadonlyArray<DependencyUpdate>;
 	/** Pending modules this release removes. Imports between them cannot be relocated. */
 	readonly consumed: ReadonlyArray<string>;
 };
@@ -189,6 +192,7 @@ export const render = (
 	bind("previous", previousImport);
 	bind(input.exportName, "the version export");
 	bind("prerelease", "the prerelease export");
+	bind("release", "the release metadata export");
 
 	const imports: Array<string> = [];
 	for (const declaration of input.declarations) {
@@ -232,6 +236,21 @@ export const render = (
 	];
 	if (input.line !== undefined) {
 		lines.push("", `export const prerelease = ${JSON.stringify(input.line)} as const;`);
+	}
+	if (input.dependencies.length > 0) {
+		const records = input.dependencies.map(({ dependency, field, from, to, version }) => ({
+			dependency,
+			field,
+			from,
+			to,
+			version,
+		}));
+		lines.push(
+			"",
+			`export const release = Version.withMetadata(${input.exportName}, {`,
+			`\tdependencies: ${JSON.stringify(records)},`,
+			"});",
+		);
 	}
 
 	return { text: `${lines.join("\n")}\n` };
