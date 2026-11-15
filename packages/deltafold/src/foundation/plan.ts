@@ -98,6 +98,8 @@ export type Step<A extends Action.Any = Action.Any> = {
 	/**
 	 * Identifies the migration side within the route: the migration identifier, followed by
 	 * `/revert` for a reverse migration. Declared occurrence identifiers start with it.
+	 *
+	 * @since @next
 	 */
 	readonly id: string;
 	readonly migration: Migration.Any;

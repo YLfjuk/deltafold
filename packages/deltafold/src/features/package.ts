@@ -20,6 +20,8 @@ export type Package<
 	/**
 	 * Observers attached with `withObserver`, in attachment order. Attaching them causes no
 	 * events; pass them to the executor's `observers` option.
+	 *
+	 * @since @next
 	 */
 	readonly observers: ReadonlyArray<O>;
 };
