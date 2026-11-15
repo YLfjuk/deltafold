@@ -3,10 +3,9 @@ import { Array as Arr, Order, Result, SemVer } from "effect";
 import { Version, type Change, type Package } from "deltafold";
 import type { Policy, Proposal, Requirement } from "./dependents-policy.ts";
 import { issue, PlanError } from "./error.ts";
-import { highest, prerelease } from "./line.ts";
+import { highest, lineOf, onLine, parse, prerelease } from "./line.ts";
 import { form, rewrite } from "./ranges.ts";
 import {
-	parse,
 	type Calculation,
 	type Line,
 	type Participant,
@@ -23,13 +22,15 @@ import {
 export type VersionSetting<M extends object> = string | Strategy<M>;
 
 /**
- * Where a package's files live, relative to the working directory.
+ * Where a package's files live. Relative paths resolve against the release config file's
+ * directory; absolute paths must be inside the workspace. `ReleaseFiles.at` builds this
+ * from a package directory.
  *
  * @since @next
  */
 export type Files = {
-	/** The package manifest whose `version` field the release updates. */
-	readonly manifest?: string;
+	/** The package manifest whose `version` field the release reads and updates. */
+	readonly manifest: string;
 	/** The directory that receives one generated module per version. */
 	readonly versions: string;
 };
@@ -42,7 +43,7 @@ export type Registration<M extends object> = {
 	 * reused across releases, so a fixed version is passed to one plan instead.
 	 */
 	readonly version?: Strategy<M>;
-	readonly files?: Files;
+	readonly files: Files;
 };
 
 /**
@@ -51,7 +52,7 @@ export type Registration<M extends object> = {
  * @since @next
  */
 export type Replacement = {
-	/** Glob patterns, relative to the working directory. */
+	/** Glob patterns, relative to the release config file's directory. */
 	readonly files: ReadonlyArray<string>;
 	readonly exclude?: ReadonlyArray<string>;
 	/** The literal token to replace, such as `@next`. */
@@ -85,8 +86,6 @@ export type Selection<M extends object> = {
 	/** The released version this release descends from. It must be in the package history. */
 	readonly previous: Version.Version | string;
 	readonly changes: ReadonlyArray<Change.Change<M>>;
-	/** The recorded prerelease line of `previous`, when it is a prerelease. */
-	readonly line?: Line;
 	/** Overrides the registered and shared version setting for this run. */
 	readonly version?: VersionSetting<M>;
 };
@@ -116,6 +115,7 @@ export type PlannedVersion = {
 	readonly package: string;
 	/** Its `previous` is the package's own previous version, never a shared baseline. */
 	readonly version: Version.Version;
+	/** The prerelease line the new version is on, derived from its id and ancestry. */
 	readonly line: Line | undefined;
 	/** The version came from a shared calculation or the package's own setting. */
 	readonly source: "shared" | "override";
@@ -248,7 +248,7 @@ const toParticipant = <M extends object>(
 	package: selection.package.name,
 	previous: previous.id,
 	changes: selection.changes,
-	line: selection.line,
+	line: lineOf(previous),
 	dependencies,
 });
 
@@ -338,43 +338,36 @@ const buildPlan = <M extends object>(release: Release<M>, input: Input<M>): Plan
 			);
 			// In a drifting group, packages on one prerelease line keep their own counters: a
 			// package continues its own, and a package joining the line starts at 0.
-			const ownCounters = calculation.line !== undefined && calculation.unchanged === "drift";
-			const placementOf = (entry: (typeof entries)[number]) => {
-				const line = calculation.line;
-				if (!ownCounters || line === undefined)
-					return { version: calculation.version, line };
-				const own = entry.selection.line;
+			const shared = Version.make(calculation.version, { changes: [] });
+			const sharedLine = lineOf(shared);
+			const placementOf = (entry: (typeof entries)[number]): string => {
+				if (calculation.unchanged !== "drift" || sharedLine === undefined) {
+					return calculation.version;
+				}
+				const own = lineOf(entry.previous);
 				const counter =
 					input.pre?.continue === true &&
 					own !== undefined &&
-					own.target === line.target &&
-					own.tag === line.tag
+					own.target === sharedLine.target &&
+					own.tag === sharedLine.tag
 						? own.counter + 1
 						: 0;
-				const version = SemVer.format(
-					SemVer.withPrerelease(parse(line.target), [line.tag, counter]),
-				);
 
-				return { version, line: { ...line, counter } };
+				return onLine(sharedLine.target, sharedLine.tag, counter);
 			};
 			for (const entry of group) {
 				const { selection, previous } = entry;
 				const name = selection.package.name;
 				const placement = placementOf(entry);
-				const target = parse(placement.version);
+				const target = parse(placement);
 				const fromDependencies = dependenciesOf(name).length > 0;
 				const intent = selection.changes.length > 0 || fromDependencies;
 				if (SemVer.isLessThan(target, parse(previous.id))) {
-					fail(
-						"Downgrade",
-						`${placement.version} would downgrade ${name} from ${previous.id}.`,
-						[name],
-					);
+					fail("Downgrade", `${placement} would downgrade ${name} from ${previous.id}.`, [
+						name,
+					]);
 				}
-				if (
-					!intent &&
-					(calculation.unchanged === "drift" || placement.version === previous.id)
-				) {
+				if (!intent && (calculation.unchanged === "drift" || placement === previous.id)) {
 					unchanged.push({
 						package: name,
 						version: previous.id,
@@ -382,20 +375,18 @@ const buildPlan = <M extends object>(release: Release<M>, input: Input<M>): Plan
 					});
 					continue;
 				}
-				if (placement.version === previous.id) {
+				if (placement === previous.id) {
 					fail(
 						"ExistingVersion",
 						`${name}@${previous.id} already exists; new contents need a new version.`,
 						[name],
 					);
 				}
+				const version = Version.make(placement, { previous, changes: selection.changes });
 				versions.push({
 					package: name,
-					version: Version.make(placement.version, {
-						previous,
-						changes: selection.changes,
-					}),
-					line: placement.line,
+					version,
+					line: lineOf(version),
 					source,
 					reason:
 						typeof setting === "string"
@@ -634,7 +625,8 @@ export const prereleaseChanges = (
 					found.set(change.id, entry);
 				}
 			}
-			const onLine = (ids: ReadonlyArray<string>) => ids.filter((other) => found.has(other));
+			const presentOnLine = (ids: ReadonlyArray<string>) =>
+				ids.filter((other) => found.has(other));
 
 			return {
 				package: pkg.name,
@@ -644,7 +636,7 @@ export const prereleaseChanges = (
 				changes: [...found.values()].map(({ change, versions }) => ({
 					change,
 					versions,
-					reverts: onLine(change.reverts.map((reverted) => reverted.id)),
+					reverts: presentOnLine(change.reverts.map((reverted) => reverted.id)),
 					revertedBy: [...found.values()]
 						.filter((other) => other.change.reverts.some((r) => r.id === change.id))
 						.map((other) => other.change.id),

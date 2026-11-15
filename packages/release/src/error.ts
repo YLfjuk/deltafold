@@ -34,6 +34,7 @@ export type Reason =
 	| "MissingPreviousSource"
 	| "VersionFileExists"
 	| "ManifestMismatch"
+	| "OutsideWorkspace"
 	| "ReplacementConflict";
 
 /**

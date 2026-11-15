@@ -13,7 +13,7 @@ export type Requirement = {
 	/** The dependency field, such as `dependencies` or `peerDependencies`. */
 	readonly field: string;
 	readonly range: string;
-	/** The dependent's manifest, relative to the working directory. */
+	/** The dependent's manifest, relative to the workspace root. */
 	readonly manifest: string;
 	/** A private dependent can need a manifest edit without being published. */
 	readonly private: boolean;

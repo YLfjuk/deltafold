@@ -6,6 +6,7 @@ import { Change, History, Package, Version } from "deltafold";
 import {
 	advance,
 	headers,
+	member,
 	packageWith,
 	ProjectChange,
 	type ProjectMetadata,
@@ -23,7 +24,7 @@ const semver = VersionStrategy.semver({
 });
 
 const group = Release.make("widgets", {
-	packages: [{ package: widgets }, { package: react }, { package: tools, version: semver }],
+	packages: [member(widgets), member(react), { ...member(tools), version: semver }],
 	change: ProjectChange,
 	version: semver,
 });
@@ -246,7 +247,7 @@ const asynchronous: VersionStrategy.Strategy<Impact> = async () => ({ version: "
 describe("custom factories and strategies", () => {
 	it("passes the factory's metadata type to strategies", () => {
 		const custom = Release.make("app", {
-			packages: [{ package: app }],
+			packages: [member(app)],
 			change: TeamChange,
 			version: VersionStrategy.semver({
 				bump: (change) => {
@@ -276,7 +277,7 @@ describe("custom factories and strategies", () => {
 
 	it("accepts any synchronous strategy and rejects asynchronous results", () => {
 		const custom = Release.make("app", {
-			packages: [{ package: app }],
+			packages: [member(app)],
 			change: TeamChange,
 			version: calendar,
 		});
@@ -291,7 +292,7 @@ describe("custom factories and strategies", () => {
 		).toEqual(["@acme/app@2026.1.0<4.1.0"]);
 
 		const rejected = Release.make("app", {
-			packages: [{ package: app }],
+			packages: [member(app)],
 			change: TeamChange,
 			version: asynchronous,
 		});
@@ -307,7 +308,7 @@ describe("custom factories and strategies", () => {
 	it("does not accept a prerelease choice on the group", () => {
 		expect(() =>
 			Release.make("app", {
-				packages: [{ package: app }],
+				packages: [member(app)],
 				change: TeamChange,
 				version: calendar,
 				// @ts-expect-error pre is a per-plan choice.
@@ -318,7 +319,7 @@ describe("custom factories and strategies", () => {
 
 	it("takes literal targets only as plan input", () => {
 		Release.make("app", {
-			packages: [{ package: app }],
+			packages: [member(app)],
 			change: TeamChange,
 			// @ts-expect-error a fixed version would apply to every release of the group.
 			version: "5.0.0",
@@ -360,7 +361,7 @@ describe("prerelease lines", () => {
 	});
 	const lineGroup = (pkg: ReturnType<typeof packageWith>) =>
 		Release.make("solo", {
-			packages: [{ package: pkg }],
+			packages: [member(pkg)],
 			change: ProjectChange,
 			version: strategy,
 		});
@@ -380,7 +381,7 @@ describe("prerelease lines", () => {
 		) => {
 			const plan = success(
 				lineGroup(pkg).plan({
-					packages: [{ package: pkg, previous, changes, ...(line ? { line } : {}) }],
+					packages: [{ package: pkg, previous, changes }],
 					pre,
 				}),
 			);
@@ -399,7 +400,6 @@ describe("prerelease lines", () => {
 		expect(step([headers], { tag: "beta", continue: true })).toBe("2.0.0-beta.1");
 		expect(line).toEqual({
 			baseline: "1.5.2",
-			bump: "major",
 			target: "2.0.0",
 			tag: "beta",
 			counter: 1,
@@ -418,7 +418,7 @@ describe("prerelease lines", () => {
 		expect(() => step([headers], { tag: "alpha", continue: true })).toThrow("downgrade");
 	});
 
-	it("refuses continuation without a recorded line", () => {
+	it("refuses continuation from a stable version", () => {
 		const stable = packageWith("@acme/solo", ["1.5.2"]);
 		expect(
 			failure(
@@ -443,14 +443,7 @@ describe("prerelease lines", () => {
 				lineGroup(pkg).plan({
 					...(input.version === undefined ? {} : { version: input.version }),
 					...(input.pre === undefined ? {} : { pre: input.pre }),
-					packages: [
-						{
-							package: pkg,
-							previous,
-							changes: input.changes,
-							...(line ? { line } : {}),
-						},
-					],
+					packages: [{ package: pkg, previous, changes: input.changes }],
 				}),
 			).versions[0];
 			if (planned === undefined) throw new Error("expected a version");
@@ -466,7 +459,6 @@ describe("prerelease lines", () => {
 		).toBe("3.0.0-beta.0");
 		expect(line).toEqual({
 			baseline: "1.5.2",
-			bump: "major",
 			target: "3.0.0",
 			tag: "beta",
 			counter: 0,
@@ -480,18 +472,11 @@ describe("prerelease lines", () => {
 
 	it("refuses prerelease literals with pre and literals below the line", () => {
 		const pre = packageWith("@acme/solo", ["1.5.2", "3.0.0-beta.1"]);
-		const line = {
-			baseline: "1.5.2",
-			bump: "major",
-			target: "3.0.0",
-			tag: "beta",
-			counter: 1,
-		} as const;
 		const plan = (version: string) =>
 			lineGroup(pre).plan({
 				version,
 				pre: { tag: "beta", continue: true },
-				packages: [{ package: pre, previous: "3.0.0-beta.1", changes: [headers], line }],
+				packages: [{ package: pre, previous: "3.0.0-beta.1", changes: [headers] }],
 			});
 
 		expect(failure(plan("3.0.0-beta.4")).reason).toBe("PrereleaseTarget");
@@ -689,30 +674,13 @@ describe("stable promotion", () => {
 	const solo = Package.make("@acme/solo", {
 		history: History.make({ versions: [v152, beta0, beta1], migrations: [] }),
 	});
-	const line = {
-		baseline: "1.5.2",
-		bump: "major",
-		target: "2.0.0",
-		tag: "beta",
-		counter: 1,
-	} as const;
-	const promote = (
-		changes: ReadonlyArray<Change.Change<ProjectMetadata>>,
-		promoted: VersionStrategy.Line | null = line,
-	) =>
+	const promote = (changes: ReadonlyArray<Change.Change<ProjectMetadata>>) =>
 		Release.make("solo", {
-			packages: [{ package: solo }],
+			packages: [member(solo)],
 			change: ProjectChange,
 			version: VersionStrategy.semver({ bump: (change) => change.metadata.bump }),
 		}).plan({
-			packages: [
-				{
-					package: solo,
-					previous: "2.0.0-beta.1",
-					changes,
-					...(promoted === null ? {} : { line: promoted }),
-				},
-			],
+			packages: [{ package: solo, previous: "2.0.0-beta.1", changes }],
 		});
 
 	it("lists the line's changes since the last stable ancestor without choosing", () => {
@@ -762,10 +730,10 @@ describe("stable promotion", () => {
 		expect(planned?.line).toBeUndefined();
 	});
 
-	it("raises the target for stronger selected changes and needs the recorded line", () => {
+	it("raises the target for stronger selected changes and needs a line-shaped prerelease", () => {
 		const patchOnly = packageWith("@acme/patch", ["1.5.2", "1.5.3-beta.0"]);
 		const raised = Release.make("patch", {
-			packages: [{ package: patchOnly }],
+			packages: [member(patchOnly)],
 			change: ProjectChange,
 			version: VersionStrategy.semver({ bump: (change) => change.metadata.bump }),
 		}).plan({
@@ -774,20 +742,30 @@ describe("stable promotion", () => {
 					package: patchOnly,
 					previous: "1.5.3-beta.0",
 					changes: [headers, retries],
-					line: { ...line, bump: "patch", target: "1.5.3", counter: 0 },
 				},
 			],
 		});
 
 		expect(success(raised).versions[0]?.version.id).toBe("1.6.0");
-		expect(failure(promote([timeout], null)).reason).toBe("PrereleaseContext");
+		const unshaped = packageWith("@acme/unshaped", ["1.5.2", "2.0.0-alpha"]);
+		expect(
+			failure(
+				Release.make("unshaped", {
+					packages: [member(unshaped)],
+					change: ProjectChange,
+					version: VersionStrategy.semver({ bump: (change) => change.metadata.bump }),
+				}).plan({
+					packages: [{ package: unshaped, previous: "2.0.0-alpha", changes: [timeout] }],
+				}),
+			).reason,
+		).toBe("PrereleaseContext");
 	});
 });
 
 const planLines = (input: {
 	readonly unchanged: "align" | "drift";
-	readonly a: { readonly previous: string; readonly line?: VersionStrategy.Line };
-	readonly b: { readonly previous: string; readonly line?: VersionStrategy.Line };
+	readonly a: { readonly previous: string };
+	readonly b: { readonly previous: string };
 }) => {
 	const a = packageWith("@acme/a", [
 		"1.5.2",
@@ -799,7 +777,7 @@ const planLines = (input: {
 	const b = packageWith("@acme/b", ["1.5.2", "2.0.0-beta.0", "2.0.0-beta.1", "1.6.0-beta.0"]);
 
 	return Release.make("lines", {
-		packages: [{ package: a }, { package: b }],
+		packages: [member(a), member(b)],
 		change: ProjectChange,
 		version: VersionStrategy.semver({
 			bump: (change) => change.metadata.bump,
@@ -819,20 +797,13 @@ const placed = (plan: Release.Plan) =>
 	);
 
 describe("prerelease lines across a group", () => {
-	const lineA = {
-		baseline: "1.5.2",
-		bump: "major",
-		target: "2.0.0",
-		tag: "beta",
-		counter: 1,
-	} as const;
 	it("lets a package without a line take the shared version in an aligned group", () => {
 		expect(
 			placed(
 				success(
 					planLines({
 						unchanged: "align",
-						a: { previous: "2.0.0-beta.1", line: lineA },
+						a: { previous: "2.0.0-beta.1" },
 						b: { previous: "1.5.2" },
 					}),
 				),
@@ -846,7 +817,7 @@ describe("prerelease lines across a group", () => {
 				success(
 					planLines({
 						unchanged: "drift",
-						a: { previous: "2.0.0-beta.1", line: lineA },
+						a: { previous: "2.0.0-beta.1" },
 						b: { previous: "1.5.2" },
 					}),
 				),
@@ -857,8 +828,8 @@ describe("prerelease lines across a group", () => {
 				success(
 					planLines({
 						unchanged: "drift",
-						a: { previous: "2.0.0-beta.2", line: { ...lineA, counter: 2 } },
-						b: { previous: "2.0.0-beta.0", line: { ...lineA, counter: 0 } },
+						a: { previous: "2.0.0-beta.2" },
+						b: { previous: "2.0.0-beta.0" },
 					}),
 				),
 			),
@@ -870,19 +841,41 @@ describe("prerelease lines across a group", () => {
 			failure(
 				planLines({
 					unchanged: "drift",
-					a: { previous: "2.0.0-beta.1", line: lineA },
+					a: { previous: "2.0.0-beta.1" },
 					b: {
 						previous: "1.6.0-beta.0",
-						line: {
-							baseline: "1.5.2",
-							bump: "minor",
-							target: "1.6.0",
-							tag: "beta",
-							counter: 0,
-						},
 					},
 				}),
 			).reason,
 		).toBe("PrereleaseContext");
+	});
+});
+
+describe("build metadata", () => {
+	it("is refused by the SemVer strategy only", () => {
+		expect(() => VersionStrategy.parse("1.6.0+build.7")).toThrow("build metadata");
+
+		const built = packageWith("@acme/built", ["1.5.2+build.3"]);
+		const strategy = Release.make("built", {
+			packages: [member(built)],
+			change: ProjectChange,
+			version: VersionStrategy.semver({ bump: (change) => change.metadata.bump }),
+		});
+		expect(
+			failure(
+				strategy.plan({
+					packages: [{ package: built, previous: "1.5.2+build.3", changes: [headers] }],
+				}),
+			).reason,
+		).toBe("InvalidVersion");
+
+		// The planner is format-neutral: a literal target passes through as written.
+		const literal = success(
+			strategy.plan({
+				version: "1.6.0+build.4",
+				packages: [{ package: built, previous: "1.5.2+build.3", changes: [headers] }],
+			}),
+		);
+		expect(summary(literal)).toEqual(["@acme/built@1.6.0+build.4<1.5.2+build.3"]);
 	});
 });

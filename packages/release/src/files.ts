@@ -1,7 +1,9 @@
 import { Array as Arr, Effect, FileSystem, Order, type PlatformError } from "effect";
 
 import { ApplyFailed, issue, PrepareError, StalePlan, type Issue } from "./error.ts";
+import { paths, type Location, type Paths } from "./paths.ts";
 import type { Plan, PlannedVersion, Replacement } from "./release.ts";
+import type { Files } from "./release.ts";
 import type { Snapshot } from "./resolve.ts";
 import { join, relative, render, scan, type Declaration } from "./source.ts";
 
@@ -17,14 +19,36 @@ export type { ResolveOptions, Resolved, Snapshot, Unresolved } from "./resolve.t
 export type PreviousSource = {
 	readonly package: string;
 	readonly version: string;
-	/** Module path relative to the working directory. */
+	/** Module path, relative to the release config file's directory. */
 	readonly module: string;
 	readonly exportName: string;
 };
 
+/**
+ * File locations for a package directory. `manifest` is required: deltafold does not
+ * assume a manifest name. `versions` defaults to `.deltafold/versions` inside `dir`.
+ *
+ * @example
+ * ```ts
+ * Release.make("widgets", {
+ * 	packages: [{ package: widgets, files: ReleaseFiles.at("packages/widgets", { manifest: "package.json" }) }],
+ * 	// ...
+ * });
+ * ```
+ *
+ * @since @next
+ */
+export const at = (
+	dir: string,
+	options: { readonly manifest: string; readonly versions?: string },
+): Files => ({
+	manifest: join(dir, options.manifest),
+	versions: join(dir, options.versions ?? ".deltafold/versions"),
+});
+
 /** @since @next */
-export type PrepareOptions = {
-	/** Glob patterns of pending change modules in the group's scope. */
+export type PrepareOptions = Location & {
+	/** Glob patterns of pending change modules, relative to the release config file's directory. */
 	readonly pending: ReadonlyArray<string>;
 	readonly previous?: ReadonlyArray<PreviousSource>;
 	/** What `ReleaseFiles.resolve` read. Preparation refuses when any of it changed. */
@@ -63,6 +87,9 @@ export type Prepared = {
 	readonly plan: Plan;
 	readonly edits: ReadonlyArray<Edit>;
 	readonly replacements: ReadonlyArray<ReplacementReport>;
+	/** Where the files are; apply uses the same location. */
+	readonly location: Location;
+	/** Every file preparation read, by workspace-relative path. */
 	readonly reads: ReadonlyMap<string, string | null>;
 	readonly globs: ReadonlyArray<{
 		readonly pattern: ReadonlyArray<string>;
@@ -77,16 +104,29 @@ export type Applied = {
 	readonly removed: ReadonlyArray<string>;
 };
 
-const normalizePath = (path: string) => join(path);
-
+/** Globs workspace-relative patterns and returns sorted workspace-relative paths. */
 const globAll = (
 	fs: FileSystem.FileSystem,
+	location: Paths,
 	patterns: ReadonlyArray<string>,
 	exclude: ReadonlyArray<string>,
 ) =>
 	Effect.map(
-		Effect.forEach(patterns, (pattern) => fs.glob(pattern, { exclude })),
-		(results) => Arr.sort([...new Set(results.flat().map(normalizePath))], Order.String),
+		Effect.forEach(patterns, (pattern) =>
+			fs.glob(location.toFs(pattern), { exclude: exclude.map(location.toFs) }),
+		),
+		(results) =>
+			Arr.sort(
+				[
+					...new Set(
+						results.flat().flatMap((path) => {
+							const rel = location.fromFs(path);
+							return typeof rel === "string" ? [rel] : [];
+						}),
+					),
+				],
+				Order.String,
+			),
 	);
 
 const occurrences = (text: string, token: string): ReadonlyArray<number> => {
@@ -132,17 +172,31 @@ export const prepare = (
 ): Effect.Effect<Prepared, PrepareError | PlatformError.PlatformError, FileSystem.FileSystem> =>
 	Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem;
+		const location = paths(options);
 		const reads = new Map<string, string | null>();
-		const read = (path: string) =>
+		// Keys are workspace-relative paths; the file system receives them through the location.
+		const read = (key: string) =>
 			Effect.gen(function* () {
-				const key = normalizePath(path);
 				if (reads.has(key)) return reads.get(key) ?? null;
-				const text = (yield* fs.exists(key)) ? yield* fs.readFileString(key) : null;
+				const fsPath = location.toFs(key);
+				const text = (yield* fs.exists(fsPath)) ? yield* fs.readFileString(fsPath) : null;
 				reads.set(key, text);
 
 				return text;
 			});
 		const issues: Array<Issue> = [];
+		const resolved = (path: string | Issue): string | undefined => {
+			if (typeof path === "string") return path;
+			issues.push(path);
+			return undefined;
+		};
+		const fromBase = (path: string) => resolved(location.fromBase(path));
+		const fromRoot = (path: string) => resolved(location.fromRoot(path));
+		const allFromBase = (patterns: ReadonlyArray<string>) =>
+			patterns.flatMap((pattern) => {
+				const path = fromBase(pattern);
+				return path === undefined ? [] : [path];
+			});
 		const globs: Array<Prepared["globs"][number]> = [];
 		const exportName = plan.release.config.exportName ?? "version";
 
@@ -159,7 +213,7 @@ export const prepare = (
 			}
 		}
 		for (const glob of options.snapshot?.globs ?? []) {
-			const matched = yield* globAll(fs, glob.pattern, []);
+			const matched = yield* globAll(fs, location, glob.pattern, []);
 			const added = matched.filter((path) => !glob.matched.includes(path));
 			const removed = glob.matched.filter((path) => !matched.includes(path));
 			if (added.length > 0 || removed.length > 0) {
@@ -175,8 +229,9 @@ export const prepare = (
 		}
 
 		// Pending modules.
-		const pendingPaths = yield* globAll(fs, options.pending, []);
-		globs.push({ pattern: options.pending, exclude: [], matched: pendingPaths });
+		const pendingPatterns = allFromBase(options.pending);
+		const pendingPaths = yield* globAll(fs, location, pendingPatterns, []);
+		globs.push({ pattern: pendingPatterns, exclude: [], matched: pendingPaths });
 		const declarations = new Map<string, Declaration>();
 		for (const path of pendingPaths) {
 			const scanned = scan({ path, text: (yield* read(path)) ?? "" });
@@ -227,33 +282,28 @@ export const prepare = (
 				(candidate) => candidate.package.name === entry.package,
 			);
 		for (const entry of plan.versions) {
-			const files = registration(entry)?.files;
-			if (files === undefined) {
-				issues.push(
-					issue(
-						"MissingSource",
-						`${entry.package} has no files configured for version modules.`,
-						[entry.package],
-					),
-				);
-				continue;
-			}
-			const target = join(files.versions, `${entry.version.id}.ts`);
+			const configured = registration(entry)?.files;
+			const versionsDir =
+				configured === undefined ? undefined : fromBase(configured.versions);
+			if (versionsDir === undefined) continue;
+			// The file name is the version id, verbatim.
+			const target = join(versionsDir, `${entry.version.id}.ts`);
 			if ((yield* read(target)) !== null) {
 				issues.push(issue("VersionFileExists", `${target} already exists.`, [target]));
 				continue;
 			}
 			const previousId = entry.version.previous?.id ?? "";
-			const generated = join(files.versions, `${previousId}.ts`);
+			const generated = join(versionsDir, `${previousId}.ts`);
 			const explicit = options.previous?.find(
 				(source) => source.package === entry.package && source.version === previousId,
 			);
+			const explicitModule = explicit === undefined ? undefined : fromBase(explicit.module);
 			const previous =
 				(yield* read(generated)) !== null
-					? { specifier: relative(files.versions, generated), exportName }
-					: explicit !== undefined
+					? { specifier: relative(versionsDir, generated), exportName }
+					: explicit !== undefined && explicitModule !== undefined
 						? {
-								specifier: relative(files.versions, explicit.module),
+								specifier: relative(versionsDir, explicitModule),
 								exportName: explicit.exportName,
 							}
 						: undefined;
@@ -261,7 +311,7 @@ export const prepare = (
 				issues.push(
 					issue(
 						"MissingPreviousSource",
-						`No module provides ${entry.package}@${previousId}. Generate it into ${files.versions}, or pass it in previous.`,
+						`No module provides ${entry.package}@${previousId}. Generate it into ${versionsDir}, or pass it in previous.`,
 						[entry.package, previousId],
 					),
 				);
@@ -286,7 +336,6 @@ export const prepare = (
 				previous,
 				declarations: copied,
 				exportName,
-				line: entry.line,
 				dependencies: entry.dependencies,
 				consumed: pendingPaths,
 			});
@@ -296,9 +345,9 @@ export const prepare = (
 
 		// Manifests.
 		for (const entry of plan.versions) {
-			const manifest = registration(entry)?.files?.manifest;
-			if (manifest === undefined) continue;
-			const path = normalizePath(manifest);
+			const configured = registration(entry)?.files.manifest;
+			const path = configured === undefined ? undefined : fromBase(configured);
+			if (path === undefined) continue;
 			const text = yield* current(path);
 			const field = text === null ? null : /("version"\s*:\s*")([^"]*)(")/.exec(text);
 			const previousId = entry.version.previous?.id;
@@ -318,7 +367,8 @@ export const prepare = (
 		// Dependency ranges. Every edge the plan used must still match its manifest.
 		const checked = new Set<string>();
 		for (const proposal of plan.dependents) {
-			const path = normalizePath(proposal.manifest);
+			const path = fromRoot(proposal.manifest);
+			if (path === undefined) continue;
 			const text = yield* read(path);
 			const found =
 				text === null ? undefined : findRange(text, proposal.field, proposal.dependency);
@@ -344,7 +394,8 @@ export const prepare = (
 			}
 		}
 		for (const update of plan.dependencyUpdates) {
-			const path = normalizePath(update.manifest);
+			const path = fromRoot(update.manifest);
+			if (path === undefined) continue;
 			const text = yield* current(path);
 			const found =
 				text === null ? undefined : findRange(text, update.field, update.dependency);
@@ -356,11 +407,12 @@ export const prepare = (
 		const reports: Array<ReplacementReport> = [];
 		const claimed = new Map<string, Array<{ start: number; end: number; rule: Replacement }>>();
 		for (const rule of plan.replacements) {
-			const exclude = rule.exclude ?? [];
-			const matched = (yield* globAll(fs, rule.files, exclude)).filter(
+			const patterns = allFromBase(rule.files);
+			const exclude = allFromBase(rule.exclude ?? []);
+			const matched = (yield* globAll(fs, location, patterns, exclude)).filter(
 				(path) => !pendingPaths.includes(path),
 			);
-			globs.push({ pattern: rule.files, exclude, matched });
+			globs.push({ pattern: patterns, exclude, matched });
 			const version = plan.versions.find((entry) => entry.package === rule.versionOf.name)
 				?.version.id;
 			const files: Array<{ path: string; occurrences: number }> = [];
@@ -446,6 +498,7 @@ export const prepare = (
 			plan,
 			edits,
 			replacements: reports,
+			location: { root: options.root, base: options.base },
 			reads,
 			globs,
 		} satisfies Prepared;
@@ -467,13 +520,15 @@ export const apply = (
 > =>
 	Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem;
+		const location = paths(prepared.location);
 		const stale: Array<string> = [];
 		for (const [path, before] of prepared.reads) {
-			const now = (yield* fs.exists(path)) ? yield* fs.readFileString(path) : null;
+			const fsPath = location.toFs(path);
+			const now = (yield* fs.exists(fsPath)) ? yield* fs.readFileString(fsPath) : null;
 			if (now !== before) stale.push(path);
 		}
 		for (const glob of prepared.globs) {
-			const matched = yield* globAll(fs, glob.pattern, glob.exclude);
+			const matched = yield* globAll(fs, location, glob.pattern, glob.exclude);
 			for (const path of matched)
 				if (!glob.matched.includes(path) && !stale.includes(path)) stale.push(path);
 		}
@@ -483,8 +538,8 @@ export const apply = (
 		for (const edit of prepared.edits) {
 			const result = yield* Effect.result(
 				edit.after === null
-					? fs.remove(edit.path)
-					: fs.writeFileString(edit.path, edit.after),
+					? fs.remove(location.toFs(edit.path))
+					: fs.writeFileString(location.toFs(edit.path), edit.after),
 			);
 			if (result._tag === "Success") {
 				done.push(edit);
@@ -495,8 +550,8 @@ export const apply = (
 			for (const applied of Arr.reverse(done)) {
 				const restore = yield* Effect.result(
 					applied.before === null
-						? fs.remove(applied.path)
-						: fs.writeFileString(applied.path, applied.before),
+						? fs.remove(location.toFs(applied.path))
+						: fs.writeFileString(location.toFs(applied.path), applied.before),
 				);
 				if (restore._tag === "Success") restored.push(applied.path);
 				else unrestored.push({ path: applied.path, cause: restore.failure });

@@ -1,4 +1,4 @@
-import { ReleaseChange, type Release } from "@deltafold/release";
+import { ReleaseChange, ReleaseFiles, type Release } from "@deltafold/release";
 import { History, Package, Version, type Change } from "deltafold";
 
 export type ProjectMetadata = ReleaseChange.Metadata & { readonly area: "api" | "docs" };
@@ -42,3 +42,13 @@ export const timeout: Change.Change<ProjectMetadata> = ProjectChange.make("renam
 })`
 	Rename the timeout option to requestTimeout.
 `;
+
+/** Registers a package with files under `packages/<name>`. */
+export const member = (
+	pkg: Package.Package,
+): { readonly package: Package.Package; readonly files: Release.Files } => ({
+	package: pkg,
+	files: ReleaseFiles.at(`packages/${pkg.name.replace(/^@[^/]+\//, "")}`, {
+		manifest: "package.json",
+	}),
+});

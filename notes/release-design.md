@@ -40,19 +40,16 @@ const release = Release.make("widgets", {
 	packages: [
 		{
 			package: widgets,
-			files: {
-				manifest: "packages/widgets/package.json",
-				versions: "packages/widgets/versions",
-			},
+			files: ReleaseFiles.at("packages/widgets", { manifest: "package.json" }),
 		},
 		{
 			package: widgetsReact,
-			files: { manifest: "packages/react/package.json", versions: "packages/react/versions" },
+			files: ReleaseFiles.at("packages/react", { manifest: "package.json" }),
 		},
 		{
 			package: tools,
 			version: toolsStrategy,
-			files: { manifest: "packages/tools/package.json", versions: "packages/tools/versions" },
+			files: { manifest: "packages/tools/package.json", versions: "packages/tools/history" },
 		},
 	],
 	change: ProjectChange,
@@ -71,18 +68,14 @@ const release = Release.make("widgets", {
 	],
 });
 
-// Previous versions and requirements come from manifests, or are passed explicitly.
-const { input, snapshot } =
-	yield *
-	ReleaseFiles.resolve(release, {
-		packages: [
-			{ package: widgets, changes: widgetChanges },
-			{ package: widgetsReact, changes: reactChanges },
-			{ package: tools, changes: [] },
-		],
-		pre: { tag: "beta", continue: true },
-	});
-const plan = release.plan(input);
+// Previous versions and requirements come from manifests. A bare package stands for a
+// member with no changes and no overrides.
+const resolved = ReleaseFiles.resolve(release, {
+	root: workspaceRoot,
+	base: configDirectory,
+	packages: [{ package: widgets, changes: widgetChanges }, widgetsReact, tools],
+	pre: { tag: "beta", continue: true },
+});
 ```
 
 Release.make requires a stable group ID. Membership is bounded to registered
@@ -129,15 +122,23 @@ Omitting pre on a plan means stable output. A prerelease requires the full objec
 or string shortcuts, inherited pre default, or configured-default-tag behavior.
 
 continue false starts a prerelease line. continue true continues its target
-unless accumulated bump intent requires a higher-level target. A line tracks
-its stable baseline and strongest accumulated major/minor/patch intent. New
-patch changes do not lower a line already preparing a major release.
+unless bump intent requires a higher one. A target never lowers, so new patch
+changes do not lower a line already preparing a major release.
+
+Lines are derived, never recorded. `2.0.0-beta.3` is on the line with target
+2.0.0 (the id without its prerelease part), tag `beta`, and counter 3; its
+baseline is its nearest stable ancestor, found through `previous`. Only
+prerelease ids shaped `<target>-<tag>.<counter>` form a line. Packages share a
+line when target and tag match. Because the target never lowers, no accumulated
+bump needs to be kept: escalation compares the new intent, applied to the
+baseline, with the current target.
 
 Example from stable 1.5.2: patch starts 1.5.3-beta.0; another patch continues at
 1.5.3-beta.1; a major elevates to 2.0.0-beta.0; another patch continues at
 2.0.0-beta.1. Reset the counter to zero when tag or numeric target changes;
 otherwise increment it. No-downgrade checks still apply to tag transitions.
-Continue without an existing prerelease line is a planning error.
+Continuing from a stable version, or from a prerelease that is not shaped like a
+line, is a planning error.
 
 A literal target given with pre is the stable version the line prepares, not the
 prerelease itself: from 1.5.2, `version: "3.0.0"` with
@@ -149,7 +150,7 @@ literal below the line fails the no-downgrade check.
 The plan's configured tag determines the output identifier even with mixed
 baselines. A shared calculation uses a consistent stage choice.
 
-A shared calculation continues one recorded line. Participants without a line
+A shared calculation continues one line. Participants on a stable version
 join it, following the group's alignment rule: in an aligned group they take the
 shared prerelease version; in a drifting group they join the same line (target
 and tag) with their own counter, starting at 0, and every package keeps its own
@@ -157,7 +158,8 @@ counter from then on. From widgets at 2.0.0-beta.1 and react at stable 1.5.2,
 both with changes, an aligned group gives both 2.0.0-beta.2, and a drifting
 group gives widgets 2.0.0-beta.2 and react 2.0.0-beta.0. Participants with
 different lines cannot share a calculation.
-Prerelease identifiers are distinct from publishing distribution tags.
+Prerelease identifiers are arbitrary SemVer identifiers. npm dist-tags are out of
+scope: they belong to the publish step.
 
 Superseded: premajor/preminor/prepatch/prerelease as separate change bump values;
 per-change pre intent; mixed-intention mode; pre true, pre "continue", and
@@ -176,9 +178,9 @@ each change, the prereleases that contain it and the changes on the line that
 revert it or that it reverts. It selects nothing. A release CLI command will
 present the same listing, and authors may use their own tooling instead.
 
-The stable version is the recorded line's target, raised when selected changes
-need a stronger bump. Promotion needs the recorded line state, as continuing a
-line does.
+The stable version is the line's target, raised when selected changes need a
+stronger bump from the line's baseline. Promotion needs a line-shaped prerelease,
+as continuing a line does.
 
 ## Dependency policy
 
@@ -216,7 +218,33 @@ configured release scope together. Partial consumption of shared inputs is
 deferred. Do not introduce a per-package pending-consumption ledger initially.
 
 Generate one file per version, with configurable directory and stable export
-name. Custom output layouts are deferred. Copy selected declarations into each
+name. The file name is the version id verbatim, such as `1.6.0-beta.0.ts`.
+Generated modules export the version and, when dependencies were updated, its
+release metadata; they record no prerelease state. Custom output layouts are
+deferred.
+
+Every registration has `files`: a required `manifest` path and a `versions`
+directory, written by hand or built by `ReleaseFiles.at(dir, { manifest,
+versions? })`. `versions` defaults to `.deltafold/versions` inside `dir`.
+deltafold never assumes a manifest name. A registration has no separate `dir`,
+so a directory and explicit files can never conflict. The manifest is a path for
+now; manifest adapters (for example `NpmManifest.at` or `CargoManifest.at`) may
+replace it when other ecosystems arrive.
+
+Relative paths in configuration and options resolve against the release config
+file's directory, passed to the file layer as `base`; the release CLI will supply
+it. Absolute paths are accepted only inside the workspace `root`, and anything
+outside is refused with `OutsideWorkspace`. Reports, edits, and requirement
+manifests use workspace-relative paths. A `<root>/` prefix for workspace-relative
+configuration is future work.
+
+Build metadata (a `+...` suffix) is refused by `VersionStrategy.semver` and its
+`parse`, because it does not affect precedence. The planner, the file layer, and
+core treat version ids as written.
+
+Lockfile updates are left to the user for now: the release prints the install
+command to run. An opt-in `Lockfile.update` step, backed by package-manager
+adapters, may run after apply later. Copy selected declarations into each
 applicable version file, preserving stable change IDs. Shared copies represent
 release membership of the same logical change, not newly invented identities.
 
@@ -301,8 +329,9 @@ These contracts worked as accepted:
   at run time.
 - Highest, require-matching, and explicit baselines. Unchanged members align by
   default and drift when the strategy allows it. Downgrades fail.
-- The prerelease sequence above, from recorded line state. Continuing without a
-  line and a tag change that lowers precedence fail with diagnostics.
+- The prerelease sequence above, from lines derived from version ids and
+  ancestry. Continuing from a stable version and a tag change that lowers
+  precedence fail with diagnostics.
 - Stable promotion with explicitly selected changes, and `Release.prereleaseChanges`
   listing a line's changes with their reverts.
 - Pending modules copied into one generated module per version without
@@ -322,8 +351,8 @@ Interface choices made by the prototype, open to revision:
   `unchanged` option of `VersionStrategy.semver`.
 - A shared calculation without changes produces no versions, with or without
   `pre`.
-- Generated modules export the version and, for prereleases, the line state as
-  `prerelease`. The previous version is imported from its generated module or an
+- Generated modules export the version, and release metadata for dependency
+  updates. The previous version is imported from its generated module or an
   explicit source.
 - Source relocation accepts imports followed by exactly one
   `export const name = factory.make("id", ...)`. Dynamic imports, `import.meta`,
@@ -332,10 +361,9 @@ Interface choices made by the prototype, open to revision:
 
 Product gaps that need a decision:
 
-- The command that lists a line's changes for selection. It belongs to the
-  release CLI, which is not built.
+- The release CLI: config discovery, plan and apply commands, the command that
+  lists a line's changes for selection, and later `init`. It is a separate pull
+  request.
 - A `workspace:` range never triggers a dependent release.
-- Loading recorded prerelease line state from generated modules is not built;
-  `line` is still plan input.
 - Packages on different prerelease lines cannot share a calculation; they need
   their own version settings.

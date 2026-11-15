@@ -66,3 +66,40 @@ Future calendar versions or arbitrary labels may require explicit contracts for
 validation, canonical identity, serialization, and optional capabilities such as
 ordering or dependency ranges. Do not generalize these contracts in advance.
 A later breaking API change is acceptable when supported by real usage.
+
+## Release CLI init
+
+Status: wanted; part of the release CLI, after plan and apply.
+
+`deltafold release init` writes a release config for the workspace. A later
+`init --from changesets` or `init --from nx` reads an existing Changesets or Nx
+release setup and writes the equivalent group, packages, and policies.
+
+## Manifest adapters
+
+Status: wanted; deferred until a second ecosystem needs it.
+
+`Files.manifest` is a path, read and written as npm `package.json`. Adapters such
+as `NpmManifest.at(path)` or `CargoManifest.at(path)` could replace the path and
+own reading the version, reading dependency ranges, and editing both.
+
+## Workspace-root path prefix
+
+Status: wanted.
+
+A `<root>/` prefix would let configuration name a workspace-relative path
+regardless of where the release config file lives. Today relative paths resolve
+against the config file's directory.
+
+## Lockfile updates
+
+Status: wanted; opt-in.
+
+After apply, a `Lockfile.update` step backed by package-manager adapters could
+update the lockfile. Until then the release prints the install command for the
+user to run.
+
+## Out of scope: npm dist-tags
+
+Prerelease identifiers are arbitrary SemVer identifiers chosen per plan. npm
+dist-tags belong to the publish step, which deltafold release does not perform.

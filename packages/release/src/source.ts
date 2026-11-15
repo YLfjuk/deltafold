@@ -1,10 +1,10 @@
 import type { Version } from "deltafold";
 import { issue, type Issue } from "./error.ts";
+import * as paths from "./paths.ts";
 import type { DependencyUpdate } from "./release.ts";
-import type { Line } from "./version-strategy.ts";
 
 /**
- * A pending change module: its path relative to the working directory, and its text.
+ * A pending change module: its workspace-relative path, and its text.
  *
  * @since @next
  */
@@ -114,37 +114,26 @@ export const scan = (source: PendingSource): Declaration | Issue => {
 	return { path: source.path, imports, name: head[1], changeId: id[2], text: rest.trim() };
 };
 
-const normalize = (path: string): string => {
-	const parts: Array<string> = [];
-	for (const part of path.replace(/\\/g, "/").split("/")) {
-		if (part === "" || part === ".") continue;
-		if (part === ".." && parts.length > 0 && parts.at(-1) !== "..") parts.pop();
-		else parts.push(part);
-	}
+/**
+ * The directory part of a path. Absolute POSIX and Windows drive paths keep their prefix.
+ *
+ * @since @next
+ */
+export const dirname: (path: string) => string = paths.dirname;
 
-	return parts.join("/");
-};
+/**
+ * Joins and normalizes path parts with "/". An absolute part restarts the path.
+ *
+ * @since @next
+ */
+export const join: (...parts: ReadonlyArray<string>) => string = paths.join;
 
-/** @since @next */
-export const dirname = (path: string): string => normalize(path).split("/").slice(0, -1).join("/");
-
-/** @since @next */
-export const join = (...parts: ReadonlyArray<string>): string =>
-	normalize(parts.filter((part) => part !== "").join("/"));
-
-/** @since @next */
-export const relative = (fromDirectory: string, to: string): string => {
-	const from = normalize(fromDirectory)
-		.split("/")
-		.filter((part) => part !== "");
-	const target = normalize(to).split("/");
-	let shared = 0;
-	while (shared < from.length && shared < target.length - 1 && from[shared] === target[shared])
-		shared++;
-	const path = [...from.slice(shared).map(() => ".."), ...target.slice(shared)].join("/");
-
-	return path.startsWith(".") ? path : `./${path}`;
-};
+/**
+ * The module specifier from a directory to a file, starting with `./` or `../`.
+ *
+ * @since @next
+ */
+export const relative: (fromDirectory: string, to: string) => string = paths.relative;
 
 /** @since @next */
 export type RenderInput = {
@@ -153,7 +142,6 @@ export type RenderInput = {
 	readonly previous: { readonly specifier: string; readonly exportName: string };
 	readonly declarations: ReadonlyArray<Declaration>;
 	readonly exportName: string;
-	readonly line: Line | undefined;
 	/** Range edits in the package's manifest, recorded as release metadata. */
 	readonly dependencies: ReadonlyArray<DependencyUpdate>;
 	/** Pending modules this release removes. Imports between them cannot be relocated. */
@@ -191,7 +179,6 @@ export const render = (
 	bind("Version", deltafoldImport);
 	bind("previous", previousImport);
 	bind(input.exportName, "the version export");
-	bind("prerelease", "the prerelease export");
 	bind("release", "the release metadata export");
 
 	const imports: Array<string> = [];
@@ -234,9 +221,6 @@ export const render = (
 		`\tchanges: [${names.join(", ")}],`,
 		"});",
 	];
-	if (input.line !== undefined) {
-		lines.push("", `export const prerelease = ${JSON.stringify(input.line)} as const;`);
-	}
 	if (input.dependencies.length > 0) {
 		const records = input.dependencies.map(({ dependency, field, from, to, version }) => ({
 			dependency,

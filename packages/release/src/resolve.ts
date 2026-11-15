@@ -8,10 +8,11 @@ import {
 	type PlatformError,
 } from "effect";
 
+import { Package } from "deltafold";
 import type { Requirement } from "./dependents-policy.ts";
 import { issue, PrepareError, type Issue } from "./error.ts";
+import { paths, type Location } from "./paths.ts";
 import type { Input, Release, Selection } from "./release.ts";
-import { join } from "./source.ts";
 
 /**
  * The files a resolution read, so that preparation and apply can refuse when any of them
@@ -39,14 +40,16 @@ export type Resolved<M extends object> = { readonly input: Input<M>; readonly sn
 export type Unresolved<M extends object> = Omit<Selection<M>, "previous">;
 
 /** @since @next */
-export type ResolveOptions<M extends object> = Omit<Input<M>, "packages" | "requirements"> & {
-	readonly packages: ReadonlyArray<Unresolved<M>>;
-	/**
-	 * Glob patterns of other manifests to scan for dependents outside the group. They are
-	 * reported as cross-group requirements, never added.
-	 */
-	readonly manifests?: ReadonlyArray<string>;
-};
+export type ResolveOptions<M extends object> = Location &
+	Omit<Input<M>, "packages" | "requirements"> & {
+		/** Every member. A bare Package stands for a member with no changes and no overrides. */
+		readonly packages: ReadonlyArray<Unresolved<M> | Package.Package>;
+		/**
+		 * Glob patterns of other manifests to scan for dependents outside the group. They are
+		 * reported as cross-group requirements, never added.
+		 */
+		readonly manifests?: ReadonlyArray<string>;
+	};
 
 const fields = [
 	"dependencies",
@@ -105,14 +108,21 @@ export const resolve = <M extends object>(
 ): Effect.Effect<Resolved<M>, PrepareError | PlatformError.PlatformError, FileSystem.FileSystem> =>
 	Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem;
+		const location = paths(options);
 		const reads = new Map<string, string>();
 		const issues: Array<Issue> = [];
+		const fromBase = (path: string): string | undefined => {
+			const resolved = location.fromBase(path);
+			if (typeof resolved === "string") return resolved;
+			issues.push(resolved);
+			return undefined;
+		};
 		const members = release.config.packages.map((registration) => registration.package.name);
-		const load = (path: string) =>
+		const load = (key: string) =>
 			Effect.gen(function* () {
-				const key = join(path);
-				if (!(yield* fs.exists(key))) return undefined;
-				const text = yield* fs.readFileString(key);
+				const fsPath = location.toFs(key);
+				if (!(yield* fs.exists(fsPath))) return undefined;
+				const text = yield* fs.readFileString(fsPath);
 				reads.set(key, text);
 
 				return { path: key, manifest: readManifest(text) };
@@ -120,11 +130,15 @@ export const resolve = <M extends object>(
 
 		const packages: Array<Selection<M>> = [];
 		const manifests: Array<{ readonly path: string; readonly manifest: Manifest }> = [];
-		for (const selection of options.packages) {
+		for (const member of options.packages) {
+			const selection: Unresolved<M> = Package.isPackage(member)
+				? { package: member, changes: [] }
+				: member;
 			const name = selection.package.name;
-			const path = release.config.packages.find(
+			const configured = release.config.packages.find(
 				(registration) => registration.package.name === name,
-			)?.files?.manifest;
+			)?.files.manifest;
+			const path = configured === undefined ? undefined : fromBase(configured);
 			const loaded = path === undefined ? undefined : yield* load(path);
 			const manifest = loaded?.manifest;
 			if (
@@ -148,17 +162,25 @@ export const resolve = <M extends object>(
 
 		const globs: Array<Snapshot["globs"][number]> = [];
 		if (options.manifests !== undefined) {
+			const patterns = options.manifests.flatMap((pattern) => {
+				const path = fromBase(pattern);
+				return path === undefined ? [] : [path];
+			});
+			const found = yield* Effect.forEach(patterns, (pattern) =>
+				fs.glob(location.toFs(pattern)),
+			);
 			const matched = Arr.sort(
 				[
 					...new Set(
-						(yield* Effect.forEach(options.manifests, (pattern) => fs.glob(pattern)))
-							.flat()
-							.map((path) => join(path)),
+						found.flat().flatMap((path) => {
+							const rel = location.fromFs(path);
+							return typeof rel === "string" ? [rel] : [];
+						}),
 					),
 				],
 				Order.String,
 			);
-			globs.push({ pattern: options.manifests, matched });
+			globs.push({ pattern: patterns, matched });
 			for (const path of matched) {
 				if (manifests.some((entry) => entry.path === path)) continue;
 				const loaded = yield* load(path);
@@ -184,7 +206,11 @@ export const resolve = <M extends object>(
 					: [],
 			),
 		);
-		const input: Input<M> = { ...Struct.omit(options, ["manifests"]), packages, requirements };
+		const input: Input<M> = {
+			...Struct.omit(options, ["manifests", "root", "base"]),
+			packages,
+			requirements,
+		};
 
 		return { input, snapshot: { reads, globs } };
 	});
