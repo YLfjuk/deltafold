@@ -84,7 +84,14 @@ const decide = (
 			return [{ ...requirement, action: "satisfied" }];
 		}
 		const edit: Proposal = { ...requirement, action: "edit" };
-		if (requirement.private || context.versions.has(requirement.dependent)) return [edit];
+		// A dev-only dependency does not change what consumers install.
+		if (
+			requirement.private ||
+			requirement.field === "devDependencies" ||
+			context.versions.has(requirement.dependent)
+		) {
+			return [edit];
+		}
 
 		return [edit, { ...requirement, action: unselected }];
 	});
