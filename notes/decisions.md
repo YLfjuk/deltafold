@@ -20,8 +20,8 @@ execution.
 **No route is not no work.** A missing route fails as `UnsupportedRoute`.
 `Migration.noop` is the only way to declare a supported zero-work transition. A
 migration with no prose and no actions, including one whose groups are all
-empty, is a validation error. A skipped precondition is an execution outcome,
-not a noop.
+empty, is a validation error. An action skipped by its prepare phase is an
+execution outcome, not a noop.
 
 **Templates.** Migration, instruction, and change templates remove the common
 indentation and the blank first and last lines. Content stays structured: text,
@@ -120,6 +120,38 @@ TypeScript then infers the type predicate. Pass a schema itself rather than
 `Schema.is(schema)`, whose generic signature defeats inference. Unrecognized
 rejections become `UnexpectedHandlerError`.
 
+**Prepare and apply phases.** A handler either applies its action directly or
+declares `{ prepare, apply }`, and then needs both. `prepare` reads state and
+returns `Handler.prepared(value)` or `Handler.skip(reason)`. The wrapper keeps
+a skip apart from any prepared value, whatever its shape. `apply` receives the
+value unchanged. The handler author defines the value; the executor never reads,
+validates, or serializes it. Constructors infer the value and keep it inside the
+handler, so handler arrays, coverage checks, and executor types see only
+`Handler<A, E, R>`, with the errors and services of both phases. Promise phases
+receive `prepare(payload, { signal, services })` and
+`apply(prepared, { payload, signal, services })`; Effect phases receive
+`prepare(payload)` and `apply(prepared, { payload })`. A prepare phase is
+read-only by contract, not by sandbox. There is no separate precondition or
+skip-reason option, and no ambient run-mode service: a handler cannot tell a
+dry run from a real one.
+
+**Occurrence scopes.** Each occurrence runs in its own scope, shared by both
+phases and closed once when the occurrence ends, with an exit that reflects how
+it ended. Effect handlers run in that scope and do not require `Scope`, so a
+lock acquired while preparing stays open through `apply`. Promise callbacks get
+no cleanup registration; adapters own the resources they acquire. A finalizer
+that fails before the report fails an occurrence that otherwise ended normally.
+
+**Interrupted Promises that outlive the report.** An interrupted Promise that
+does not settle within `settleTimeout` is reported `settled: false`, and the
+report is returned without waiting further. Its occurrence's scope, and a
+services layer that `runPromise` built, stay open until the Promise settles,
+possibly forever, and then close in that order. A prepare result that arrives
+after interruption is discarded; `apply` never runs. A services context the
+caller supplies stays the caller's to track and release. A cleanup failure
+after the report cannot change it, so it is logged through Effect with the
+occurrence or the services layer.
+
 **Static coverage.** A plan resolved from a history carries the history's whole
 action union, because the route is chosen at run time. The executors constrain
 the handler array directly: an action without a handler makes the `handlers`
@@ -135,8 +167,10 @@ needs handler selection through layers.
 **Failure and interruption.** A failure stops admission of new actions; running
 actions settle normally. A timeout interrupts only the action that exceeded it,
 and its siblings settle as after a failure. Cancellation interrupts every
-running action, and a body whose precondition was running when cancellation
-arrived does not start. Admission stops as soon as a timeout or cancellation
+running action, and an occurrence whose prepare phase was running when
+cancellation arrived does not apply. Each phase has its own `timeout` window.
+An occurrence that started preparing before a sibling failed or timed out may
+still apply. Admission stops as soon as a timeout or cancellation
 fires, before the interrupted work finishes settling. Effect stops waiting for an
 interrupted Promise immediately, so the adapter waits up to `settleTimeout` for
 the Promise itself and the report records whether it settled.
@@ -147,12 +181,15 @@ cancelling it ends the effect as interrupted, without a report.
 an abort into `ExecutionInterrupted` with the partial report. Its listener is
 removed when the run ends.
 
-**Dry runs.** A dry run evaluates a precondition only when no earlier action in
+**Dry runs.** A dry run runs a prepare phase only when no earlier action in
 the same dependency chain would or might have run. Earlier migrations count as
 dependencies of later ones, and parallel branches depend only on work before the
-group. Branches are evaluated one at a time so reports are deterministic. After a
-failed check, later checks are `Undetermined`. Timeouts and cancellation apply
-to dry-run preconditions as they do to real runs.
+group. Branches are evaluated one at a time so reports are deterministic. A dry
+run never runs `apply`. A failed preparation is `PreparationFailed`, and later
+preparations are `Undetermined`. Handlers without a prepare phase are
+`WouldExecute` without evaluation. Timeouts and cancellation apply to dry-run
+prepare phases as they do to real runs. A dry run reflects the state that its
+prepare phases saw; a later real run may see different state.
 
 ## Documents
 
@@ -298,8 +335,8 @@ These work today but need confirmation before 1.0:
 - Change metadata is checked only by TypeScript. deltafold compares it
   structurally but does not validate it at run time.
 - Merge ancestry and prerelease policy are not modeled.
-- A false precondition only skips its own action. An unmet requirement that must
-  block later actions has to fail its precondition.
+- A skip only skips its own action. An unmet requirement that must block later
+  actions has to fail its prepare phase.
 
 ## Not yet implemented
 
@@ -315,6 +352,9 @@ These work today but need confirmation before 1.0:
 - A versioned JSON report format and a plan fingerprint.
 - A preview mode for integration engines, distinct from dry runs.
 - Branch labels in histories and an optional metadata schema.
+- A TypeScript codemod that migrates handlers from the removed `when` and
+  `skipReason` options to `{ prepare, apply }`. The breaking release that removes
+  those options needs it.
 
 ## Open questions
 
@@ -325,7 +365,7 @@ These work today but need confirmation before 1.0:
 - Should the optional durable executor be built, and in which package?
 - How should `requires` dependencies behave when rules remove or replace actions?
 - Which retry and rollback configuration, undo order, and recovery after a
-  partially failed body?
+  partially failed apply phase?
 - What logging bridge do Promise callbacks receive?
 - Whether to ship optional change classification presets, such as changelog
   sections that read conventional metadata fields, and which fields they use.

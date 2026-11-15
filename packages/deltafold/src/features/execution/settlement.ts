@@ -7,16 +7,18 @@ import { Context, Duration, Effect, Option } from "effect";
 export type Settlement = {
 	/** How long to keep waiting for an interrupted Promise before reporting it pending. */
 	readonly grace: Duration.Input;
-	readonly record: (settled: boolean) => void;
+	/** Receives an interrupted Promise that did not settle within the grace period. */
+	readonly unsettled: (promise: Promise<void>) => void;
 };
 
 export const SettlementReference = Context.Reference<Settlement>("deltafold/Settlement", {
-	defaultValue: () => ({ grace: Duration.zero, record: () => {} }),
+	defaultValue: () => ({ grace: Duration.zero, unsettled: () => {} }),
 });
 
 /**
  * Runs a Promise-producing effect. If it is interrupted after the Promise started,
- * waits up to the settlement grace period and records whether the Promise settled.
+ * waits up to the settlement grace period and hands a still-pending Promise to the
+ * settlement, which can hold resources until it settles.
  */
 export const trackPromise = <T, E, R>(
 	start: (capture: (promise: Promise<T>) => Promise<T>) => Effect.Effect<T, E, R>,
@@ -35,14 +37,15 @@ export const trackPromise = <T, E, R>(
 					const started = pending;
 					if (started === undefined) return;
 
+					const settles = started.then(
+						() => undefined,
+						() => undefined,
+					);
 					const settlement = yield* SettlementReference;
-					const settled = yield* Effect.promise(() =>
-						started.then(
-							() => undefined,
-							() => undefined,
-						),
-					).pipe(Effect.timeoutOption(settlement.grace));
-					settlement.record(Option.isSome(settled));
+					const settled = yield* Effect.promise(() => settles).pipe(
+						Effect.timeoutOption(settlement.grace),
+					);
+					if (Option.isNone(settled)) settlement.unsettled(settles);
 				}),
 			),
 		);

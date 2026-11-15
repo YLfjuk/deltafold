@@ -235,16 +235,17 @@ describe("Executor behavior", () => {
 		}),
 	);
 
-	it.effect("rejects missing bindings before any precondition or body runs", () =>
+	it.effect("rejects missing bindings before any phase runs", () =>
 		Effect.gen(function* () {
 			const events: Array<string> = [];
 			const handlers = [
-				Handler.promise(renameJson, async () => void events.push("body"), {
-					when: () => {
-						events.push("precondition");
+				Handler.promise(renameJson, {
+					prepare: () => {
+						events.push("prepare");
 
-						return true;
+						return Handler.prepared();
 					},
+					apply: async () => void events.push("apply"),
 				}),
 			];
 			const error = yield* Effect.flip(
@@ -330,7 +331,7 @@ describe("Executor behavior", () => {
 		}),
 	);
 
-	it.effect("skips false preconditions and stops after a failed precondition", () =>
+	it.effect("skips explicit skips and stops after a failed prepare phase", () =>
 		Effect.gen(function* () {
 			const events: Array<string> = [];
 			const first = touch("first");
@@ -352,12 +353,14 @@ describe("Executor behavior", () => {
 				Executor.effect(planOf(history), {
 					handlers: [
 						recording(events)(first),
-						Handler.promise(skipped, async () => void events.push("skipped"), {
-							when: async () => false,
-							skipReason: "This project does not use JSON configuration",
+						Handler.promise(skipped, {
+							prepare: async () =>
+								Handler.skip("This project does not use JSON configuration"),
+							apply: async () => void events.push("skipped"),
 						}),
-						Handler.promise(rejected, async () => void events.push("rejected"), {
-							when: () => Promise.reject(new Error("unreadable")),
+						Handler.promise(rejected, {
+							prepare: () => Promise.reject(new Error("unreadable")),
+							apply: async () => void events.push("rejected"),
 						}),
 						recording(events)(later),
 						recording(events)(nextStep),
@@ -380,11 +383,11 @@ describe("Executor behavior", () => {
 				reason: "This project does not use JSON configuration",
 			});
 			const [failed] = error.failures;
-			expect(failed?.outcome).toMatchObject({ _tag: "Failed", phase: "precondition" });
+			expect(failed?.outcome).toMatchObject({ _tag: "Failed", phase: "prepare" });
 			expect(failed?.outcome._tag === "Failed" && failed.outcome.error).toMatchObject({
 				_tag: "UnexpectedHandlerError",
 				actionId: "rejected",
-				phase: "precondition",
+				phase: "prepare",
 			});
 			expect(error.report.bodiesStarted).toBe(true);
 		}),
@@ -424,7 +427,7 @@ describe("Executor behavior", () => {
 				_tag: "UnexpectedHandlerError",
 				actionId: "unexpected",
 				kind: "test.touch",
-				phase: "body",
+				phase: "apply",
 				cause: "boom",
 			});
 		}),
@@ -514,7 +517,7 @@ describe("Executor behavior", () => {
 			expect(error).toMatchObject({ _tag: "ExecutionInterrupted", reason: "timeout" });
 			if (error._tag !== "ExecutionInterrupted") return;
 			expect(error.report.occurrences.map((entry) => entry.outcome)).toEqual([
-				{ _tag: "Interrupted", phase: "body", reason: "timeout", settled: true },
+				{ _tag: "Interrupted", phase: "apply", reason: "timeout", settled: true },
 				{ _tag: "Completed" },
 				{ _tag: "Completed" },
 				{ _tag: "Unattempted" },
@@ -570,8 +573,8 @@ describe("Executor behavior", () => {
 		if (!(error instanceof Executor.ExecutionInterrupted)) return;
 		expect(error.reason).toBe("cancelled");
 		expect(error.report.occurrences.map((entry) => entry.outcome)).toEqual([
-			{ _tag: "Interrupted", phase: "body", reason: "cancelled", settled: true },
-			{ _tag: "Interrupted", phase: "body", reason: "cancelled", settled: false },
+			{ _tag: "Interrupted", phase: "apply", reason: "cancelled", settled: true },
+			{ _tag: "Interrupted", phase: "apply", reason: "cancelled", settled: false },
 			{ _tag: "Unattempted" },
 		]);
 		expect(error.message).toContain("may still be running");
@@ -603,7 +606,7 @@ describe("Executor behavior", () => {
 		});
 	});
 
-	it("resolves symbol-keyed services for the precondition and the body", async () => {
+	it("resolves symbol-keyed services for the prepare and apply phases", async () => {
 		const editorKey = Symbol("editor");
 		const seen: Array<string> = [];
 		const edit = touch("edit");
@@ -621,22 +624,22 @@ describe("Executor behavior", () => {
 			handlers: [
 				Handler.promise(
 					edit,
-					async (payload, { services }) =>
-						services[editorKey].update(`body:${payload.name}`),
 					{
-						services: { [editorKey]: ConfigEditor },
-						when: async (payload, { services }) => {
-							await services[editorKey].update(`when:${payload.name}`);
-							return true;
+						prepare: async (payload, { services }) => {
+							await services[editorKey].update(`prepare:${payload.name}`);
+							return Handler.prepared();
 						},
+						apply: async (_prepared, { payload, services }) =>
+							services[editorKey].update(`apply:${payload.name}`),
 					},
+					{ services: { [editorKey]: ConfigEditor } },
 				),
 			],
 			services: Context.make(ConfigEditor, editor),
 		});
 
 		expect(outcomes(report)).toEqual({ edit: "Completed" });
-		expect(seen).toEqual(["when:edit", "body:edit"]);
+		expect(seen).toEqual(["prepare:edit", "apply:edit"]);
 	});
 
 	it("supplies services from a layer and rejects with the layer's own build error", async () => {
@@ -721,7 +724,7 @@ describe("Executor admission, cancellation, and settlement", () => {
 				error._tag === "ExecutionInterrupted" &&
 					error.report.occurrences.map((entry) => entry.outcome),
 			).toEqual([
-				{ _tag: "Interrupted", phase: "body", reason: "timeout", settled: false },
+				{ _tag: "Interrupted", phase: "apply", reason: "timeout", settled: false },
 				{ _tag: "Completed" },
 				{ _tag: "Completed" },
 				{ _tag: "Unattempted" },
@@ -776,7 +779,7 @@ describe("Executor admission, cancellation, and settlement", () => {
 			}),
 	);
 
-	it("does not start a body when cancellation arrives during its precondition", async () => {
+	it("does not apply when cancellation arrives during the prepare phase", async () => {
 		const checked = touch("checked");
 		const controller = new AbortController();
 		let ran = false;
@@ -785,19 +788,16 @@ describe("Executor admission, cancellation, and settlement", () => {
 			{
 				signal: controller.signal,
 				handlers: [
-					Handler.promise(
-						checked,
-						async () => {
+					Handler.promise(checked, {
+						prepare: () => {
+							controller.abort();
+
+							return Handler.prepared();
+						},
+						apply: async () => {
 							ran = true;
 						},
-						{
-							when: () => {
-								controller.abort();
-
-								return true;
-							},
-						},
-					),
+					}),
 				],
 			},
 		).then(
@@ -810,7 +810,7 @@ describe("Executor admission, cancellation, and settlement", () => {
 			error instanceof Executor.ExecutionInterrupted && error.report.occurrences[0]?.outcome,
 		).toEqual({
 			_tag: "Interrupted",
-			phase: "precondition",
+			phase: "prepare",
 			reason: "cancelled",
 			settled: true,
 		});
@@ -918,18 +918,18 @@ describe("Executor admission, cancellation, and settlement", () => {
 		expect(events).toEqual([]);
 	});
 
-	it("applies cancellation and timeouts to dry-run preconditions", async () => {
+	it("applies cancellation and timeouts to dry-run prepare phases", async () => {
 		const checked = touch("checked");
 		const evaluated: Array<string> = [];
 		const dryRun = (
 			options: { signal?: AbortSignal; timeout?: Duration.Input },
-			when: () => Promise<boolean>,
+			prepare: () => Promise<Handler.Preparation<void>>,
 		) =>
 			Executor.runPromise(Plan.withRuntimeCoverage(planOf(single(checked), "2.0.0")), {
 				...options,
 				dryRun: true,
 				settleTimeout: "1 millis",
-				handlers: [Handler.promise(checked, async () => {}, { when })],
+				handlers: [Handler.promise(checked, { prepare, apply: async () => {} })],
 			}).then(
 				() => undefined,
 				(cause: unknown) => cause,
@@ -940,12 +940,9 @@ describe("Executor admission, cancellation, and settlement", () => {
 		const cancelled = await dryRun({ signal: controller.signal }, async () => {
 			evaluated.push("cancelled");
 
-			return true;
+			return Handler.prepared();
 		});
-		const timedOut = await dryRun(
-			{ timeout: "10 millis" },
-			() => new Promise<boolean>(() => {}),
-		);
+		const timedOut = await dryRun({ timeout: "10 millis" }, () => new Promise(() => {}));
 
 		expect(evaluated).toEqual([]);
 		expect(cancelled).toMatchObject({
@@ -958,7 +955,7 @@ describe("Executor admission, cancellation, and settlement", () => {
 				timedOut.report.occurrences[0]?.outcome,
 		).toEqual({
 			_tag: "Interrupted",
-			phase: "precondition",
+			phase: "prepare",
 			reason: "timeout",
 			settled: false,
 		});
@@ -1003,14 +1000,17 @@ describe("Executor and a handler's own interruption", () => {
 			expect(
 				error instanceof Executor.ExecutionInterrupted &&
 					error.report.occurrences[0]?.outcome,
-			).toEqual({ _tag: "Interrupted", phase: "body", reason: "handler", settled: true });
+			).toEqual({ _tag: "Interrupted", phase: "apply", reason: "handler", settled: true });
 		}),
 	);
 
-	it.effect("reports an interrupting precondition as interrupted in real and dry runs", () =>
+	it.effect("reports an interrupting prepare phase as interrupted in real and dry runs", () =>
 		Effect.gen(function* () {
 			const handlers = [
-				Handler.effect(first, () => Effect.void, { when: () => Effect.interrupt }),
+				Handler.effect(first, {
+					prepare: () => Effect.interrupt,
+					apply: () => Effect.void,
+				}),
 				Handler.effect(later, () => Effect.void),
 			];
 			for (const dryRun of [false, true]) {
@@ -1031,7 +1031,7 @@ describe("Executor and a handler's own interruption", () => {
 						error.report.occurrences[0]?.outcome,
 				).toEqual({
 					_tag: "Interrupted",
-					phase: "precondition",
+					phase: "prepare",
 					reason: "handler",
 					settled: true,
 				});
@@ -1041,7 +1041,7 @@ describe("Executor and a handler's own interruption", () => {
 });
 
 describe("Executor dry runs", () => {
-	it.effect("never runs bodies and reports checks behind unapplied work as undetermined", () =>
+	it.effect("never applies and reports preparations behind unapplied work as undetermined", () =>
 		Effect.gen(function* () {
 			const events: Array<string> = [];
 			const skips = touch("skips");
@@ -1060,19 +1060,21 @@ describe("Executor dry runs", () => {
 				],
 			});
 			const checked = (action: Action.Any, applies: boolean) =>
-				Handler.promise(action, async () => void events.push(`body:${action.id}`), {
-					when: () => {
-						events.push(`check:${action.id}`);
+				Handler.promise(action, {
+					prepare: () => {
+						events.push(`prepare:${action.id}`);
 
-						return applies;
+						return applies
+							? Handler.prepared()
+							: Handler.skip(`${action.id} does not apply`);
 					},
-					skipReason: `${action.id} does not apply`,
+					apply: async () => void events.push(`apply:${action.id}`),
 				});
 			const result = yield* Executor.effect(Plan.withRuntimeCoverage(planOf(history)), {
 				dryRun: true,
 				handlers: [
 					checked(skips, false),
-					Handler.promise(create, async () => void events.push("body:create")),
+					Handler.promise(create, async () => void events.push("apply:create")),
 					checked(update, true),
 					checked(independent, true),
 					checked(later, true),
@@ -1080,10 +1082,10 @@ describe("Executor dry runs", () => {
 			});
 			const undetermined = {
 				_tag: "Undetermined",
-				reason: "The precondition depends on earlier actions that a dry run does not apply.",
+				reason: "The prepare phase depends on earlier actions that a dry run does not apply.",
 			};
 
-			expect(events).toEqual(["check:skips", "check:independent"]);
+			expect(events).toEqual(["prepare:skips", "prepare:independent"]);
 			expect(result).toMatchObject({
 				mode: "dry-run",
 				status: "would-complete",
@@ -1099,7 +1101,7 @@ describe("Executor dry runs", () => {
 		}),
 	);
 
-	it.effect("reports a failed check as a failure, not a skip", () =>
+	it.effect("reports a failed preparation as a failure, not a skip", () =>
 		Effect.gen(function* () {
 			const broken = touch("broken");
 			const after = touch("after");
@@ -1110,8 +1112,9 @@ describe("Executor dry runs", () => {
 			const result = yield* Executor.effect(planOf(history, "2.0.0"), {
 				dryRun: true,
 				handlers: [
-					Handler.effect(broken, () => Effect.void, {
-						when: () => Effect.fail("unreadable"),
+					Handler.effect(broken, {
+						prepare: () => Effect.fail("unreadable"),
+						apply: () => Effect.void,
 					}),
 					Handler.effect(after, () => Effect.void),
 				],
@@ -1119,7 +1122,7 @@ describe("Executor dry runs", () => {
 
 			expect(result.status).toBe("would-fail");
 			expect(result.occurrences.map((entry) => entry.outcome._tag)).toEqual([
-				"PreconditionFailed",
+				"PreparationFailed",
 				"Undetermined",
 			]);
 		}),

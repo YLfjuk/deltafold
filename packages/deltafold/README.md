@@ -127,24 +127,25 @@ ancestor, because its author asserts that it is equivalent.
 
 ## Run a plan with Promise handlers
 
-Handlers bind to action instances. A precondition that returns `false` skips the
-action and reports the reason. In this example, `renameKey` and `fileExists`
-stand for your own file access.
+Handlers bind to action instances. A handler either applies its action
+directly, or first runs a read-only `prepare` phase. `prepare` returns
+`Handler.prepared(value)`, and `apply` then receives that value, or
+`Handler.skip(reason)`, which skips the action and reports the reason. In this
+example, `renameKey` and `fileExists` stand for your own file access.
 
 ```ts
 import { Executor, Handler } from "deltafold";
 
 const handlers = [
-	Handler.promise(
-		renameTimeout,
-		async ({ file, from, to }, { signal }) => {
+	Handler.promise(renameTimeout, {
+		prepare: async ({ file }) =>
+			(await fileExists(file))
+				? Handler.prepared()
+				: Handler.skip("This project has no app.json"),
+		apply: async (_prepared, { payload: { file, from, to }, signal }) => {
 			await renameKey(file, from, to, { signal });
 		},
-		{
-			when: ({ file }) => fileExists(file),
-			skipReason: "This project has no app.json",
-		},
-	),
+	}),
 ];
 
 try {
@@ -166,10 +167,10 @@ try {
   the partial report.
 - Nothing is rolled back and progress is not saved: running the plan again
   repeats completed actions.
-- `dryRun: true` evaluates preconditions without running any action body. A
-  precondition that may depend on an earlier action is reported `Undetermined`,
-  because the dry run does not apply that action.
-- `signal` cancels and `timeout` limits each action; both reject with
+- `dryRun: true` runs `prepare` phases and never runs `apply`. A prepare phase
+  that may depend on an earlier action is reported `Undetermined`, because the
+  dry run does not apply that action.
+- `signal` cancels and `timeout` limits each phase; both reject with
   `ExecutionInterrupted`. Cancellation is cooperative: a callback that ignores
   its signal can keep running after the run ends, and the report marks it as
   possibly still running.
@@ -204,7 +205,10 @@ const report = await Effect.runPromise(
 );
 ```
 
-Here `configFiles` is your implementation of the service. To cancel an Effect
+Here `configFiles` is your implementation of the service. `Handler.effect`
+also accepts `{ prepare, apply }`. Both phases run in the action's own scope,
+so a resource acquired in `prepare`, such as a lock, stays open until the
+action ends. To cancel an Effect
 execution, interrupt its fiber; it ends as interrupted, without a report.
 
 The handler array must cover every action of the history: a missing handler is
