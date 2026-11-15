@@ -50,6 +50,11 @@ export type Participant<M extends object> = {
 	readonly previous: string;
 	readonly changes: ReadonlyArray<Change.Change<M>>;
 	readonly line: Line | undefined;
+	/**
+	 * Released dependencies whose range edits require this package to release. They are
+	 * patch intent; they are not changes.
+	 */
+	readonly dependencies: ReadonlyArray<string>;
 };
 
 /** @since @next */
@@ -146,7 +151,7 @@ export const semver =
 		const baseline = typeof policy === "object" ? parseVersion(policy.version) : top;
 		const unchanged = options.unchanged ?? "align";
 
-		const bumps = participants.flatMap((participant) =>
+		const bumps: Array<Bump> = participants.flatMap((participant) =>
 			participant.changes.map((change) => {
 				const bump: unknown = options.bump(change);
 				if (bump !== "major" && bump !== "minor" && bump !== "patch") {
@@ -162,6 +167,9 @@ export const semver =
 				return bump;
 			}),
 		);
+		// A release required only by dependency updates is patch intent.
+		if (participants.some((participant) => participant.dependencies.length > 0))
+			bumps.push("patch");
 
 		if (pre !== undefined) return prerelease({ participants, pre, baseline, bumps, unchanged });
 		if (SemVer.isPrerelease(baseline)) {

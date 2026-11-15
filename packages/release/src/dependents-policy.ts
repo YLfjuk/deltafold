@@ -1,3 +1,7 @@
+import { SemVer } from "effect";
+
+import { form, satisfies } from "./ranges.ts";
+
 /**
  * A dependency between workspace packages, resolved from manifests before planning.
  *
@@ -9,67 +13,101 @@ export type Requirement = {
 	/** The dependency field, such as `dependencies` or `peerDependencies`. */
 	readonly field: string;
 	readonly range: string;
+	/** The dependent's manifest, relative to the working directory. */
+	readonly manifest: string;
 	/** A private dependent can need a manifest edit without being published. */
 	readonly private: boolean;
 };
 
 /**
- * What a policy proposes for one requirement.
+ * What a policy decides for one requirement on a package this plan releases.
  *
- * - `edit`: update the dependent's manifest range.
+ * - `edit`: rewrite the dependent's range.
  * - `release`: the dependent needs a release of its own.
+ * - `satisfied`: the new version already satisfies the range; nothing changes.
+ * - `workspace`: a `workspace:` range, which the package manager resolves at publish time.
  * - `cross-group`: the dependent is outside this group. It is reported, never added.
- * - `missing-selection`: the dependent is in the group but was not selected.
+ * - `missing-selection`: the dependent needs a release that the plan does not select.
  *
  * @since @next
  */
-export type Proposal = Requirement & {
-	readonly action: "edit" | "release" | "cross-group" | "missing-selection";
-};
+export type Action =
+	| "edit"
+	| "release"
+	| "satisfied"
+	| "workspace"
+	| "cross-group"
+	| "missing-selection";
+
+/** @since @next */
+export type Proposal = Requirement & { readonly action: Action };
 
 /** @since @next */
 export type Context = {
 	/** Requirements on packages this plan releases. */
 	readonly requirements: ReadonlyArray<Requirement>;
 	readonly members: ReadonlyArray<string>;
-	readonly released: ReadonlyArray<string>;
+	/** The version each released package receives. */
+	readonly versions: ReadonlyMap<string, string>;
 };
 
 /**
- * Proposes dependent work. It must return synchronously.
+ * Decides dependent work. It must return synchronously. Planning runs it until no new
+ * `release` appears, so a dependent's own dependents are considered too.
  *
  * @since @next
  */
 export type Policy = (context: Context) => ReadonlyArray<Proposal>;
 
 /**
- * Proposes manifest edits for every dependent in the group, and releases for public
- * dependents. Dependents outside the group are reported as `cross-group`.
+ * When a range is rewritten: only when the new version falls outside it (the default), or
+ * whenever the dependency is released.
  *
  * @since @next
  */
-export const propose = (): Policy => (context) =>
-	context.requirements.flatMap((requirement): ReadonlyArray<Proposal> => {
-		if (!context.members.includes(requirement.dependent))
-			return [{ ...requirement, action: "cross-group" }];
-		const edit: Proposal = { ...requirement, action: "edit" };
-		if (requirement.private || context.released.includes(requirement.dependent)) return [edit];
+export type Options = { readonly updateRanges?: "out-of-range" | "always" };
 
-		return [edit, { ...requirement, action: "release" }];
+const decide = (
+	context: Context,
+	options: Options,
+	unselected: "release" | "missing-selection",
+): ReadonlyArray<Proposal> =>
+	context.requirements.flatMap((requirement): ReadonlyArray<Proposal> => {
+		if (!context.members.includes(requirement.dependent)) {
+			return [{ ...requirement, action: "cross-group" }];
+		}
+		const range = form(requirement.range);
+		if (range._tag === "Workspace") return [{ ...requirement, action: "workspace" }];
+		const version = context.versions.get(requirement.dependency);
+		const inRange = version !== undefined && satisfies(range, SemVer.parseUnsafe(version));
+		if (inRange && (options.updateRanges ?? "out-of-range") === "out-of-range") {
+			return [{ ...requirement, action: "satisfied" }];
+		}
+		const edit: Proposal = { ...requirement, action: "edit" };
+		if (requirement.private || context.versions.has(requirement.dependent)) return [edit];
+
+		return [edit, { ...requirement, action: unselected }];
 	});
 
 /**
- * Proposes nothing beyond what the input selected. Public dependents in the group that
- * the plan does not release are reported as `missing-selection`.
+ * Includes required work in the plan: range edits for dependents in the group, and
+ * releases for public dependents whose range changes. Dependents outside the group are
+ * reported as `cross-group`.
  *
  * @since @next
  */
-export const explicit = (): Policy => (context) =>
-	context.requirements.map((requirement): Proposal => {
-		if (!context.members.includes(requirement.dependent))
-			return { ...requirement, action: "cross-group" };
-		if (requirement.private || context.released.includes(requirement.dependent))
-			return { ...requirement, action: "edit" };
+export const propose =
+	(options: Options = {}): Policy =>
+	(context) =>
+		decide(context, options, "release");
 
-		return { ...requirement, action: "missing-selection" };
-	});
+/**
+ * Like `propose`, but a required release that the plan does not select is reported as
+ * `missing-selection`, and preparation refuses until it is selected.
+ *
+ * @since @next
+ */
+export const explicit =
+	(options: Options = {}): Policy =>
+	(context) =>
+		decide(context, options, "missing-selection");

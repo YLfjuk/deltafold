@@ -1,9 +1,10 @@
-import { Result, SemVer } from "effect";
+import { Array as Arr, Order, Result, SemVer } from "effect";
 
 import { Version, type Change, type Package } from "deltafold";
 import type { Policy, Proposal, Requirement } from "./dependents-policy.ts";
 import { issue, PlanError } from "./error.ts";
 import { highest, prerelease } from "./line.ts";
+import { form, rewrite } from "./ranges.ts";
 import {
 	parse,
 	type Calculation,
@@ -116,8 +117,32 @@ export type PlannedVersion = {
 	/** Its `previous` is the package's own previous version, never a shared baseline. */
 	readonly version: Version.Version;
 	readonly line: Line | undefined;
-	/** The version came from a shared calculation, an override, or a literal target. */
+	/** The version came from a shared calculation or the package's own setting. */
 	readonly source: "shared" | "override";
+	/**
+	 * Why the package releases: its changes, a literal target, dependency updates, or
+	 * alignment with the shared version.
+	 */
+	readonly reason: "changes" | "target" | "dependencies" | "alignment";
+	/** Range edits in this package's manifest. */
+	readonly dependencies: ReadonlyArray<DependencyUpdate>;
+};
+
+/**
+ * A range edit in a dependent's manifest. Generated version modules record these as
+ * release metadata, which `ReleaseChangelog.dependencies` renders.
+ *
+ * @since @next
+ */
+export type DependencyUpdate = {
+	readonly dependent: string;
+	readonly dependency: string;
+	readonly field: string;
+	readonly manifest: string;
+	readonly from: string;
+	readonly to: string;
+	/** The dependency's new version. */
+	readonly version: string;
 };
 
 /** @since @next */
@@ -133,7 +158,10 @@ export type Plan<M extends object = any> = {
 	readonly release: Release<M>;
 	readonly versions: ReadonlyArray<PlannedVersion>;
 	readonly unchanged: ReadonlyArray<Unchanged>;
+	/** Every policy decision, sorted by dependent, field, dependency, and action. */
 	readonly dependents: ReadonlyArray<Proposal>;
+	/** Every range edit, including private dependents that do not release. */
+	readonly dependencyUpdates: ReadonlyArray<DependencyUpdate>;
 	readonly replacements: ReadonlyArray<Replacement>;
 	readonly explanations: ReadonlyArray<string>;
 };
@@ -215,12 +243,19 @@ const calculate = <M extends object>(
 const toParticipant = <M extends object>(
 	selection: Selection<M>,
 	previous: Version.Version,
+	dependencies: ReadonlyArray<string>,
 ): Participant<M> => ({
 	package: selection.package.name,
 	previous: previous.id,
 	changes: selection.changes,
 	line: selection.line,
+	dependencies,
 });
+
+const versionsOf = (planned: ReadonlyArray<PlannedVersion>) =>
+	new Map(planned.map((entry) => [entry.package, entry.version.id]));
+
+const byText = (select: (proposal: Proposal) => string) => Order.mapInput(Order.String, select);
 
 const buildPlan = <M extends object>(release: Release<M>, input: Input<M>): Plan<M> => {
 	const { config } = release;
@@ -253,110 +288,254 @@ const buildPlan = <M extends object>(release: Release<M>, input: Input<M>): Plan
 		};
 	});
 
-	const explanations: Array<string> = [];
-	const versions: Array<PlannedVersion> = [];
-	const unchanged: Array<Unchanged> = [];
+	const policy = input.dependents ?? config.dependents;
+	const requirements = input.requirements ?? [];
+	// Packages that must release because of dependency updates, with the dependencies
+	// responsible. Planning repeats until no new one appears.
+	const required = new Map<string, Array<string>>();
+	const dependenciesOf = (name: string): ReadonlyArray<string> => required.get(name) ?? [];
 
-	const assign = (
-		group: ReadonlyArray<(typeof entries)[number]>,
-		setting: VersionSetting<M>,
-		source: PlannedVersion["source"],
-	) => {
-		if (group.length === 0) return;
-		const hasChanges = group.some((entry) => entry.selection.changes.length > 0);
-		if (!hasChanges && typeof setting !== "string") {
-			for (const entry of group) {
-				unchanged.push({
-					package: entry.selection.package.name,
-					version: entry.previous.id,
-					reason: "no-changes",
-				});
-			}
-			explanations.push(
-				`No changes for ${group.map((entry) => entry.selection.package.name).join(", ")}; nothing to calculate.`,
+	const calculateVersions = () => {
+		const explanations: Array<string> = [];
+		const versions: Array<PlannedVersion> = [];
+		const unchanged: Array<Unchanged> = [];
+
+		const place = (
+			group: ReadonlyArray<(typeof entries)[number]>,
+			setting: VersionSetting<M>,
+			source: PlannedVersion["source"],
+		) => {
+			if (group.length === 0) return;
+			const hasIntent = group.some(
+				(entry) =>
+					entry.selection.changes.length > 0 ||
+					dependenciesOf(entry.selection.package.name).length > 0,
 			);
+			if (!hasIntent && typeof setting !== "string") {
+				for (const entry of group) {
+					unchanged.push({
+						package: entry.selection.package.name,
+						version: entry.previous.id,
+						reason: "no-changes",
+					});
+				}
+				explanations.push(
+					`No changes for ${group.map((entry) => entry.selection.package.name).join(", ")}; nothing to calculate.`,
+				);
 
-			return;
-		}
-		const calculation = calculate(
-			setting,
-			group.map((entry) => toParticipant(entry.selection, entry.previous)),
-			input.pre,
-		);
-		const target = parse(calculation.version);
-		for (const entry of group) {
-			const { selection, previous } = entry;
-			const name = selection.package.name;
-			if (SemVer.isLessThan(target, parse(previous.id))) {
-				fail(
-					"Downgrade",
-					`${calculation.version} would downgrade ${name} from ${previous.id}.`,
-					[name],
-				);
+				return;
 			}
-			if (
-				selection.changes.length === 0 &&
-				(calculation.unchanged === "drift" || calculation.version === previous.id)
-			) {
-				unchanged.push({
+			const calculation = calculate(
+				setting,
+				group.map((entry) =>
+					toParticipant(
+						entry.selection,
+						entry.previous,
+						dependenciesOf(entry.selection.package.name),
+					),
+				),
+				input.pre,
+			);
+			const target = parse(calculation.version);
+			for (const entry of group) {
+				const { selection, previous } = entry;
+				const name = selection.package.name;
+				const fromDependencies = dependenciesOf(name).length > 0;
+				const intent = selection.changes.length > 0 || fromDependencies;
+				if (SemVer.isLessThan(target, parse(previous.id))) {
+					fail(
+						"Downgrade",
+						`${calculation.version} would downgrade ${name} from ${previous.id}.`,
+						[name],
+					);
+				}
+				if (
+					!intent &&
+					(calculation.unchanged === "drift" || calculation.version === previous.id)
+				) {
+					unchanged.push({
+						package: name,
+						version: previous.id,
+						reason: calculation.unchanged === "drift" ? "drift" : "no-changes",
+					});
+					continue;
+				}
+				if (calculation.version === previous.id) {
+					fail(
+						"ExistingVersion",
+						`${name}@${previous.id} already exists; new contents need a new version.`,
+						[name],
+					);
+				}
+				versions.push({
 					package: name,
-					version: previous.id,
-					reason: calculation.unchanged === "drift" ? "drift" : "no-changes",
+					version: Version.make(calculation.version, {
+						previous,
+						changes: selection.changes,
+					}),
+					line: calculation.line,
+					source,
+					reason:
+						typeof setting === "string"
+							? "target"
+							: selection.changes.length > 0
+								? "changes"
+								: fromDependencies
+									? "dependencies"
+									: "alignment",
+					dependencies: [],
 				});
-				continue;
 			}
-			if (calculation.version === previous.id) {
-				fail(
-					"ExistingVersion",
-					`${name}@${previous.id} already exists; new contents need a new version.`,
-					[name],
-				);
+		};
+
+		// A dependency-only release joins the calculation as patch intent. When unchanged
+		// members drift, it is calculated on its own, from its own previous version.
+		const assign = (
+			group: ReadonlyArray<(typeof entries)[number]>,
+			setting: VersionSetting<M>,
+			source: PlannedVersion["source"],
+		) => {
+			const dependencyOnly = group.filter(
+				(entry) =>
+					entry.selection.changes.length === 0 &&
+					dependenciesOf(entry.selection.package.name).length > 0,
+			);
+			const rest = group.filter((entry) => !dependencyOnly.includes(entry));
+			if (typeof setting === "string" || dependencyOnly.length === 0 || group.length === 1) {
+				place(group, setting, source);
+
+				return;
 			}
-			versions.push({
-				package: name,
-				version: Version.make(calculation.version, {
-					previous,
-					changes: selection.changes,
-				}),
-				line: calculation.line,
-				source,
-			});
+			const probe = rest.some((entry) => entry.selection.changes.length > 0)
+				? rest
+				: dependencyOnly;
+			const mode = calculate(
+				setting,
+				probe.map((entry) =>
+					toParticipant(
+						entry.selection,
+						entry.previous,
+						dependenciesOf(entry.selection.package.name),
+					),
+				),
+				input.pre,
+			).unchanged;
+			if (mode !== "drift") {
+				place(group, setting, source);
+
+				return;
+			}
+			place(rest, setting, source);
+			for (const entry of dependencyOnly) place([entry], setting, source);
+		};
+
+		assign(
+			entries.filter((entry) => entry.override === undefined),
+			input.version ?? config.version,
+			"shared",
+		);
+		for (const entry of entries) {
+			if (entry.override !== undefined) assign([entry], entry.override, "override");
 		}
+		if (entries.some((entry) => entry.override !== undefined)) {
+			explanations.push(
+				"Packages with their own version setting do not take part in the shared calculation.",
+			);
+		}
+
+		return { versions, unchanged, explanations };
 	};
 
-	assign(
-		entries.filter((entry) => entry.override === undefined),
-		input.version ?? config.version,
-		"shared",
-	);
-	for (const entry of entries) {
-		if (entry.override !== undefined) assign([entry], entry.override, "override");
-	}
-	if (entries.some((entry) => entry.override !== undefined)) {
-		explanations.push(
-			"Packages with their own version setting do not take part in the shared calculation.",
-		);
+	let calculated = calculateVersions();
+	let proposals: ReadonlyArray<Proposal> = [];
+	for (let round = 0; ; round++) {
+		const released = versionsOf(calculated.versions);
+		const result: unknown =
+			policy?.({
+				requirements: requirements.filter((requirement) =>
+					released.has(requirement.dependency),
+				),
+				members,
+				versions: released,
+			}) ?? [];
+		if (!Array.isArray(result)) {
+			fail("InvalidPolicyResult", "A dependents policy must synchronously return proposals.");
+		}
+		// The array shape is checked above.
+		// oxlint-disable-next-line typescript/no-unsafe-type-assertion
+		proposals = result as ReadonlyArray<Proposal>;
+		let added = false;
+		for (const proposal of proposals) {
+			if (proposal.action !== "release" || released.has(proposal.dependent)) continue;
+			if (!members.includes(proposal.dependent)) {
+				fail(
+					"InvalidPolicyResult",
+					`A policy cannot release ${proposal.dependent}, which is outside group "${release.group}".`,
+					[proposal.dependent],
+				);
+			}
+			const dependencies = required.get(proposal.dependent) ?? [];
+			if (!dependencies.includes(proposal.dependency)) {
+				dependencies.push(proposal.dependency);
+				required.set(proposal.dependent, dependencies);
+				added = true;
+			}
+		}
+		if (!added) break;
+		if (round > members.length) {
+			fail(
+				"InvalidPolicyResult",
+				"Dependent releases did not settle; the dependents policy keeps proposing new work.",
+			);
+		}
+		calculated = calculateVersions();
 	}
 
-	const released = versions.map((planned) => planned.package);
-	const policy = input.dependents ?? config.dependents;
-	const dependents =
-		policy?.({
-			requirements: (input.requirements ?? []).filter((requirement) =>
-				released.includes(requirement.dependency),
-			),
-			members,
-			released,
-		}) ?? [];
+	const released = versionsOf(calculated.versions);
+	const sorted = Arr.sort(
+		proposals,
+		Order.combineAll([
+			byText((proposal) => proposal.dependent),
+			byText((proposal) => proposal.field),
+			byText((proposal) => proposal.dependency),
+			byText((proposal) => proposal.action),
+		]),
+	);
+	const updates: Array<DependencyUpdate> = [];
+	for (const proposal of sorted) {
+		if (proposal.action !== "edit") continue;
+		const range = form(proposal.range);
+		const version = released.get(proposal.dependency);
+		if (range._tag !== "Rewritable" || version === undefined) {
+			return fail(
+				"UnsupportedRange",
+				`${proposal.manifest}: ${proposal.field}["${proposal.dependency}"] is "${proposal.range}"; only ^x.y.z, ~x.y.z, exact, and workspace: ranges can be updated.`,
+				[proposal.manifest, proposal.dependent, proposal.dependency, proposal.field],
+			);
+		}
+		updates.push({
+			dependent: proposal.dependent,
+			dependency: proposal.dependency,
+			field: proposal.field,
+			manifest: proposal.manifest,
+			from: proposal.range,
+			to: rewrite(range, version),
+			version,
+		});
+	}
 
 	return {
 		_tag: "ReleasePlan",
 		release,
-		versions,
-		unchanged,
-		dependents,
+		versions: calculated.versions.map((planned) => ({
+			...planned,
+			dependencies: updates.filter((update) => update.dependent === planned.package),
+		})),
+		unchanged: calculated.unchanged,
+		dependents: sorted,
+		dependencyUpdates: updates,
 		replacements: input.replacements ?? config.replacements ?? [],
-		explanations,
+		explanations: calculated.explanations,
 	};
 };
 

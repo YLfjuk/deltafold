@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Effect, Result } from "effect";
 
-import { Release, ReleaseFiles, VersionStrategy } from "@deltafold/release";
+import { DependentsPolicy, Release, ReleaseFiles, VersionStrategy } from "@deltafold/release";
 import { memoryFs } from "./__fixtures__/memory-fs.ts";
 import { headers, packageWith, ProjectChange, retries } from "./__fixtures__/packages.ts";
 
@@ -230,6 +230,99 @@ export const version = Version.make("1.6.0", {
 				"MissingSource",
 				"ReplacementConflict",
 			]);
+		}).pipe(provide);
+	});
+});
+
+const reactRequirement = (range: string) => ({
+	dependency: "@acme/widgets",
+	dependent: "@acme/widgets-react",
+	field: "peerDependencies",
+	range,
+	manifest: "packages/react/package.json",
+	private: false,
+});
+
+const planDependents = (input: {
+	readonly range: string;
+	readonly dependents: DependentsPolicy.Policy;
+	readonly reactChanges: ReadonlyArray<typeof headers>;
+	readonly unchanged?: "align" | "drift";
+}) => {
+	const result = release.plan({
+		dependents: input.dependents,
+		version: VersionStrategy.semver({
+			bump: (change) => change.metadata.bump,
+			unchanged: input.unchanged ?? "align",
+		}),
+		requirements: [reactRequirement(input.range)],
+		packages: [
+			{ package: widgets, previous: "1.5.2", changes: [retries, headers] },
+			{ package: react, previous: "1.5.2", changes: input.reactChanges },
+		],
+	});
+	if (Result.isFailure(result)) throw new Error(result.failure.message);
+
+	return result.success;
+};
+
+describe("dependency updates", () => {
+	const reactManifest = `{\n\t"name": "@acme/widgets-react",\n\t"version": "1.5.2",\n\t"peerDependencies": {\n\t\t"@acme/widgets": "^1.5.0"\n\t}\n}\n`;
+
+	it.effect("edits the dependent's range and records it as release metadata", () => {
+		const { files, provide } = memoryFs({
+			...workspace(),
+			"packages/react/package.json": reactManifest,
+		});
+		const updated = planDependents({
+			range: "^1.5.0",
+			dependents: DependentsPolicy.propose({ updateRanges: "always" }),
+			reactChanges: [headers],
+		});
+
+		return Effect.gen(function* () {
+			yield* ReleaseFiles.apply(yield* ReleaseFiles.prepare(updated, options));
+
+			expect(files.get("packages/react/package.json")).toBe(
+				reactManifest
+					.replace('"version": "1.5.2"', '"version": "1.6.0"')
+					.replace("^1.5.0", "^1.6.0"),
+			);
+			expect(files.get("packages/react/versions/1.6.0.ts")).toContain(
+				`export const release = Version.withMetadata(version, {\n\tdependencies: [{"dependency":"@acme/widgets","field":"peerDependencies","from":"^1.5.0","to":"^1.6.0","version":"1.6.0"}],\n});`,
+			);
+			expect(files.get("packages/widgets/versions/1.6.0.ts")).not.toContain("withMetadata");
+		}).pipe(provide);
+	});
+
+	it.effect("refuses stale requirements and missing selections", () => {
+		const { provide } = memoryFs({
+			...workspace(),
+			"packages/react/package.json": reactManifest,
+		});
+		const stale = planDependents({
+			range: "^1.4.0",
+			dependents: DependentsPolicy.propose({ updateRanges: "always" }),
+			reactChanges: [headers],
+		});
+		const unselected = planDependents({
+			range: "1.5.0",
+			dependents: DependentsPolicy.explicit(),
+			reactChanges: [],
+			unchanged: "drift",
+		});
+
+		return Effect.gen(function* () {
+			const staleError = yield* Effect.flip(ReleaseFiles.prepare(stale, options));
+			expect(
+				staleError._tag === "PrepareError" &&
+					staleError.issues.map((entry) => entry.reason),
+			).toEqual(["StaleRequirement"]);
+			const unselectedError = yield* Effect.flip(ReleaseFiles.prepare(unselected, options));
+			expect(
+				unselectedError._tag === "PrepareError" &&
+					unselectedError.issues.map((entry) => entry.reason),
+			).toEqual(["StaleRequirement", "MissingSelection"]);
 		}).pipe(provide);
 	});
 });

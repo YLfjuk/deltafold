@@ -516,47 +516,158 @@ describe("prerelease lines", () => {
 	});
 });
 
+const requirement = (
+	dependent: string,
+	dependency: string,
+	range: string,
+	options: { readonly field?: string; readonly private?: boolean } = {},
+): DependentsPolicy.Requirement => ({
+	dependency,
+	dependent,
+	field: options.field ?? "peerDependencies",
+	range,
+	manifest: `packages/${dependent.replace("@acme/", "")}/package.json`,
+	private: options.private ?? false,
+});
+
+const actions = (plan: Release.Plan) =>
+	plan.dependents.map(
+		(proposal) => `${proposal.dependent}<${proposal.dependency}:${proposal.action}`,
+	);
+
 describe("dependents", () => {
-	it("proposes bounded work and reports dependents outside the group", () => {
+	const drifting = VersionStrategy.semver({
+		bump: (change: Change.Change<ProjectMetadata>) => change.metadata.bump,
+		unchanged: "drift",
+	});
+	const planWith = (input: {
+		readonly widgetChanges: ReadonlyArray<Change.Change<ProjectMetadata>>;
+		readonly requirements: ReadonlyArray<DependentsPolicy.Requirement>;
+		readonly dependents: DependentsPolicy.Policy;
+		readonly version?: Release.VersionSetting<ProjectMetadata>;
+	}) =>
+		group.plan({
+			dependents: input.dependents,
+			version: input.version ?? drifting,
+			requirements: input.requirements,
+			packages: [
+				{ package: widgets, previous: "1.5.2", changes: input.widgetChanges },
+				{ package: react, previous: "1.4.0", changes: [] },
+				{ package: tools, previous: "0.3.0", changes: [] },
+			],
+		});
+
+	it("releases dependents whose ranges break, through every hop, as patch intent", () => {
 		const plan = success(
-			group.plan({
+			planWith({
+				widgetChanges: [timeout],
 				dependents: DependentsPolicy.propose(),
-				version: VersionStrategy.semver({
-					bump: (change) => change.metadata.bump,
-					unchanged: "drift",
-				}),
 				requirements: [
-					{
-						dependency: "@acme/widgets",
-						dependent: "@acme/widgets-react",
-						field: "peerDependencies",
-						range: "^1.5.0",
-						private: false,
-					},
-					{
-						dependency: "@acme/widgets",
-						dependent: "@acme/docs-site",
+					requirement("@acme/widgets-react", "@acme/widgets", "^1.5.0"),
+					requirement("@acme/tools", "@acme/widgets-react", "1.4.0", {
 						field: "dependencies",
-						range: "^1.5.0",
-						private: true,
-					},
-				],
-				packages: [
-					{ package: widgets, previous: "1.5.2", changes: [retries] },
-					{ package: react, previous: "1.4.0", changes: [] },
-					{ package: tools, previous: "0.3.0", changes: [] },
+					}),
+					requirement("@acme/docs-site", "@acme/widgets", "^1.5.0", { private: true }),
 				],
 			}),
 		);
 
-		expect(
-			plan.dependents.map((proposal) => `${proposal.dependent}:${proposal.action}`),
-		).toEqual([
-			"@acme/widgets-react:edit",
-			"@acme/widgets-react:release",
-			"@acme/docs-site:cross-group",
+		expect(summary(plan)).toEqual([
+			"@acme/widgets@2.0.0<1.5.2",
+			"@acme/widgets-react@1.4.1<1.4.0",
+			"@acme/tools@0.3.1<0.3.0",
 		]);
-		expect(summary(plan)).toEqual(["@acme/widgets@1.6.0<1.5.2"]);
+		expect(plan.versions.map((planned) => planned.reason)).toEqual([
+			"changes",
+			"dependencies",
+			"dependencies",
+		]);
+		expect(plan.versions[1]?.version.changes).toEqual([]);
+		expect(plan.versions[1]?.dependencies).toMatchObject([
+			{ dependency: "@acme/widgets", from: "^1.5.0", to: "^2.0.0", version: "2.0.0" },
+		]);
+		expect(plan.dependencyUpdates.map((update) => `${update.dependent}:${update.to}`)).toEqual([
+			"@acme/tools:1.4.1",
+			"@acme/widgets-react:^2.0.0",
+		]);
+		expect(actions(plan)).toEqual([
+			"@acme/docs-site<@acme/widgets:cross-group",
+			"@acme/tools<@acme/widgets-react:edit",
+			"@acme/widgets-react<@acme/widgets:edit",
+		]);
+	});
+
+	it("aligns a dependency-only release to the shared version", () => {
+		const plan = success(
+			planWith({
+				widgetChanges: [timeout],
+				version: semver,
+				dependents: DependentsPolicy.propose(),
+				requirements: [requirement("@acme/widgets-react", "@acme/widgets", "^1.5.0")],
+			}),
+		);
+
+		expect(summary(plan)).toEqual([
+			"@acme/widgets@2.0.0<1.5.2",
+			"@acme/widgets-react@2.0.0<1.4.0",
+		]);
+		expect(actions(plan)).toEqual(["@acme/widgets-react<@acme/widgets:edit"]);
+	});
+
+	it("leaves satisfied ranges alone unless configured to always update them", () => {
+		const input = {
+			widgetChanges: [retries],
+			requirements: [requirement("@acme/widgets-react", "@acme/widgets", "^1.5.0")],
+		};
+		const preserved = success(planWith({ ...input, dependents: DependentsPolicy.propose() }));
+		expect(summary(preserved)).toEqual(["@acme/widgets@1.6.0<1.5.2"]);
+		expect(actions(preserved)).toEqual(["@acme/widgets-react<@acme/widgets:satisfied"]);
+
+		const always = success(
+			planWith({
+				...input,
+				dependents: DependentsPolicy.propose({ updateRanges: "always" }),
+			}),
+		);
+		expect(always.dependencyUpdates.map((update) => update.to)).toEqual(["^1.6.0"]);
+		expect(summary(always)).toContain("@acme/widgets-react@1.4.1<1.4.0");
+	});
+
+	it("reports missing selections, workspace ranges, and refuses unsupported ranges", () => {
+		const explicit = success(
+			planWith({
+				widgetChanges: [timeout],
+				dependents: DependentsPolicy.explicit(),
+				requirements: [
+					requirement("@acme/widgets-react", "@acme/widgets", "^1.5.0"),
+					requirement("@acme/tools", "@acme/widgets", "workspace:^"),
+				],
+			}),
+		);
+		expect(summary(explicit)).toEqual(["@acme/widgets@2.0.0<1.5.2"]);
+		expect(actions(explicit)).toEqual([
+			"@acme/tools<@acme/widgets:workspace",
+			"@acme/widgets-react<@acme/widgets:edit",
+			"@acme/widgets-react<@acme/widgets:missing-selection",
+		]);
+
+		expect(
+			failure(
+				planWith({
+					widgetChanges: [timeout],
+					dependents: DependentsPolicy.propose(),
+					requirements: [requirement("@acme/widgets-react", "@acme/widgets", ">=1 <3")],
+				}),
+			),
+		).toMatchObject({
+			reason: "UnsupportedRange",
+			subjects: [
+				"packages/widgets-react/package.json",
+				"@acme/widgets-react",
+				"@acme/widgets",
+				"peerDependencies",
+			],
+		});
 	});
 });
 

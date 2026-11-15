@@ -96,6 +96,24 @@ const occurrences = (text: string, token: string): ReadonlyArray<number> => {
 	return found;
 };
 
+const quote = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Finds a dependency's range string inside one dependency field of a manifest's text. */
+const findRange = (text: string, field: string, dependency: string) => {
+	const open = new RegExp(`"${quote(field)}"\\s*:\\s*\\{`).exec(text);
+	if (open === null) return undefined;
+	const bodyStart = open.index + open[0].length;
+	const bodyEnd = text.indexOf("}", bodyStart);
+	if (bodyEnd === -1) return undefined;
+	const entry = new RegExp(`"${quote(dependency)}"\\s*:\\s*"([^"]*)"`).exec(
+		text.slice(bodyStart, bodyEnd),
+	);
+	if (entry?.[1] === undefined) return undefined;
+	const end = bodyStart + entry.index + entry[0].length - 1;
+
+	return { range: entry[1], start: end - entry[1].length, end };
+};
+
 /**
  * Reads pending modules, manifests, and replacement targets, and prepares every file
  * edit of a plan. It writes nothing. Problems are collected and reported together.
@@ -235,6 +253,7 @@ export const prepare = (
 				declarations: copied,
 				exportName,
 				line: entry.line,
+				dependencies: entry.dependencies,
 				consumed: pendingPaths,
 			});
 			if ("issues" in rendered) issues.push(...rendered.issues);
@@ -260,6 +279,43 @@ export const prepare = (
 				continue;
 			}
 			stage(path, text.replace(field[0], `${field[1]}${entry.version.id}${field[3]}`));
+		}
+
+		// Dependency ranges. Every edge the plan used must still match its manifest.
+		const checked = new Set<string>();
+		for (const proposal of plan.dependents) {
+			const path = normalizePath(proposal.manifest);
+			const text = yield* read(path);
+			const found =
+				text === null ? undefined : findRange(text, proposal.field, proposal.dependency);
+			const edge = JSON.stringify([path, proposal.field, proposal.dependency]);
+			if (found?.range !== proposal.range && !checked.has(edge)) {
+				issues.push(
+					issue(
+						"StaleRequirement",
+						`${path}: ${proposal.field}["${proposal.dependency}"] is ${found === undefined ? "missing" : `"${found.range}"`}, but the plan used "${proposal.range}". Resolve requirements and plan again.`,
+						[path, proposal.dependent, proposal.dependency, proposal.field],
+					),
+				);
+			}
+			checked.add(edge);
+			if (proposal.action === "missing-selection") {
+				issues.push(
+					issue(
+						"MissingSelection",
+						`${proposal.dependent} must release because ${proposal.dependency} changes outside its range; select it in the plan.`,
+						[proposal.dependent, proposal.dependency],
+					),
+				);
+			}
+		}
+		for (const update of plan.dependencyUpdates) {
+			const path = normalizePath(update.manifest);
+			const text = yield* current(path);
+			const found =
+				text === null ? undefined : findRange(text, update.field, update.dependency);
+			if (text === null || found === undefined || found.range !== update.from) continue;
+			stage(path, `${text.slice(0, found.start)}${update.to}${text.slice(found.end)}`);
 		}
 
 		// Literal replacements.
