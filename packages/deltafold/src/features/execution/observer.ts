@@ -154,7 +154,9 @@ type Base = {
 };
 
 /**
- * Handler coverage passed and the run is starting. Lists every step of the route.
+ * The run is starting: every action has a handler, and manual work has an interaction to
+ * ask with. A run that fails either check emits no events. Lists every step of the route,
+ * including omitted ones.
  *
  * @since @next
  */
@@ -225,8 +227,13 @@ export type RunFinished = Base & {
 };
 
 /**
- * What an observer receives. Events carry identifiers and plain data, never payloads,
- * errors, or causes. Action descriptions are included, so they must not contain secrets.
+ * What an observer receives. A run emits `RunStarted`; then, for each step that is not
+ * omitted, `StepStarted`, an `ActionPhaseStarted` for each phase that starts, an
+ * `ActionSettled` for each occurrence, and `StepSettled`; and finally `RunFinished`. Action
+ * events of parallel branches interleave.
+ *
+ * Events carry identifiers and plain data, never payloads, errors, or causes. Action
+ * descriptions are included, so they must not contain secrets.
  *
  * @since @next
  */
@@ -256,7 +263,15 @@ export type ObservationFailure = {
 };
 
 /**
- * Receives execution events. `R` is the Effect services it requires.
+ * Receives the events of a run. Pass observers to the executor's `observers` option. `R`
+ * is the Effect services an observer requires, which become requirements of the execution.
+ *
+ * The executor delivers one event at a time, to each observer in array order, and waits
+ * for each delivery before it continues, so every observer sees the same order. After
+ * cancellation or a timeout, each delivery waits at most `settleTimeout` and is then
+ * abandoned. A failed or abandoned delivery is listed in the report's `observation` and
+ * never changes an outcome. Observers only receive events: they cannot answer a manual
+ * confirmation.
  *
  * @since @next
  */

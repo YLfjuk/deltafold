@@ -287,16 +287,16 @@ Effect interaction, and keep their errors and services.
 
 ## Observe execution
 
-Observers receive a run's events as they happen. Like handlers, they are an
-input of the run: pass them to the executor's `observers` option.
+Observers receive a run's events as they happen, for example to write logs or
+show progress. Like handlers, they are an input of the run: pass them to the
+executor's `observers` option.
 
 ```ts
 import { Observer } from "deltafold";
 
-// Structured logs.
 const logging = Observer.effect((event) => Effect.logDebug(event._tag));
 
-// A progress line.
+// Progress goes to stderr, so it stays out of the program's own output.
 const progress = Observer.sync((event) => {
 	if (event._tag !== "ActionSettled") return;
 	const { finished, total } = event.progress.actions;
@@ -308,29 +308,12 @@ await Executor.runPromise(plan, { handlers, observers: [logging, progress] });
 
 `Observer.sync`, `Observer.promise`, and `Observer.effect` take a callback for
 each event. An Effect observer's services become requirements of the execution.
-Observers run in array order, and the executor waits for each one before it
-continues, so events arrive in one order and all of them arrive before the
-execution settles. A failing observer never changes the outcome; the report
-lists it under `observation`. After cancellation or a timeout, the executor waits
-for each observer at most `settleTimeout`.
+The executor waits for each observer before it continues, so a slow observer
+slows the run. A failing observer never changes the outcome; the report lists it
+under `observation`.
 
-A run emits `RunStarted`, then `StepStarted`, `ActionPhaseStarted` for each
-prepare phase, apply phase, confirmation, and verification that starts,
-`ActionSettled` with the final outcome, `StepSettled`, and finally
-`RunFinished`. `ActionSettled` arrives once the action's scope has closed, unless an
-interrupted Promise has not settled: the outcome is final, but cleanup waits for the
-Promise, and a cleanup failure after that is only logged. Every event carries progress counted in the optimized
-plan: steps with actions, prose-only steps (which the executor does not wait
-at), and actions. Steps that rules emptied and noop steps are listed in
-`RunStarted` but not counted. Events carry identifiers and descriptions, never
-payloads or errors; the report keeps the full errors. Pass `runId` to tell runs
-apart in an observer shared by concurrent runs.
-
-A manual occurrence's `confirmation` phase lasts while the run waits for a
-person, so a progress display can show that it is waiting. Its outcome reports
-the performer and, once confirmed, whether the work was `asserted` or
-`verified`; a decline settles as `Declined`. Observers cannot answer for the
-person. A run that fails with `InteractionUnavailable` emits no events.
+The events, their order, and their delivery are documented on
+[`Observer`](https://github.com/YLfjuk/deltafold/blob/main/packages/deltafold/src/features/execution/observer.ts).
 
 ## Simplify routes with rules and shortcuts
 
