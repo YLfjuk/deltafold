@@ -13,7 +13,8 @@ import {
 } from "./version-strategy.ts";
 
 /**
- * A literal target version, or a strategy that calculates one.
+ * A literal target version, or a strategy that calculates one. Literal targets belong to
+ * one plan's input; group configuration takes strategies only.
  *
  * @since @next
  */
@@ -34,8 +35,11 @@ export type Files = {
 /** @since @next */
 export type Registration<M extends object> = {
 	readonly package: Package.Package;
-	/** An independent version or strategy. The package then leaves the shared calculation. */
-	readonly version?: VersionSetting<M>;
+	/**
+	 * An independent strategy. The package then leaves the shared calculation. A group is
+	 * reused across releases, so a fixed version is passed to one plan instead.
+	 */
+	readonly version?: Strategy<M>;
 	readonly files?: Files;
 };
 
@@ -58,8 +62,11 @@ export type Config<M extends object> = {
 	readonly packages: ReadonlyArray<Registration<M>>;
 	/** The change factory whose metadata type policies and strategies receive. */
 	readonly change: Change.Definition<M>;
-	/** The shared version setting for packages without their own. */
-	readonly version: VersionSetting<M>;
+	/**
+	 * The shared strategy for packages without their own. A fixed version would apply to
+	 * every future release of the group, so literal targets are plan input only.
+	 */
+	readonly version: Strategy<M>;
 	readonly dependents?: Policy;
 	readonly replacements?: ReadonlyArray<Replacement>;
 	/** The export name of generated version modules. Defaults to `version`. */
