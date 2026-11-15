@@ -83,6 +83,17 @@ packages; plan input cannot silently introduce another package. Package/change
 associations belong to release configuration/input, not to core Change or the
 pending declaration. A shared change can be included for several packages.
 
+Each member's previous version is, in order: a stated `previous`; in
+`ReleaseFiles.resolve`, the manifest's version, always passed to plan as stated;
+in a direct `release.plan` call, the single head of the package history, the one
+version nothing descends from. A bare `Package`, or a member without `previous`,
+uses that head. Several heads (for example a backport merged forward) refuse
+with `PreviousRequired`, naming every such package and its heads; an empty
+history refuses with `NoPrevious`. Each planned and unchanged member reports
+`previousFrom: "stated" | "history-head"`, and an explanation names the head
+used, noting when it is a prerelease. `Release.heads(pkg)` lists the heads. A
+planned version must be new to the whole package history (`ExistingVersion`).
+
 Release.plan remains the one-off equivalent of a configured planner. Root
 version settings supply a shared calculation; per-package overrides supply
 independent versions or strategies. Only inheriting packages influence the
@@ -344,9 +355,8 @@ These contracts worked as accepted:
 
 Interface choices made by the prototype, open to revision:
 
-- Plan input lists every member, with empty changes for unchanged ones, so an
-  aligned package always has a known previous version. `previous` must exist in
-  the package history.
+- Plan input lists every member, so an aligned package always has a known
+  previous version. A stated `previous` must exist in the package history.
 - Alignment is the strategy result's `unchanged: "align" | "drift"`, set by the
   `unchanged` option of `VersionStrategy.semver`.
 - A shared calculation without changes produces no versions, with or without

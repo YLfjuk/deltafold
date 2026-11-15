@@ -79,7 +79,12 @@ describe("group planning", () => {
 			"@acme/widgets-react@1.6.0<1.4.0",
 		]);
 		expect(plan.unchanged).toEqual([
-			{ package: "@acme/tools", version: "0.3.0", reason: "no-changes" },
+			{
+				package: "@acme/tools",
+				version: "0.3.0",
+				reason: "no-changes",
+				previousFrom: "stated",
+			},
 		]);
 	});
 
@@ -762,19 +767,23 @@ describe("stable promotion", () => {
 	});
 });
 
+// Each history ends at the stated previous version, so planned versions are new to it.
+const upTo = (ids: ReadonlyArray<string>, previous: string) =>
+	ids.slice(0, ids.indexOf(previous) + 1);
+
 const planLines = (input: {
 	readonly unchanged: "align" | "drift";
 	readonly a: { readonly previous: string };
 	readonly b: { readonly previous: string };
 }) => {
-	const a = packageWith("@acme/a", [
-		"1.5.2",
-		"2.0.0-beta.0",
-		"2.0.0-beta.1",
-		"2.0.0-beta.2",
-		"2.0.0-beta.3",
-	]);
-	const b = packageWith("@acme/b", ["1.5.2", "2.0.0-beta.0", "2.0.0-beta.1", "1.6.0-beta.0"]);
+	const a = packageWith(
+		"@acme/a",
+		upTo(["1.5.2", "2.0.0-beta.0", "2.0.0-beta.1", "2.0.0-beta.2"], input.a.previous),
+	);
+	const b = packageWith(
+		"@acme/b",
+		upTo(["1.5.2", "2.0.0-beta.0", "1.6.0-beta.0"], input.b.previous),
+	);
 
 	return Release.make("lines", {
 		packages: [member(a), member(b)],
@@ -877,5 +886,107 @@ describe("build metadata", () => {
 			}),
 		);
 		expect(summary(literal)).toEqual(["@acme/built@1.6.0+build.4<1.5.2+build.3"]);
+	});
+});
+
+const groupOf = (...packages: ReadonlyArray<Package.Package>) =>
+	Release.make("previous", {
+		packages: packages.map(member),
+		change: ProjectChange,
+		version: VersionStrategy.semver({ bump: (change) => change.metadata.bump }),
+	});
+
+describe("previous versions in plan input", () => {
+	const v152 = Version.make("1.5.2", { changes: [] });
+	const branched = Package.make("@acme/branched", {
+		history: History.make({
+			versions: [
+				v152,
+				Version.make("2.0.0", { previous: v152, changes: [] }),
+				Version.make("1.5.3", { previous: v152, changes: [] }),
+			],
+			migrations: [],
+		}),
+	});
+	const chain = packageWith("@acme/chain", ["1.5.0", "1.5.2"]);
+	const empty = packageWith("@acme/empty", []);
+
+	it("takes a bare package's previous version from the single head and reports it", () => {
+		const plan = success(
+			groupOf(chain).plan({ packages: [{ package: chain, changes: [retries] }] }),
+		);
+		const unchanged = success(groupOf(chain).plan({ packages: [chain] }));
+
+		expect(summary(plan)).toEqual(["@acme/chain@1.6.0<1.5.2"]);
+		expect(plan.versions[0]?.previousFrom).toBe("history-head");
+		expect(plan.explanations[0]).toBe(
+			"@acme/chain: no previous stated; using the only head of its history, 1.5.2.",
+		);
+		expect(unchanged.unchanged).toEqual([
+			{
+				package: "@acme/chain",
+				version: "1.5.2",
+				reason: "no-changes",
+				previousFrom: "history-head",
+			},
+		]);
+		expect(Release.heads(branched).map((version) => version.id)).toEqual(["2.0.0", "1.5.3"]);
+	});
+
+	it("refuses several heads and empty histories, naming every package at once", () => {
+		const twoHeads = packageWith("@acme/other", ["1.0.0"]);
+		const another = Package.make("@acme/forked", {
+			history: History.make({
+				versions: [
+					...twoHeads.history.versions,
+					Version.make("1.1.0", { previous: twoHeads.history.versions[0], changes: [] }),
+					Version.make("1.0.1", { previous: twoHeads.history.versions[0], changes: [] }),
+				],
+				migrations: [],
+			}),
+		});
+
+		expect(
+			failure(
+				groupOf(branched, another, chain).plan({ packages: [branched, another, chain] }),
+			),
+		).toMatchObject({
+			reason: "PreviousRequired",
+			subjects: ["@acme/branched", "2.0.0", "1.5.3", "@acme/forked", "1.1.0", "1.0.1"],
+		});
+		expect(
+			success(
+				groupOf(branched).plan({
+					packages: [{ package: branched, previous: "1.5.3", changes: [headers] }],
+				}),
+			).versions[0]?.previousFrom,
+		).toBe("stated");
+		expect(failure(groupOf(empty).plan({ packages: [empty] }))).toMatchObject({
+			reason: "NoPrevious",
+			subjects: ["@acme/empty"],
+		});
+	});
+
+	it("says when the head it uses is a prerelease", () => {
+		const pre = packageWith("@acme/pre", ["1.5.2", "2.0.0-rc.0"]);
+		const plan = success(
+			groupOf(pre).plan({
+				pre: { tag: "rc", continue: true },
+				packages: [{ package: pre, changes: [headers] }],
+			}),
+		);
+
+		expect(summary(plan)).toEqual(["@acme/pre@2.0.0-rc.1<2.0.0-rc.0"]);
+		expect(plan.explanations[0]).toContain("a prerelease, so this release continues from it");
+	});
+
+	it("refuses a planned version that already exists anywhere in the history", () => {
+		expect(
+			failure(
+				groupOf(branched).plan({
+					packages: [{ package: branched, previous: "1.5.2", changes: [headers] }],
+				}),
+			),
+		).toMatchObject({ reason: "ExistingVersion", subjects: ["@acme/branched", "1.5.3"] });
 	});
 });

@@ -11,6 +11,8 @@ export type Reason =
 	| "OutsideGroup"
 	| "MissingMember"
 	| "UnknownPrevious"
+	| "PreviousRequired"
+	| "NoPrevious"
 	| "InvalidVersion"
 	| "InvalidBump"
 	| "InvalidPre"

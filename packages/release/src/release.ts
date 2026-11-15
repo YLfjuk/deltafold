@@ -1,6 +1,6 @@
 import { Array as Arr, Order, Result, SemVer } from "effect";
 
-import { Version, type Change, type Package } from "deltafold";
+import { Package, Version, type Change } from "deltafold";
 import type { Policy, Proposal, Requirement } from "./dependents-policy.ts";
 import { issue, PlanError } from "./error.ts";
 import { highest, lineOf, onLine, parse, prerelease } from "./line.ts";
@@ -83,9 +83,14 @@ export type Config<M extends object> = {
  */
 export type Selection<M extends object> = {
 	readonly package: Package.Package;
-	/** The released version this release descends from. It must be in the package history. */
-	readonly previous: Version.Version | string;
-	readonly changes: ReadonlyArray<Change.Change<M>>;
+	/**
+	 * The released version this release descends from. It must be in the package history.
+	 * Omitted, it is the history's single head, the one version nothing descends from;
+	 * planning refuses when there are several.
+	 */
+	readonly previous?: Version.Version | string;
+	/** Omitted means no changes. */
+	readonly changes?: ReadonlyArray<Change.Change<M>>;
 	/** Overrides the registered and shared version setting for this run. */
 	readonly version?: VersionSetting<M>;
 };
@@ -97,8 +102,11 @@ export type Selection<M extends object> = {
  * @since @next
  */
 export type Input<M extends object> = {
-	/** Every registered package, with empty changes for unchanged ones. */
-	readonly packages: ReadonlyArray<Selection<M>>;
+	/**
+	 * Every registered package. A bare Package stands for a member with no changes and no
+	 * overrides, descending from the single head of its history.
+	 */
+	readonly packages: ReadonlyArray<Selection<M> | Package.Package>;
 	readonly version?: VersionSetting<M>;
 	readonly dependents?: Policy;
 	readonly replacements?: ReadonlyArray<Replacement>;
@@ -126,7 +134,16 @@ export type PlannedVersion = {
 	readonly reason: "changes" | "target" | "dependencies" | "alignment";
 	/** Range edits in this package's manifest. */
 	readonly dependencies: ReadonlyArray<DependencyUpdate>;
+	/** Whether `previous` was stated, or taken from the single head of the history. */
+	readonly previousFrom: PreviousFrom;
 };
+
+/**
+ * Where a member's previous version came from.
+ *
+ * @since @next
+ */
+export type PreviousFrom = "stated" | "history-head";
 
 /**
  * A range edit in a dependent's manifest. Generated version modules record these as
@@ -150,6 +167,7 @@ export type Unchanged = {
 	readonly package: string;
 	readonly version: string;
 	readonly reason: "no-changes" | "drift";
+	readonly previousFrom: PreviousFrom;
 };
 
 /** @since @next */
@@ -179,18 +197,90 @@ const fail = (...args: Parameters<typeof issue>): never => {
 	throw new PlanError(issue(...args));
 };
 
-const resolvePrevious = <M extends object>(selection: Selection<M>): Version.Version => {
-	const id = typeof selection.previous === "string" ? selection.previous : selection.previous.id;
-	const known = selection.package.history.versions.find((version) => version.id === id);
+/**
+ * The versions of a package's history that no other version descends from.
+ *
+ * @example
+ * ```ts
+ * Release.heads(widgets).map((version) => version.id); // ["2.0.0", "1.5.3"]
+ * ```
+ *
+ * @since @next
+ */
+export const heads = (pkg: Package.Package): ReadonlyArray<Version.Version> => {
+	const parents = new Set(pkg.history.versions.flatMap((version) => version.previous?.id ?? []));
 
-	return (
-		known ??
-		fail(
-			"UnknownPrevious",
-			`${selection.package.name}@${id} is not in the package history, so its ancestry is unknown.`,
-			[selection.package.name, id],
-		)
+	return pkg.history.versions.filter((version) => !parents.has(version.id));
+};
+
+type Member<M extends object> = {
+	readonly package: Package.Package;
+	readonly previous: Version.Version | string | undefined;
+	readonly changes: ReadonlyArray<Change.Change<M>>;
+	readonly version: VersionSetting<M> | undefined;
+};
+
+const memberOf = <M extends object>(entry: Selection<M> | Package.Package): Member<M> =>
+	Package.isPackage(entry)
+		? { package: entry, previous: undefined, changes: [], version: undefined }
+		: {
+				package: entry.package,
+				previous: entry.previous,
+				changes: entry.changes ?? [],
+				version: entry.version,
+			};
+
+const statedPrevious = <M extends object>(member: Member<M>, id: string): Version.Version =>
+	member.package.history.versions.find((version) => version.id === id) ??
+	fail(
+		"UnknownPrevious",
+		`${member.package.name}@${id} is not in the package history, so its ancestry is unknown.`,
+		[member.package.name, id],
 	);
+
+/** Resolves every member's previous version, reporting all ambiguous members at once. */
+const previousVersions = <M extends object>(members: ReadonlyArray<Member<M>>) => {
+	const resolved = new Map<string, { previous: Version.Version; from: PreviousFrom }>();
+	const ambiguous: Array<string> = [];
+	const empty: Array<string> = [];
+	for (const member of members) {
+		const name = member.package.name;
+		if (member.previous !== undefined) {
+			const id = typeof member.previous === "string" ? member.previous : member.previous.id;
+			resolved.set(name, { previous: statedPrevious(member, id), from: "stated" });
+			continue;
+		}
+		const found = heads(member.package);
+		const [only] = found;
+		if (only !== undefined && found.length === 1) {
+			resolved.set(name, { previous: only, from: "history-head" });
+		} else if (found.length === 0) empty.push(name);
+		else ambiguous.push(name, ...found.map((version) => version.id));
+	}
+	if (empty.length > 0) {
+		fail(
+			"NoPrevious",
+			`${empty.join(", ")} ${empty.length === 1 ? "has" : "have"} an empty history, so there is no previous version to descend from. State previous explicitly.`,
+			empty,
+		);
+	}
+	if (ambiguous.length > 0) {
+		const described = members
+			.filter((member) => member.previous === undefined && heads(member.package).length > 1)
+			.map(
+				(member) =>
+					`${member.package.name} has several heads (${heads(member.package)
+						.map((version) => version.id)
+						.join(", ")})`,
+			);
+		fail(
+			"PreviousRequired",
+			`${described.join("; ")}. State { package, previous } to choose one.`,
+			ambiguous,
+		);
+	}
+
+	return resolved;
 };
 
 const calculate = <M extends object>(
@@ -241,7 +331,7 @@ const calculate = <M extends object>(
 };
 
 const toParticipant = <M extends object>(
-	selection: Selection<M>,
+	selection: Member<M>,
 	previous: Version.Version,
 	dependencies: ReadonlyArray<string>,
 ): Participant<M> => ({
@@ -260,7 +350,8 @@ const byText = (select: (proposal: Proposal) => string) => Order.mapInput(Order.
 const buildPlan = <M extends object>(release: Release<M>, input: Input<M>): Plan<M> => {
 	const { config } = release;
 	const members = config.packages.map((registration) => registration.package.name);
-	const selected = input.packages.map((selection) => selection.package.name);
+	const selections = input.packages.map((entry) => memberOf(entry));
+	const selected = selections.map((selection) => selection.package.name);
 	const duplicates = selected.filter((name, index) => selected.indexOf(name) !== index);
 	if (duplicates.length > 0) fail("DuplicatePackage", "Select each package once.", duplicates);
 	const outside = selected.filter((name) => !members.includes(name));
@@ -276,14 +367,22 @@ const buildPlan = <M extends object>(release: Release<M>, input: Input<M>): Plan
 		);
 	}
 
-	const entries = input.packages.map((selection) => {
+	const previousOf = previousVersions(selections);
+	const entries = selections.map((selection) => {
 		const registration = config.packages.find(
 			(candidate) => candidate.package.name === selection.package.name,
 		);
+		const resolved = previousOf.get(selection.package.name);
+		if (resolved === undefined) {
+			return fail("UnknownPrevious", `${selection.package.name} has no previous version.`, [
+				selection.package.name,
+			]);
+		}
 
 		return {
 			selection,
-			previous: resolvePrevious(selection),
+			previous: resolved.previous,
+			previousFrom: resolved.from,
 			override: selection.version ?? registration?.version,
 		};
 	});
@@ -317,6 +416,7 @@ const buildPlan = <M extends object>(release: Release<M>, input: Input<M>): Plan
 						package: entry.selection.package.name,
 						version: entry.previous.id,
 						reason: "no-changes",
+						previousFrom: entry.previousFrom,
 					});
 				}
 				explanations.push(
@@ -372,14 +472,16 @@ const buildPlan = <M extends object>(release: Release<M>, input: Input<M>): Plan
 						package: name,
 						version: previous.id,
 						reason: calculation.unchanged === "drift" ? "drift" : "no-changes",
+						previousFrom: entry.previousFrom,
 					});
 					continue;
 				}
-				if (placement === previous.id) {
+				// One identity, one definition: a planned id must be new to the whole history.
+				if (selection.package.history.versions.some((known) => known.id === placement)) {
 					fail(
 						"ExistingVersion",
-						`${name}@${previous.id} already exists; new contents need a new version.`,
-						[name],
+						`${name}@${placement} already exists in its history; new contents need a new version.`,
+						[name, placement],
 					);
 				}
 				const version = Version.make(placement, { previous, changes: selection.changes });
@@ -397,6 +499,7 @@ const buildPlan = <M extends object>(release: Release<M>, input: Input<M>): Plan
 									? "dependencies"
 									: "alignment",
 					dependencies: [],
+					previousFrom: entry.previousFrom,
 				});
 			}
 		};
@@ -548,7 +651,16 @@ const buildPlan = <M extends object>(release: Release<M>, input: Input<M>): Plan
 		dependents: sorted,
 		dependencyUpdates: updates,
 		replacements: input.replacements ?? config.replacements ?? [],
-		explanations: calculated.explanations,
+		explanations: [
+			...entries.flatMap((entry) =>
+				entry.previousFrom === "history-head"
+					? [
+							`${entry.selection.package.name}: no previous stated; using the only head of its history, ${entry.previous.id}${SemVer.isPrerelease(parse(entry.previous.id)) ? ", a prerelease, so this release continues from it" : ""}.`,
+						]
+					: [],
+			),
+			...calculated.explanations,
+		],
 	};
 };
 
