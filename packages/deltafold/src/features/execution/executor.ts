@@ -114,11 +114,7 @@ export type Report<A extends Action.Any = Action.Any, E = unknown> = {
 	readonly bodiesStarted: boolean;
 	/** Progress is not persisted. Rerunning the plan repeats completed actions. */
 	readonly persistence: "none";
-	/**
-	 * Observers that failed or were abandoned. Never affects outcomes or status.
-	 *
-	 * @since @next
-	 */
+	/** Observers that failed or were abandoned. Never affects outcomes or status. */
 	readonly observation: ReadonlyArray<Observer.ObservationFailure>;
 };
 
@@ -340,15 +336,9 @@ export type Options<
 	 * observers attached to a package. The executor waits for each observer before it
 	 * continues; an observer failure is recorded in `report.observation` and never changes
 	 * the outcome.
-	 *
-	 * @since @next
 	 */
 	readonly observers?: ReadonlyArray<O>;
-	/**
-	 * Identifies the run in observer events.
-	 *
-	 * @since @next
-	 */
+	/** Identifies the run in observer events. */
 	readonly runId?: string;
 	/**
 	 * Run prepare phases without running any apply phase. A prepare phase that may
