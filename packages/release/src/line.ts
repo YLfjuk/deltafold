@@ -37,12 +37,9 @@ export const bumpStable = (version: SemVer.SemVer, bump: Bump): SemVer.SemVer =>
 const impliedBump = (from: SemVer.SemVer, to: SemVer.SemVer): Bump =>
 	to.major > from.major ? "major" : to.minor > from.minor ? "minor" : "patch";
 
+// Counters may differ: packages in a drifting group keep their own counter on one line.
 const sameLine = (a: Line, b: Line) =>
-	a.baseline === b.baseline &&
-	a.bump === b.bump &&
-	a.target === b.target &&
-	a.tag === b.tag &&
-	a.counter === b.counter;
+	a.baseline === b.baseline && a.bump === b.bump && a.target === b.target && a.tag === b.tag;
 
 const identifier = /^[0-9A-Za-z-]+$/;
 
@@ -61,20 +58,26 @@ export const highest = (participants: ReadonlyArray<Participant<object>>): SemVe
 };
 
 /** The recorded line every participant shares, or `undefined` when none has one. */
+/**
+ * The one recorded line of a calculation. Participants without a line join it; lines may
+ * differ only in their counters, and the highest counter is returned.
+ */
 const sharedLine = (participants: ReadonlyArray<Participant<object>>, purpose: string): Line => {
-	const lines = participants.map((participant) => participant.line);
-	const prior = lines[0];
-	if (prior === undefined || lines.some((line) => line === undefined || !sameLine(line, prior))) {
+	const lines = participants.flatMap((participant) =>
+		participant.line === undefined ? [] : [participant.line],
+	);
+	const [first] = lines;
+	if (first === undefined || lines.some((line) => !sameLine(line, first))) {
 		throw new PlanError(
 			issue(
 				"PrereleaseContext",
-				`${purpose} needs one recorded prerelease line shared by every participant of the calculation. Calculate independent lines separately.`,
+				`${purpose} needs one recorded prerelease line; participants without one join it, but different lines cannot share a calculation. Calculate independent lines separately.`,
 				subjects(participants),
 			),
 		);
 	}
 
-	return prior;
+	return lines.reduce((best, line) => (line.counter > best.counter ? line : best), first);
 };
 
 /**
@@ -117,7 +120,7 @@ export const prerelease = (options: {
 	}
 	const prior = pre.continue
 		? sharedLine(participants, "Continuing a prerelease line")
-		: participants[0]?.line;
+		: participants.find((participant) => participant.line !== undefined)?.line;
 	if (!pre.continue && SemVer.isPrerelease(baseline) && prior === undefined) {
 		throw new PlanError(
 			issue(

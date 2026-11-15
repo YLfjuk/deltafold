@@ -147,8 +147,16 @@ target below 3.0.0 keeps 3.0.0. A prerelease literal with pre is an error, and a
 literal below the line fails the no-downgrade check.
 
 The plan's configured tag determines the output identifier even with mixed
-baselines. A shared calculation uses a consistent stage choice. Exact handling
-of independent line contexts within one group must be exercised in prototypes.
+baselines. A shared calculation uses a consistent stage choice.
+
+A shared calculation continues one recorded line. Participants without a line
+join it, following the group's alignment rule: in an aligned group they take the
+shared prerelease version; in a drifting group they join the same line (target
+and tag) with their own counter, starting at 0, and every package keeps its own
+counter from then on. From widgets at 2.0.0-beta.1 and react at stable 1.5.2,
+both with changes, an aligned group gives both 2.0.0-beta.2, and a drifting
+group gives widgets 2.0.0-beta.2 and react 2.0.0-beta.0. Participants with
+different lines cannot share a calculation.
 Prerelease identifiers are distinct from publishing distribution tags.
 
 Superseded: premajor/preminor/prepatch/prerelease as separate change bump values;
@@ -326,5 +334,5 @@ Product gaps that need a decision:
 - A `workspace:` range never triggers a dependent release.
 - Loading recorded prerelease line state from generated modules is not built;
   `line` is still plan input.
-- One shared calculation cannot continue independent prerelease lines; such
-  packages need separate settings.
+- Packages on different prerelease lines cannot share a calculation; they need
+  their own version settings.
