@@ -9,7 +9,7 @@ import { adaptPromise } from "./promise-callback.ts";
  * What a person says about manual work. There is no other answer: free-form input never
  * reaches a report.
  *
- * @since @next
+ * @since 0.2.0
  */
 export type Answer = "confirmed" | "declined";
 
@@ -17,7 +17,7 @@ export type Answer = "confirmed" | "declined";
  * A request to confirm manual work. The occurrence carries the action, its description,
  * and the migration instruction that declared it, which is what to show the person.
  *
- * @since @next
+ * @since 0.2.0
  */
 export type Request<A extends Action.Any = Action.Any> = {
 	readonly occurrence: Occurrence<A>;
@@ -29,7 +29,7 @@ export type Request<A extends Action.Any = Action.Any> = {
  * `"confirmed"` or `"declined"` (`invalid-answer`). An invalid answer is never kept: it
  * may be text that the person typed.
  *
- * @since @next
+ * @since 0.2.0
  */
 export class UnexpectedInteractionError extends Data.TaggedError("UnexpectedInteractionError")<{
 	readonly occurrenceId: string;
@@ -67,7 +67,7 @@ const TypeId = "~deltafold/Interaction";
  * serializes its own prompts. A failure or a decline elsewhere stops new actions but
  * does not withdraw a request that was already made; only cancellation does.
  *
- * @since @next
+ * @since 0.2.0
  */
 export type Interaction<out E = never, out R = never> = {
 	readonly [TypeId]: typeof TypeId;
@@ -77,28 +77,28 @@ export type Interaction<out E = never, out R = never> = {
 /**
  * Any interaction.
  *
- * @since @next
+ * @since 0.2.0
  */
 export type Any = Interaction<any, any>;
 
 /**
  * The errors of an interaction.
  *
- * @since @next
+ * @since 0.2.0
  */
 export type Error<I> = I extends Interaction<infer E, any> ? E : never;
 
 /**
  * The Effect services of an interaction.
  *
- * @since @next
+ * @since 0.2.0
  */
 export type Services<I> = I extends Interaction<any, infer R> ? R : never;
 
-/** @since @next */
+/** @since 0.2.0 */
 export const isInteraction = (value: unknown): value is Any => Predicate.hasProperty(value, TypeId);
 
-/** @since @next */
+/** @since 0.2.0 */
 export type PromiseOptions<
 	S extends Callback.ServiceMap,
 	G extends ReadonlyArray<Callback.ErrorGuard>,
@@ -127,7 +127,7 @@ export type PromiseOptions<
  * );
  * ```
  *
- * @since @next
+ * @since 0.2.0
  */
 export const promise = <
 	const S extends Callback.ServiceMap = Callback.NoServices,
@@ -160,7 +160,7 @@ export const promise = <
  * Confirms manual work with an Effect, which keeps its own errors and services and
  * stops through Effect interruption when the run is cancelled.
  *
- * @since @next
+ * @since 0.2.0
  */
 export const effect = <E = never, R = never>(
 	confirm: (request: Request) => Effect.Effect<Answer, E, R>,

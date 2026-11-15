@@ -5,7 +5,7 @@ import type * as Change from "./change.ts";
 import type * as Migration from "./migration.ts";
 import type { Version } from "./version.ts";
 
-/** @since @next */
+/** @since 0.0.1 */
 export type Shortcut<A extends Action.Any = Action.Any, C extends Change.Any = Change.Any> = {
 	readonly _tag: "Shortcut";
 	readonly id: string;
@@ -22,21 +22,21 @@ export type Shortcut<A extends Action.Any = Action.Any, C extends Change.Any = C
 /**
  * Any shortcut.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Any = Shortcut<any>;
 
 /**
  * The action instances a shortcut can contribute to a plan.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type ActionsOf<S> = S extends Shortcut<infer A> ? A : never;
 
 /**
  * The changes addressed by a shortcut's migrations.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type ChangesOf<S> = S extends Shortcut<any, infer C> ? C : never;
 
@@ -54,7 +54,7 @@ export type ChangesOf<S> = S extends Shortcut<any, infer C> ? C : never;
  * });
  * ```
  *
- * @since @next
+ * @since 0.0.1
  */
 export const make = <A extends Action.Any, C extends Change.Any = never>(
 	id: string,
@@ -75,5 +75,5 @@ export const make = <A extends Action.Any, C extends Change.Any = never>(
 	cost: options.cost,
 });
 
-/** @since @next */
+/** @since 0.0.1 */
 export const isShortcut = (value: unknown): value is Any => Predicate.isTagged(value, "Shortcut");

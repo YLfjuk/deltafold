@@ -43,7 +43,7 @@ import { actionsOfSteps, hasProse, stepsOf, type Declarations } from "./validate
  *   `cost`; a shortcut costs its declared `cost` or the total of its migrations.
  * - `prefer-shortcuts`: a route through a shortcut over the route the shortcut replaces.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type RoutePolicy =
 	| "fewest-actions"
@@ -570,7 +570,7 @@ const unsupported = (context: Context, from: string, to: string, direction: Requ
 	});
 };
 
-/** @since @next */
+/** @since 0.0.1 */
 export type ResolveOptions = {
 	readonly from: Version | string;
 	readonly to: Version | string;
@@ -658,7 +658,7 @@ export const resolve = (
 /**
  * A reachable destination and the identifiers of its candidate routes.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Destination = {
 	readonly version: Version;

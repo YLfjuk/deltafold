@@ -13,7 +13,7 @@ type GuardedError<G> = Callback.GuardedError<G>;
  * apply phase that changes state. A manual handler has neither: the executor waits for a
  * person in `confirmation`, then runs the handler's optional check in `verification`.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Phase = "prepare" | "apply" | "confirmation" | "verification";
 
@@ -21,14 +21,14 @@ export type Phase = "prepare" | "apply" | "confirmation" | "verification";
  * Who performs an action: a handler's apply phase, or a person whose confirmation the
  * executor waits for.
  *
- * @since @next
+ * @since 0.2.0
  */
 export type Performer = "automated" | "manual";
 
 /**
  * A person confirmed manual work, and the handler's `verify` check returned `false`.
  *
- * @since @next
+ * @since 0.2.0
  */
 export class VerificationFailed extends Data.TaggedError("VerificationFailed")<{
 	readonly actionId: string;
@@ -44,7 +44,7 @@ export class VerificationFailed extends Data.TaggedError("VerificationFailed")<{
  * recognized, or its prepare phase returned something other than `Handler.prepared` or
  * `Handler.skip`.
  *
- * @since @next
+ * @since 0.0.1
  */
 export class UnexpectedHandlerError extends Data.TaggedError("UnexpectedHandlerError")<{
 	readonly actionId: string;
@@ -63,7 +63,7 @@ const PreparationTypeId = "~deltafold/Preparation";
  * A prepare phase decided to apply. The apply phase receives `value` unchanged; the
  * executor never reads, validates, or serializes it.
  *
- * @since @next
+ * @since 0.1.0
  */
 export type Prepared<out P> = {
 	readonly [PreparationTypeId]: typeof PreparationTypeId;
@@ -75,7 +75,7 @@ export type Prepared<out P> = {
  * A prepare phase decided that the action does not apply. The occurrence is skipped
  * with `reason`.
  *
- * @since @next
+ * @since 0.1.0
  */
 export type Skip = {
 	readonly [PreparationTypeId]: typeof PreparationTypeId;
@@ -86,7 +86,7 @@ export type Skip = {
 /**
  * What a prepare phase returns: `Handler.prepared(value)` or `Handler.skip(reason)`.
  *
- * @since @next
+ * @since 0.1.0
  */
 export type Preparation<P> = Prepared<P> | Skip;
 
@@ -97,7 +97,7 @@ type PreparedValue<T> = T extends Prepared<infer P> ? P : never;
  * Ends a prepare phase with the value its apply phase receives. Wrapping the value keeps
  * it apart from a skip, whatever its shape.
  *
- * @since @next
+ * @since 0.1.0
  */
 export function prepared(): Prepared<void>;
 export function prepared<P>(value: P): Prepared<P>;
@@ -108,7 +108,7 @@ export function prepared(value?: unknown): Prepared<unknown> {
 /**
  * Ends a prepare phase by skipping the occurrence. The apply phase does not run.
  *
- * @since @next
+ * @since 0.1.0
  */
 export const skip = (reason: string): Skip => ({
 	[PreparationTypeId]: PreparationTypeId,
@@ -127,7 +127,7 @@ const notAPreparation = () =>
  * that already holds the prepared value, or confirmed by a person. `verify` checks
  * confirmed work and fails when the check does not pass.
  *
- * @since @next
+ * @since 0.1.0
  */
 export type Step<E, R> =
 	| Skip
@@ -146,7 +146,7 @@ const TypeId = "~deltafold/Handler";
  * phases together. A prepared value stays inside the handler, so handlers with
  * different prepared values share this type.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Handler<out A extends Action.Any, out E = never, out R = never> = {
 	readonly [TypeId]: typeof TypeId;
@@ -166,32 +166,32 @@ export type Handler<out A extends Action.Any, out E = never, out R = never> = {
 /**
  * Any handler.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Any = Handler<Action.Any, any, any>;
 
 /**
  * The errors of a handler or a union of handlers.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Error<H> = H extends Handler<any, infer E, any> ? E : never;
 
 /**
  * The Effect services of a handler or a union of handlers.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Services<H> = H extends Handler<any, any, infer R> ? R : never;
 
 /**
  * The action identifiers implemented by a handler or a union of handlers.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type ActionId<H> = H extends Handler<infer A, any, any> ? A["id"] : never;
 
-/** @since @next */
+/** @since 0.0.1 */
 export const isHandler = (value: unknown): value is Any => Predicate.hasProperty(value, TypeId);
 
 const make = <A extends Action.Any, E, R>(
@@ -203,7 +203,7 @@ const make = <A extends Action.Any, E, R>(
 /**
  * Named Effect services that a Promise handler declares.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type ServiceMap = Callback.ServiceMap;
 
@@ -211,7 +211,7 @@ export type ServiceMap = Callback.ServiceMap;
  * The second argument of Promise handler callbacks: the `AbortSignal` that
  * `Effect.tryPromise` aborts on interruption, and the declared services, resolved.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type PromiseContext<S extends ServiceMap = NoServices> = Callback.PromiseContext<S>;
 
@@ -219,7 +219,7 @@ export type PromiseContext<S extends ServiceMap = NoServices> = Callback.Promise
  * The second argument of a Promise apply phase: the Promise context and the action
  * payload.
  *
- * @since @next
+ * @since 0.1.0
  */
 export type PromiseApplyContext<Payload, S extends ServiceMap = NoServices> = PromiseContext<S> & {
 	readonly payload: Payload;
@@ -230,7 +230,7 @@ export type PromiseApplyContext<Payload, S extends ServiceMap = NoServices> = Pr
  * `Handler.prepared(value)` or `Handler.skip(reason)`; `apply` receives the value. Each
  * phase gets its own signal.
  *
- * @since @next
+ * @since 0.1.0
  */
 export type PromisePhases<Payload, T extends Preparation<unknown>, S extends ServiceMap> = {
 	readonly prepare: (payload: Payload, context: PromiseContext<S>) => PromiseLike<T> | T;
@@ -245,11 +245,11 @@ export type PromisePhases<Payload, T extends Preparation<unknown>, S extends Ser
  * check. Guards must declare their parameter type, for example
  * `(cause: unknown): cause is NotFound => cause instanceof NotFound`.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type ErrorGuard = Callback.ErrorGuard;
 
-/** @since @next */
+/** @since 0.0.1 */
 export type PromiseOptions<S extends ServiceMap, G extends ReadonlyArray<ErrorGuard>> = {
 	/** Effect services resolved for the callbacks and added to the handler requirements. */
 	readonly services?: S;
@@ -299,7 +299,7 @@ type PromiseHandler<A extends Action.Any, S extends ServiceMap, G> = Handler<
  * });
  * ```
  *
- * @since @next
+ * @since 0.0.1
  */
 export function promise<
 	A extends Action.Any,
@@ -373,7 +373,7 @@ export function promise<
 /**
  * The second argument of an Effect apply phase.
  *
- * @since @next
+ * @since 0.1.0
  */
 export type EffectApplyContext<Payload> = { readonly payload: Payload };
 
@@ -381,7 +381,7 @@ export type EffectApplyContext<Payload> = { readonly payload: Payload };
  * An Effect handler with a prepare phase. `prepare` reads state and succeeds with
  * `Handler.prepared(value)` or `Handler.skip(reason)`; `apply` receives the value.
  *
- * @since @next
+ * @since 0.1.0
  */
 export type EffectPhases<Payload, T extends Preparation<unknown>, E1, R1, E2, R2> = {
 	readonly prepare: (payload: Payload) => Effect.Effect<T, E1, R1>;
@@ -414,7 +414,7 @@ export type EffectPhases<Payload, T extends Preparation<unknown>, E1, R1, E2, R2
  * });
  * ```
  *
- * @since @next
+ * @since 0.0.1
  */
 export function effect<A extends Action.Any, E = never, R = never>(
 	action: A,
@@ -488,7 +488,7 @@ const makeManual = <A extends Action.Any, E, R>(
 	prepare: (scope) => Effect.succeed({ _tag: "Confirm", verify: verify?.(scope) }),
 });
 
-/** @since @next */
+/** @since 0.2.0 */
 export type ManualOptions<Payload, S extends ServiceMap, G extends ReadonlyArray<ErrorGuard>> = {
 	/** Effect services resolved for `verify` and added to the handler requirements. */
 	readonly services?: S;
@@ -523,7 +523,7 @@ export type ManualOptions<Payload, S extends ServiceMap, G extends ReadonlyArray
  * });
  * ```
  *
- * @since @next
+ * @since 0.2.0
  */
 export function manual<A extends Action.Any>(action: A): Handler<A>;
 export function manual<
@@ -567,7 +567,7 @@ export function manual<
 	return makeManual(action, () => check);
 }
 
-/** @since @next */
+/** @since 0.2.0 */
 export type ManualEffectOptions<Payload, E, R> = {
 	/**
 	 * Read-only check that runs after the person confirms. Succeeding with `false` fails
@@ -580,7 +580,7 @@ export type ManualEffectOptions<Payload, E, R> = {
  * `Handler.manual` with an Effect `verify` check, which keeps its own errors and
  * services.
  *
- * @since @next
+ * @since 0.2.0
  */
 export function manualEffect<A extends Action.Any>(action: A): Handler<A>;
 export function manualEffect<A extends Action.Any, E = never, R = never>(

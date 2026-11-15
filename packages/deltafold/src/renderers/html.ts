@@ -7,6 +7,6 @@ import { toMdast } from "./mdast.ts";
 /**
  * Renders a document as an HTML fragment. Throws `DocumentError` for unsupported structure.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const render = (document: Document): string => toHtml(toHast(toMdast(document)));

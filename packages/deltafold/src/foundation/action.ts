@@ -5,7 +5,7 @@ import type { Instruction } from "./instruction.ts";
 /**
  * Describes one kind of consumer-owned operation and its payload.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Kind<P> = {
 	readonly _tag: "ActionKind";
@@ -19,7 +19,7 @@ export type Kind<P> = {
  * One concrete instruction. Its `id` identifies the instruction across plans, handler
  * bindings, rules, and reports.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Action<Id extends string = string, P = unknown> = {
 	readonly _tag: "Action";
@@ -33,14 +33,14 @@ export type Action<Id extends string = string, P = unknown> = {
 /**
  * Any action instance.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Any = Action<string, any>;
 
 /**
  * A mention of an action in prose. It does not declare an occurrence.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Ref = {
 	readonly _tag: "ActionRef";
@@ -50,7 +50,7 @@ export type Ref = {
 /**
  * Children run one after another.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Sequence<A extends Any = Any> = {
 	readonly _tag: "Sequence";
@@ -62,7 +62,7 @@ export type Sequence<A extends Any = Any> = {
 /**
  * How many branches of a parallel group may run at the same time.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Concurrency = number | "unbounded";
 
@@ -70,7 +70,7 @@ export type Concurrency = number | "unbounded";
  * Branches are independent of each other and may run concurrently. The group asserts
  * that independence; the concurrency limit only controls scheduling.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Parallel<A extends Any = Any> = {
 	readonly _tag: "Parallel";
@@ -83,14 +83,14 @@ export type Parallel<A extends Any = Any> = {
 /**
  * A node that declares action occurrences.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Step<A extends Any = Any> = A | Instruction<A> | Sequence<A> | Parallel<A>;
 
 /**
  * Extracts the action instances declared by a step.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type ActionsOf<S> =
 	S extends Action<infer Id, infer P>
@@ -119,7 +119,7 @@ export type ActionsOf<S> =
  * });
  * ```
  *
- * @since @next
+ * @since 0.0.1
  */
 export const define = <P>(
 	kind: string,
@@ -144,14 +144,14 @@ export const define = <P>(
 /**
  * Mentions an action in prose without declaring another occurrence.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const ref = (action: Any): Ref => ({ _tag: "ActionRef", action });
 
 /**
  * Declares steps that run one after another.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const sequence = <const S extends ReadonlyArray<Step>>(
 	children: S,
@@ -161,7 +161,7 @@ export const sequence = <const S extends ReadonlyArray<Step>>(
  * Declares independent branches that may run concurrently. Each branch can be a single
  * step or a sequence.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const parallel = <const S extends ReadonlyArray<Step>>(
 	branches: S,
@@ -172,17 +172,17 @@ export const parallel = <const S extends ReadonlyArray<Step>>(
 	concurrency: options.concurrency ?? "unbounded",
 });
 
-/** @since @next */
+/** @since 0.0.1 */
 export const isAction = (value: unknown): value is Any =>
 	Predicate.isTagged(value, "Action") && Predicate.hasProperty(value, "id");
 
-/** @since @next */
+/** @since 0.0.1 */
 export const isRef = (value: unknown): value is Ref => Predicate.isTagged(value, "ActionRef");
 
-/** @since @next */
+/** @since 0.0.1 */
 export const isSequence = (value: unknown): value is Sequence =>
 	Predicate.isTagged(value, "Sequence");
 
-/** @since @next */
+/** @since 0.0.1 */
 export const isParallel = (value: unknown): value is Parallel =>
 	Predicate.isTagged(value, "Parallel");

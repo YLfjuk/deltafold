@@ -23,7 +23,7 @@ import { validate as validateDeclarations, type Issue } from "./validate.ts";
 export * from "./resolve-error.ts";
 export type { Destination, Issue, ResolveOptions, RoutePolicy };
 
-/** @since @next */
+/** @since 0.0.1 */
 export type History<A extends Action.Any = Action.Any, C extends Change.Any = Change.Any> = {
 	readonly _tag: "History";
 	readonly versions: ReadonlyArray<Version>;
@@ -39,21 +39,21 @@ export type History<A extends Action.Any = Action.Any, C extends Change.Any = Ch
 /**
  * Any history.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Any = History<any>;
 
 /**
  * Every action instance that a plan resolved from the history can contain.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type ActionsOf<H> = H extends History<infer A> ? A : never;
 
 /**
  * Every change that a plan resolved from the history can list in `changes`.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type ChangesOf<H> = H extends History<any, infer C> ? C : never;
 
@@ -64,7 +64,7 @@ export type ChangesOf<H> = H extends History<any, infer C> ? C : never;
  * `make` does not throw. Use `History.validate` to list declaration issues;
  * resolution fails with `InvalidHistory` when there are any.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const make = <
 	const M extends ReadonlyArray<Migration.Any>,
@@ -86,7 +86,7 @@ export const make = <
 	shortcuts: declarations.shortcuts ?? [],
 });
 
-/** @since @next */
+/** @since 0.0.1 */
 export const isHistory = (value: unknown): value is Any => Predicate.isTagged(value, "History");
 
 const contexts = new WeakMap<
@@ -107,7 +107,7 @@ const prepare = (history: Any) => {
 /**
  * Lists declaration issues in a deterministic order. An empty list means valid.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const validate = (history: Any): ReadonlyArray<Issue> => prepare(history).issues;
 
@@ -132,7 +132,7 @@ const valid = (history: Any): Result.Result<Context, InvalidHistory> => {
  * if (Result.isSuccess(result)) console.log(result.success.route.id);
  * ```
  *
- * @since @next
+ * @since 0.0.1
  */
 export const resolve = <A extends Action.Any, C extends Change.Any>(
 	history: History<A, C>,
@@ -149,7 +149,7 @@ export const resolve = <A extends Action.Any, C extends Change.Any>(
 /**
  * Destinations reachable by upgrade from a version, with their candidate routes.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const upgrades = (
 	history: Any,
@@ -160,7 +160,7 @@ export const upgrades = (
 /**
  * Destinations reachable by downgrade from a version, with their candidate routes.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const downgrades = (
 	history: Any,

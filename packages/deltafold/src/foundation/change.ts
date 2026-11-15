@@ -5,11 +5,11 @@ import { describeValue, dedent, isScalar, type Scalar } from "./template.ts";
 /**
  * The metadata of a change whose shape is not known statically.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Metadata = { readonly [field: string]: unknown };
 
-/** @since @next */
+/** @since 0.0.1 */
 export type NoMetadata = { readonly [field: string]: undefined };
 
 /**
@@ -19,7 +19,7 @@ export type NoMetadata = { readonly [field: string]: undefined };
  * deltafold does not interpret `metadata`. Consumers choose its fields, such as a
  * classification or a breaking flag, and what they mean.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Change<M extends object = Metadata> = {
 	readonly _tag: "Change";
@@ -37,14 +37,14 @@ export type Change<M extends object = Metadata> = {
  * A change whose metadata type is not known statically. Its metadata is an object, so
  * reading a field requires narrowing first.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Any = Change<object>;
 
 /**
  * Relationships to other changes.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Relations = {
 	readonly reverts?: ReadonlyArray<Any>;
@@ -54,7 +54,7 @@ export type Relations = {
 /**
  * Takes the description as a tagged template and returns the change.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Describe<M extends object> = (
 	strings: TemplateStringsArray,
@@ -101,7 +101,7 @@ const describe =
  * `;
  * ```
  *
- * @since @next
+ * @since 0.0.1
  */
 export function make(id: string): Describe<NoMetadata>;
 export function make<const M extends object>(
@@ -116,7 +116,7 @@ export function make(id: string, metadata: object = {}, relations: Relations = {
 /**
  * Makes changes that share one metadata shape.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Definition<M extends object> = {
 	readonly make: (id: string, metadata: M, relations?: Relations) => Describe<M>;
@@ -139,9 +139,9 @@ export type Definition<M extends object> = {
  * `;
  * ```
  *
- * @since @next
+ * @since 0.0.1
  */
 export const define = <M extends object>(): Definition<M> => ({ make: make<M> });
 
-/** @since @next */
+/** @since 0.0.1 */
 export const isChange = (value: unknown): value is Change => Predicate.isTagged(value, "Change");

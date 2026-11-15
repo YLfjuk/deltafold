@@ -23,7 +23,7 @@ import { SettlementReference } from "./settlement.ts";
 /**
  * What happened to one occurrence, or what a dry run predicts.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Outcome<E = unknown> =
 	| { readonly _tag: "Completed"; readonly performer: "automated" }
@@ -83,13 +83,13 @@ export type Outcome<E = unknown> =
 			readonly cause: Cause.Cause<E>;
 	  };
 
-/** @since @next */
+/** @since 0.0.1 */
 export type OccurrenceReport<A extends Action.Any = Action.Any, E = unknown> = {
 	readonly occurrence: Occurrence<A>;
 	readonly outcome: Outcome<E>;
 };
 
-/** @since @next */
+/** @since 0.0.1 */
 export type Report<A extends Action.Any = Action.Any, E = unknown> = {
 	readonly _tag: "Report";
 	readonly mode: "execute" | "dry-run";
@@ -117,7 +117,7 @@ export type Report<A extends Action.Any = Action.Any, E = unknown> = {
 /**
  * A handler is missing, duplicated, or bound to a different definition.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type CoverageIssue = {
 	readonly _tag: "Missing" | "Duplicate" | "Mismatched";
@@ -142,7 +142,7 @@ const HandlerCoverageBase = Data.TaggedError("HandlerCoverageError");
  * For an occurrence that a rule produced, the issue names the rule and the occurrences
  * it replaced.
  *
- * @since @next
+ * @since 0.0.1
  */
 export class HandlerCoverageError<A extends Action.Any = Action.Any> extends HandlerCoverageBase<{
 	readonly issues: ReadonlyArray<CoverageIssue>;
@@ -164,7 +164,7 @@ const InteractionUnavailableBase = Data.TaggedError("InteractionUnavailable");
  * The plan has manual handlers, and the run has no `interaction` to ask a person. The
  * run fails before any handler phase or prompt.
  *
- * @since @next
+ * @since 0.2.0
  */
 export class InteractionUnavailable<
 	A extends Action.Any = Action.Any,
@@ -197,7 +197,7 @@ const ExecutionFailedBase = Data.TaggedError("ExecutionFailed");
  * An occurrence failed, or a person declined manual work. Execution stopped admitting
  * new actions; started ones settled.
  *
- * @since @next
+ * @since 0.0.1
  */
 export class ExecutionFailed<
 	A extends Action.Any = Action.Any,
@@ -230,7 +230,7 @@ const ExecutionInterruptedBase = Data.TaggedError("ExecutionInterrupted");
  * Why an execution or an occurrence was interrupted: explicit cancellation, a configured
  * timeout, or an Effect handler that interrupted itself.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type InterruptReason = "cancelled" | "timeout" | "handler";
 
@@ -244,7 +244,7 @@ const interruptedBy: Record<InterruptReason, string> = {
  * Explicit cancellation, a configured timeout, or a handler's own interruption stopped
  * execution.
  *
- * @since @next
+ * @since 0.0.1
  */
 export class ExecutionInterrupted<
 	A extends Action.Any = Action.Any,
@@ -266,7 +266,7 @@ export class ExecutionInterrupted<
 	}
 }
 
-/** @since @next */
+/** @since 0.0.1 */
 export type ExecutionError<A extends Action.Any, E> =
 	| HandlerCoverageError<A>
 	| InteractionUnavailable<A>
@@ -277,7 +277,7 @@ export type ExecutionError<A extends Action.Any, E> =
  * Action identifiers of a statically covered plan that no handler in the array
  * implements.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Uncovered<A extends Action.Any, H, C extends Plan.Coverage> = "runtime" extends C
 	? never
@@ -299,7 +299,7 @@ type CoverageCheck<A extends Action.Any, H, C extends Plan.Coverage> = [
 /**
  * Errors an execution can report for its occurrences.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Errors<H, I = never> = Handler.Error<H> | Interaction.Error<I>;
 
@@ -307,11 +307,11 @@ export type Errors<H, I = never> = Handler.Error<H> | Interaction.Error<I>;
  * Effect services an execution requires: the services of its handlers and of its
  * interaction.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Requirements<H, I = never> = Handler.Services<H> | Interaction.Services<I>;
 
-/** @since @next */
+/** @since 0.0.1 */
 export type Options<H extends Handler.Any, I extends Interaction.Any = never> = {
 	readonly handlers?: ReadonlyArray<H>;
 	/**
@@ -1001,7 +1001,7 @@ const run = <
  * signal passed to Promise callbacks. The effect then ends as interrupted, without a
  * report.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const effect = <
 	A extends Action.Any,
@@ -1024,7 +1024,7 @@ type ServicesOption<R, LE> = [R] extends [never]
 			readonly services: Context.Context<R> | Layer.Layer<R, LE>;
 		};
 
-/** @since @next */
+/** @since 0.0.1 */
 export type PromiseOptions<H extends Handler.Any, I extends Interaction.Any = never> = Options<
 	H,
 	I
@@ -1051,7 +1051,7 @@ export type PromiseOptions<H extends Handler.Any, I extends Interaction.Any = ne
  * until it settles, possibly forever, and close in that order. A cleanup failure after
  * the Promise resolved is logged through Effect.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const runPromise = <
 	A extends Action.Any,
