@@ -12,7 +12,7 @@ export * as Interaction from "./features/execution/interaction.ts";
 export * as History from "./features/planning/history.ts";
 /** @since 0.0.1 */
 export * as Migration from "./foundation/migration.ts";
-/** @since @next */
+/** @since 0.2.1 */
 export * as Observer from "./features/execution/observer.ts";
 /** @since 0.0.1 */
 export * as Package from "./features/package.ts";
