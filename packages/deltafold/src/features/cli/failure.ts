@@ -7,6 +7,8 @@ import { Output, stringify } from "./output.ts";
 /**
  * Stable machine-readable failure reasons. New reasons may be added; existing ones keep
  * their meaning and exit code.
+ *
+ * @since @next
  */
 export type Reason =
 	| "invalid_arguments"
@@ -34,7 +36,11 @@ export type Reason =
 	| "write_failed"
 	| "internal_error";
 
-/** The version of the JSON documents the CLI prints. */
+/**
+ * The version of the JSON documents the CLI prints.
+ *
+ * @since @next
+ */
 export const schemaVersion = 1;
 
 /** The route policies `History.resolve` accepts, in documentation order. */
@@ -48,6 +54,8 @@ export const policies: ReadonlyArray<RoutePolicy> = [
 /**
  * A failure the CLI has already reported on stderr or in a result document. It carries the
  * process exit code for the runtime and is not logged again.
+ *
+ * @since @next
  */
 export class CliFailure extends Data.TaggedError("CliFailure")<{
 	readonly reason: Reason;
