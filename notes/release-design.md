@@ -129,6 +129,23 @@ Superseded: premajor/preminor/prepatch/prerelease as separate change bump values
 per-change pre intent; mixed-intention mode; pre true, pre "continue", and
 inherited default tags. Use magnitude metadata plus the plan-level object.
 
+### Stable promotion
+
+A stable plan from a prerelease records exactly the changes it is given. The
+author chooses them; deltafold does not collect them automatically. A change may
+be left out because it was reverted on the line, or because it fixed a problem
+only a prerelease had.
+
+To help with the choice, `Release.prereleaseChanges(pkg, from)` lists the changes
+on the line since its last stable ancestor. It follows `previous` and reports, for
+each change, the prereleases that contain it and the changes on the line that
+revert it or that it reverts. It selects nothing. A release CLI command will
+present the same listing, and authors may use their own tooling instead.
+
+The stable version is the recorded line's target, raised when selected changes
+need a stronger bump. Promotion needs the recorded line state, as continuing a
+line does.
+
 ## Dependency policy
 
 DependentsPolicy.propose proposes required dependency edits and releases in the
@@ -192,9 +209,6 @@ steps. Core migration execution/rollback behavior is not release apply policy.
 
 ## Open prototype questions
 
-- Stable promotion contents: compare automatic collection from prerelease history
-  with explicit selection. Include prerelease-only fixes, shared changes and
-  repeated IDs. Neither behavior is accepted as default.
 - Source relocation: supported declaration/dependency patterns, factory import
   discovery and explicit reference fallback, collisions and diagnostics.
 - Exact VersionStrategy/DependentsPolicy callback contracts, rich baseline shape,
@@ -225,8 +239,9 @@ These contracts worked as accepted:
 - Highest, require-matching, and explicit baselines. Unchanged members align by
   default and drift when the strategy allows it. Downgrades fail.
 - The prerelease sequence above, from recorded line state. Continuing without a
-  line, a tag change that lowers precedence, and stable promotion fail with
-  diagnostics.
+  line and a tag change that lowers precedence fail with diagnostics.
+- Stable promotion with explicitly selected changes, and `Release.prereleaseChanges`
+  listing a line's changes with their reverts.
 - Pending modules copied into one generated module per version without
   evaluation. Relative imports are re-pointed and a shared change is copied into
   each package's module with the same ID.
@@ -254,8 +269,8 @@ Interface choices made by the prototype, open to revision:
 
 Product gaps that need a decision:
 
-- Stable promotion contents (open question above). The prototype refuses with
-  `StablePromotionUnsupported`.
+- The command that lists a line's changes for selection. It belongs to the
+  release CLI, which is not built.
 - A literal target together with `pre`. The prototype refuses with
   `ExplicitTargetWithPre`.
 - Dependents: proposals are reported, but a `release` proposal does not add a
