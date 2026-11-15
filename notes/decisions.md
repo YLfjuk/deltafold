@@ -238,7 +238,8 @@ timeout, deliveries have no time limit, so a hanging observer stalls the run.
 After one, each delivery waits at most `settleTimeout` and is then abandoned and
 recorded; a Promise observer's `signal` aborts. An abandoned callback is
 interrupted without waiting, because an Effect observer may not be interruptible,
-and a services layer that `runPromise` built stays open until it stops. Admission is checked again after
+and a services layer that `runPromise` built stays open until it stops. A Promise
+observer stops only when its Promise settles, even if it ignores its `signal`. Admission is checked again after
 each phase-start delivery, so a cancellation that arrives while observers are
 notified keeps the phase from starting. When the fiber of `Executor.effect` is
 interrupted, a finalizer sends one `RunFinished` without a report, bounded the

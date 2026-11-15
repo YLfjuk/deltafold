@@ -110,12 +110,16 @@ const actionInfoOf = (
 	sources: sourcesOf(occurrence, stepIdOf),
 });
 
-/** Reads a handler error's tag. A tag that cannot be read, even by a throwing getter, is absent. */
+/**
+ * Reads a handler error's tag once, so a getter cannot pass the check with one value and
+ * return another. A tag that cannot be read, even by a throwing getter, is absent.
+ */
 const errorTagOf = (error: unknown): string | undefined => {
 	try {
-		return Predicate.hasProperty(error, "_tag") && typeof error._tag === "string"
-			? error._tag
-			: undefined;
+		if (!Predicate.hasProperty(error, "_tag")) return undefined;
+		const tag: unknown = error._tag;
+
+		return typeof tag === "string" ? tag : undefined;
 	} catch {
 		return undefined;
 	}

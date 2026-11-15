@@ -1,4 +1,4 @@
-import { describe, expect, expectTypeOf, it } from "@effect/vitest";
+import { describe, expect, expectTypeOf, it, vi } from "@effect/vitest";
 import {
 	Cause,
 	Context,
@@ -820,6 +820,60 @@ describe("Delivery boundaries", () => {
 			phase: "apply",
 			errorTag: undefined,
 		});
+	});
+
+	it("reads a handler error's tag once", async () => {
+		let reads = 0;
+		const changing = {
+			get _tag(): unknown {
+				reads += 1;
+
+				return reads === 1 ? "Safe" : { payload: "PRIVATE" };
+			},
+		};
+		const { events, observer } = recorder();
+		await Executor.runPromise(plan, {
+			handlers: [Handler.effect(a, () => Effect.fail(changing))],
+			observers: [observer],
+		}).catch(() => undefined);
+
+		const settled = events.find((event) => event._tag === "ActionSettled");
+		expect(settled?._tag === "ActionSettled" && settled.outcome).toEqual({
+			_tag: "Failed",
+			phase: "apply",
+			errorTag: "Safe",
+		});
+	});
+
+	it("keeps the services layer open until an abandoned Promise observer settles", async () => {
+		const lifecycle: Array<string> = [];
+		const release = Deferred.makeUnsafe<void>();
+		const controller = new AbortController();
+		const late = Observer.promise(async (event) => {
+			if (event._tag !== "RunStarted") return;
+			controller.abort();
+			await Effect.runPromise(Deferred.await(release));
+			lifecycle.push("callback settled");
+		});
+		const services = Layer.effectDiscard(
+			Effect.acquireRelease(Effect.void, () =>
+				Effect.sync(() => void lifecycle.push("services closed")),
+			),
+		);
+		const error: unknown = await Executor.runPromise(plan, {
+			signal: controller.signal,
+			settleTimeout: "1 millis",
+			handlers: [ok(a)],
+			observers: [late],
+			services,
+		}).catch((cause: unknown) => cause);
+
+		expect(error).toBeInstanceOf(Executor.ExecutionInterrupted);
+		// The layer closes in the background, so give an early close time to happen.
+		await Effect.runPromise(Effect.sleep("20 millis"));
+		expect(lifecycle).toEqual([]);
+		Deferred.doneUnsafe(release, Exit.void);
+		await vi.waitFor(() => expect(lifecycle).toEqual(["callback settled", "services closed"]));
 	});
 
 	it.effect("finishes RunFinished delivery exactly once when interrupted during it", () =>

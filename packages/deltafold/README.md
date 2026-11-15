@@ -35,6 +35,12 @@ checking needs DOM or Node.js types for `AbortSignal`.
 - `deltafold/changelog`: changelog and document builders.
 - `deltafold/markdown` and `deltafold/html`: renderers for those documents.
 
+Construct packages with `Package.make`, and get plans and execution reports
+through deltafold's APIs. Patch-version compatibility guarantees don't cover
+these structures when you construct them by hand, such as a `Package`, a
+`Plan.Step`, or an `Executor.Report`. If you create them yourself, their
+required fields may change between patch releases.
+
 ## Declare a history
 
 An action kind describes an operation and its payload. An action instance is

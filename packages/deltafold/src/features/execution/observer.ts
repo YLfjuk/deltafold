@@ -323,7 +323,8 @@ export const sync = (callback: (event: Event) => void): Observer => ({
 /**
  * Observes with a Promise callback. The executor waits for the Promise. The `signal`
  * aborts when the executor stops waiting: after cancellation or a timeout, once the
- * settlement grace period has passed, or when the execution is interrupted.
+ * settlement grace period has passed, or when the execution is interrupted. A services
+ * layer that `Executor.runPromise` built stays open until an abandoned Promise settles.
  *
  * @since @next
  */
@@ -332,14 +333,32 @@ export const promise = (
 ): Observer => ({
 	[TypeId]: TypeId,
 	notify: (event) =>
-		// Declaring `signal` makes Effect.promise allocate an AbortController. The rejection
-		// is the failure, exactly as the observer rejected.
-		Effect.promise((signal): Promise<Exit.Exit<unknown, unknown>> =>
-			new Promise<unknown>((resolve) => resolve(callback(event, { signal }))).then(
-				() => Exit.void,
-				(cause: unknown) => Exit.fail(cause),
-			),
-		),
+		Effect.suspend(() => {
+			let pending: Promise<unknown> | undefined;
+
+			// Declaring `signal` makes Effect.promise allocate an AbortController. The rejection
+			// is the failure, exactly as the observer rejected.
+			return Effect.promise((signal): Promise<Exit.Exit<unknown, unknown>> => {
+				const settles = new Promise<unknown>((resolve) =>
+					resolve(callback(event, { signal })),
+				).then(
+					() => Exit.void,
+					(cause: unknown) => Exit.fail(cause),
+				);
+				pending = settles;
+
+				return settles;
+			}).pipe(
+				// The executor abandons a delivery by interrupting it without waiting, and keeps
+				// the run's services open until the interruption ends. Ending it only once the
+				// Promise settles keeps them open for the callback's remaining work.
+				Effect.onInterrupt(() =>
+					pending === undefined
+						? Effect.void
+						: Effect.promise(() => pending ?? Promise.resolve()),
+				),
+			);
+		}),
 });
 
 /**
