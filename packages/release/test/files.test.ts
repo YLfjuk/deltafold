@@ -326,3 +326,93 @@ describe("dependency updates", () => {
 		}).pipe(provide);
 	});
 });
+
+const resolvedWorkspace = () => ({
+	...workspace(),
+	"packages/react/package.json": `{\n\t"name": "@acme/widgets-react",\n\t"version": "1.5.2",\n\t"peerDependencies": {\n\t\t"@acme/widgets": "^1.5.0"\n\t},\n\t"devDependencies": {\n\t\t"@acme/widgets": "1.5.2"\n\t}\n}\n`,
+	"apps/docs/package.json": `{\n\t"name": "@acme/docs-site",\n\t"private": true,\n\t"dependencies": {\n\t\t"@acme/widgets": "^1.0.0"\n\t}\n}\n`,
+});
+
+const resolveWidgets = ReleaseFiles.resolve(release, {
+	version: VersionStrategy.semver({ bump: (change) => change.metadata.bump, unchanged: "drift" }),
+	dependents: DependentsPolicy.propose(),
+	manifests: ["apps/*/package.json"],
+	packages: [
+		{ package: widgets, changes: [retries] },
+		{ package: react, changes: [] },
+	],
+});
+
+describe("resolving input from manifests", () => {
+	it.effect(
+		"reads previous versions and requirements; dev dependencies edit but never release",
+		() => {
+			const { provide } = memoryFs(resolvedWorkspace());
+
+			return Effect.gen(function* () {
+				const { input } = yield* resolveWidgets;
+				expect(
+					input.packages.map(
+						(selection) =>
+							`${selection.package.name}@${typeof selection.previous === "string" ? selection.previous : selection.previous.id}`,
+					),
+				).toEqual(["@acme/widgets@1.5.2", "@acme/widgets-react@1.5.2"]);
+				const result = release.plan(input);
+				if (Result.isFailure(result)) throw new Error(result.failure.message);
+				const resolvedPlan = result.success;
+
+				expect(
+					resolvedPlan.versions.map(
+						(planned) => `${planned.package}@${planned.version.id}`,
+					),
+				).toEqual(["@acme/widgets@1.6.0"]);
+				expect(
+					resolvedPlan.dependents.map(
+						(proposal) => `${proposal.dependent}:${proposal.field}:${proposal.action}`,
+					),
+				).toEqual([
+					"@acme/docs-site:dependencies:cross-group",
+					"@acme/widgets-react:devDependencies:edit",
+					"@acme/widgets-react:peerDependencies:satisfied",
+				]);
+			}).pipe(provide);
+		},
+	);
+
+	it.effect("refuses preparation when a resolved manifest or the matched set changed", () => {
+		const { files, provide } = memoryFs(resolvedWorkspace());
+
+		return Effect.gen(function* () {
+			const { input, snapshot } = yield* resolveWidgets;
+			const result = release.plan(input);
+			if (Result.isFailure(result)) throw new Error(result.failure.message);
+			files.set(
+				"apps/docs/package.json",
+				files.get("apps/docs/package.json")?.replace("^1.0.0", "^1.1.0") ?? "",
+			);
+			files.set(
+				"apps/site/package.json",
+				`{ "name": "@acme/site", "dependencies": { "@acme/widgets": "^1.5.0" } }`,
+			);
+
+			const error = yield* Effect.flip(
+				ReleaseFiles.prepare(result.success, {
+					...options,
+					pending: [".changes/retries.ts"],
+					snapshot,
+				}),
+			);
+			expect(
+				error._tag === "PrepareError" &&
+					error.issues.map((entry) => [entry.reason, entry.subjects]),
+			).toEqual([
+				["StaleSource", ["apps/docs/package.json"]],
+				["StaleSource", ["apps/site/package.json"]],
+				[
+					"StaleRequirement",
+					["apps/docs/package.json", "@acme/docs-site", "@acme/widgets", "dependencies"],
+				],
+			]);
+		}).pipe(provide);
+	});
+});

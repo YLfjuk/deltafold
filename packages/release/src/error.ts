@@ -18,6 +18,7 @@ export type Reason =
 	| "InvalidPolicyResult"
 	| "UnsupportedRange"
 	| "StaleRequirement"
+	| "StaleSource"
 	| "MissingSelection"
 	| "BaselineMismatch"
 	| "Downgrade"

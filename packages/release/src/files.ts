@@ -2,7 +2,11 @@ import { Array as Arr, Effect, FileSystem, Order, type PlatformError } from "eff
 
 import { ApplyFailed, issue, PrepareError, StalePlan, type Issue } from "./error.ts";
 import type { Plan, PlannedVersion, Replacement } from "./release.ts";
+import type { Snapshot } from "./resolve.ts";
 import { join, relative, render, scan, type Declaration } from "./source.ts";
+
+export { resolve } from "./resolve.ts";
+export type { ResolveOptions, Resolved, Snapshot, Unresolved } from "./resolve.ts";
 
 /**
  * A version module that the plan's previous version can be imported from when it was
@@ -23,6 +27,8 @@ export type PrepareOptions = {
 	/** Glob patterns of pending change modules in the group's scope. */
 	readonly pending: ReadonlyArray<string>;
 	readonly previous?: ReadonlyArray<PreviousSource>;
+	/** What `ReleaseFiles.resolve` read. Preparation refuses when any of it changed. */
+	readonly snapshot?: Snapshot;
 };
 
 /**
@@ -139,6 +145,34 @@ export const prepare = (
 		const issues: Array<Issue> = [];
 		const globs: Array<Prepared["globs"][number]> = [];
 		const exportName = plan.release.config.exportName ?? "version";
+
+		// Resolved sources must be unchanged; apply checks them again.
+		for (const [path, before] of options.snapshot?.reads ?? []) {
+			if ((yield* read(path)) !== before) {
+				issues.push(
+					issue(
+						"StaleSource",
+						`${path} changed after input was resolved; resolve and plan again.`,
+						[path],
+					),
+				);
+			}
+		}
+		for (const glob of options.snapshot?.globs ?? []) {
+			const matched = yield* globAll(fs, glob.pattern, []);
+			const added = matched.filter((path) => !glob.matched.includes(path));
+			const removed = glob.matched.filter((path) => !matched.includes(path));
+			if (added.length > 0 || removed.length > 0) {
+				issues.push(
+					issue(
+						"StaleSource",
+						"The manifests matched while resolving input have changed; resolve and plan again.",
+						[...added, ...removed],
+					),
+				);
+			}
+			globs.push({ pattern: glob.pattern, exclude: [], matched: glob.matched });
+		}
 
 		// Pending modules.
 		const pendingPaths = yield* globAll(fs, options.pending, []);

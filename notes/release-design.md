@@ -38,12 +38,24 @@ plan-level choice, not a property of individual changes.
 ```ts
 const release = Release.make("widgets", {
 	packages: [
-		{ package: widgets },
-		{ package: widgetsReact },
-		{ package: tools, version: toolsVersionStrategy },
+		{
+			package: widgets,
+			files: {
+				manifest: "packages/widgets/package.json",
+				versions: "packages/widgets/versions",
+			},
+		},
+		{
+			package: widgetsReact,
+			files: { manifest: "packages/react/package.json", versions: "packages/react/versions" },
+		},
+		{
+			package: tools,
+			version: toolsStrategy,
+			files: { manifest: "packages/tools/package.json", versions: "packages/tools/versions" },
+		},
 	],
 	change: ProjectChange,
-	previous: Release.Source.packageJson(),
 	version: VersionStrategy.semver({
 		baseline: "highest",
 		bump: (change) => change.metadata.bump,
@@ -59,13 +71,18 @@ const release = Release.make("widgets", {
 	],
 });
 
-const plan = release.plan({
-	packages: [
-		{ package: widgets, changes: widgetChanges },
-		{ package: widgetsReact, changes: reactChanges },
-	],
-	pre: { tag: "beta", continue: true },
-});
+// Previous versions and requirements come from manifests, or are passed explicitly.
+const { input, snapshot } =
+	yield *
+	ReleaseFiles.resolve(release, {
+		packages: [
+			{ package: widgets, changes: widgetChanges },
+			{ package: widgetsReact, changes: reactChanges },
+			{ package: tools, changes: [] },
+		],
+		pre: { tag: "beta", continue: true },
+	});
+const plan = release.plan(input);
 ```
 
 Release.make requires a stable group ID. Membership is bounded to registered
@@ -220,6 +237,15 @@ Explicit previous versions and manifest-backed sources are supported. The source
 is separate from version policy. A local manifest is not proof of remote registry
 freshness. Do not invent ancestry for an unknown resolved previous version.
 
+`ReleaseFiles.resolve(release, options)` is the manifest-backed source. It reads
+each member's `package.json`: `version` becomes the previous version, and the
+`dependencies`, `peerDependencies`, `optionalDependencies`, and
+`devDependencies` fields become requirements. `devDependencies` can get range
+edits but never require a release, because they do not change what consumers
+install. Optional `manifests` globs find dependents outside the group, which
+are reported as cross-group requirements. Resolution returns the input and a
+snapshot of what it read; preparation and apply refuse when any of it changed.
+
 The plan reports versions, selected changes, generated records, dependency edits,
 replacement locations/zero matches, pending cleanup, and explanations. Stale
 pending files, manifests, or replacement targets cause refusal and replanning;
@@ -297,10 +323,8 @@ Product gaps that need a decision:
 
 - The command that lists a line's changes for selection. It belongs to the
   release CLI, which is not built.
-- Requirements are plan input. No resolver reads them from manifests yet, so a
-  dependent added after resolution is not discovered; preparation only checks the
-  edges the plan used. A `workspace:` range never triggers a dependent release.
-- `Release.Source.packageJson()` and loading recorded line state are not built.
-  Previous versions are explicit input, and preparation checks manifests.
+- A `workspace:` range never triggers a dependent release.
+- Loading recorded prerelease line state from generated modules is not built;
+  `line` is still plan input.
 - One shared calculation cannot continue independent prerelease lines; such
   packages need separate settings.
