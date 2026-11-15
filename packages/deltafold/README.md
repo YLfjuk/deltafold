@@ -35,11 +35,10 @@ checking needs DOM or Node.js types for `AbortSignal`.
 - `deltafold/changelog`: changelog and document builders.
 - `deltafold/markdown` and `deltafold/html`: renderers for those documents.
 
-Construct packages with `Package.make`, and get plans and execution reports
-through deltafold's APIs. Patch-version compatibility guarantees don't cover
-these structures when you construct them by hand, such as a `Package`, a
-`Plan.Step`, or an `Executor.Report`. If you create them yourself, their
-required fields may change between patch releases.
+Get plans and execution reports through deltafold's APIs. Patch-version
+compatibility guarantees don't cover these structures when you construct them
+by hand, such as a `Plan.Step` or an `Executor.Report`. If you create them
+yourself, their required fields may change between patch releases.
 
 ## Declare a history
 
@@ -288,37 +287,28 @@ Effect interaction, and keep their errors and services.
 
 ## Observe execution
 
-Observers receive a run's events as they happen. Attach them to the package:
-`Package.withObserver` returns a new package and leaves the original unchanged.
-Attaching causes no events. Pass the package's `observers` to the executor.
+Observers receive a run's events as they happen. Like handlers, they are an
+input of the run: pass them to the executor's `observers` option.
 
 ```ts
 import { Observer } from "deltafold";
 
-// Shared by every run, for example structured logs.
-const logged = widgets.pipe(
-	Package.withObserver(Observer.effect((event) => Effect.logDebug(event._tag))),
-);
+// Structured logs.
+const logging = Observer.effect((event) => Effect.logDebug(event._tag));
 
-// Attached for one run, for example a progress line.
-const observed = logged.pipe(
-	Package.withObserver(
-		Observer.sync((event) => {
-			if (event._tag !== "ActionSettled") return;
-			const { finished, total } = event.progress.actions;
-			console.error(
-				`[${finished}/${total}] ${event.action.description}: ${event.outcome._tag}`,
-			);
-		}),
-	),
-);
+// A progress line.
+const progress = Observer.sync((event) => {
+	if (event._tag !== "ActionSettled") return;
+	const { finished, total } = event.progress.actions;
+	console.error(`[${finished}/${total}] ${event.action.description}: ${event.outcome._tag}`);
+});
 
-await Executor.runPromise(plan, { handlers, observers: observed.observers });
+await Executor.runPromise(plan, { handlers, observers: [logging, progress] });
 ```
 
 `Observer.sync`, `Observer.promise`, and `Observer.effect` take a callback for
 each event. An Effect observer's services become requirements of the execution.
-Observers run in attachment order, and the executor waits for each one before it
+Observers run in array order, and the executor waits for each one before it
 continues, so events arrive in one order and all of them arrive before the
 execution settles. A failing observer never changes the outcome; the report
 lists it under `observation`. After cancellation or a timeout, the executor waits

@@ -144,9 +144,9 @@ erases release history.
   action's phases and outcome, and progress counted in the optimized plan's
   steps and actions. A dry run reports only what it evaluates. Observation never
   changes outcomes, and a failing observer never fails the run.
-- **EXEC-16.** Observers can be attached to a package, and attaching one never
-  starts work or emits events. The consumer passes them to the executor
-  explicitly, alongside observers of its own.
+- **EXEC-16.** Consumers pass observers to the executor as an input of the run.
+  A command-line interface accepts them alongside handlers. Nothing is attached
+  to the package.
 
 ### Documents
 

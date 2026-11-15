@@ -30,7 +30,7 @@ export type Progress = {
 	readonly steps: { readonly total: number; readonly finished: number };
 	readonly actions: {
 		readonly total: number;
-		/** Occurrences whose precondition or body has started and that have not settled. */
+		/** Occurrences whose prepare or apply phase has started and that have not settled. */
 		readonly running: number;
 		readonly finished: number;
 	};

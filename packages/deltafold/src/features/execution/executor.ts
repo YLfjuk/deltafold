@@ -332,9 +332,8 @@ export type Options<
 	 */
 	readonly interaction?: I;
 	/**
-	 * Receive the run's events, in array order. Pass `pkg.observers` to forward the
-	 * observers attached to a package. The executor waits for each observer before it
-	 * continues; an observer failure is recorded in `report.observation` and never changes
+	 * Receive the run's events, in array order. The executor waits for each observer
+	 * before it continues; an observer failure is recorded in `report.observation` and never changes
 	 * the outcome.
 	 */
 	readonly observers?: ReadonlyArray<O>;

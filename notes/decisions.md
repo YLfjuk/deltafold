@@ -221,11 +221,11 @@ prepare phases saw; a later real run may see different state.
 
 ## Observation
 
-**Attachment.** `Package.withObserver` returns a new package with the observer
-appended; the original keeps its observers. The package only carries them. The
-executor's `observers` option takes a plain array, usually `pkg.observers`, and
-the executor has no knowledge of packages. Observers run in array order. The
-observers' Effect services join the execution's requirements.
+**Run input.** Observers are an input of a run, like handlers. The executor's
+`observers` option takes a plain array, and nothing is attached to the package,
+which stays a model of the package's history. A command-line interface accepts
+observers alongside handlers. Observers run in array order. The observers'
+Effect services join the execution's requirements.
 
 **Delivery.** The executor waits for every observer before it continues, and
 delivers one event at a time across parallel branches, so each run has one total

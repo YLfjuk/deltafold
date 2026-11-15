@@ -22,7 +22,6 @@ import {
 	Interaction,
 	Migration,
 	Observer,
-	Package,
 	Plan,
 	Rule,
 	Version,
@@ -64,47 +63,6 @@ const answering = (answer: Interaction.Answer) => Interaction.promise(async () =
 
 const ok = <A extends Action.Any>(action: A) => Handler.effect(action, () => Effect.void);
 
-describe("Package.withObserver", () => {
-	const a = touch("a");
-	const history = History.make({
-		versions: [v1, v2],
-		migrations: [Migration.make("1-to-2", { from: v1, to: v2 })`${a}`],
-	});
-	const pkg = Package.make("@acme/widgets", { history });
-
-	it("returns a new package and appends observers in attachment order", () => {
-		const first = Observer.sync(() => {});
-		const second = Observer.sync(() => {});
-		const piped = pkg.pipe(Package.withObserver(first), Package.withObserver(second));
-		const dataFirst = Package.withObserver(Package.withObserver(pkg, first), second);
-
-		expect(pkg.observers).toEqual([]);
-		expect(piped.observers).toEqual([first, second]);
-		expect(dataFirst.observers).toEqual([first, second]);
-		expect(piped).toMatchObject({ _tag: "Package", name: "@acme/widgets", history });
-		expect(Package.isPackage(piped)).toBe(true);
-	});
-
-	it("causes no events until the observers reach an executor", async () => {
-		const { events, observer } = recorder();
-		const observed = pkg.pipe(Package.withObserver(observer));
-		const plan = planOf(observed.history, "2.0.0");
-
-		await Executor.runPromise(plan, { handlers: [ok(a)] });
-		expect(events).toEqual([]);
-
-		await Executor.runPromise(plan, { handlers: [ok(a)], observers: observed.observers });
-		expect(tags(events)).toEqual([
-			"RunStarted",
-			"StepStarted:1-to-2",
-			"ActionPhaseStarted:a:apply",
-			"ActionSettled:a:Completed",
-			"StepSettled:1-to-2",
-			"RunFinished",
-		]);
-	});
-});
-
 describe("Observer typing", () => {
 	const Logger = Context.Service<{ readonly log: (line: string) => Effect.Effect<void> }>(
 		"test/Logger",
@@ -120,33 +78,28 @@ describe("Observer typing", () => {
 		migrations: [Migration.make("1-to-2", { from: v1, to: v2 })`${a}${b}`],
 	});
 	const plan = planOf(history, "2.0.0");
-	const pkg = Package.make("@acme/widgets", { history });
 	const logging = Observer.effect((event) =>
 		Effect.flatMap(Effect.service(Logger), (logger) => logger.log(event._tag)),
 	);
 
-	it("carries observer services through packages and arrays into the execution", () => {
-		const shared = pkg.pipe(Package.withObserver(logging));
-		const perRun = shared.pipe(
-			Package.withObserver(
-				Observer.effect(() =>
-					Effect.flatMap(Effect.service(Progress), (bar) => bar.tick()),
-				),
-			),
+	it("carries the services of the observers array into the execution", () => {
+		const ticking = Observer.effect(() =>
+			Effect.flatMap(Effect.service(Progress), (bar) => bar.tick()),
 		);
-		const fromPackage = Executor.effect(plan, {
-			handlers: [ok(a), ok(b)],
-			observers: perRun.observers,
-		});
-		const fromArray = Executor.effect(plan, {
-			handlers: [ok(a), ok(b)],
+		const handlers = [ok(a), ok(b)];
+		const both = Executor.effect(plan, { handlers, observers: [logging, ticking] });
+		const one = Executor.effect(plan, {
+			handlers,
 			observers: [logging, Observer.sync(() => {})],
 		});
+		const none = Executor.effect(plan, {
+			handlers,
+			observers: [Observer.sync(() => {}), Observer.promise(async () => {})],
+		});
 
-		expectTypeOf<Effect.Services<typeof fromPackage>>().toEqualTypeOf<Logger | Progress>();
-		expectTypeOf<Effect.Services<typeof fromArray>>().toEqualTypeOf<Logger>();
-		expectTypeOf(pkg).toEqualTypeOf<Package.Package<typeof a | typeof b>>();
-		expectTypeOf(perRun).toExtend<Package.Any>();
+		expectTypeOf<Effect.Services<typeof both>>().toEqualTypeOf<Logger | Progress>();
+		expectTypeOf<Effect.Services<typeof one>>().toEqualTypeOf<Logger>();
+		expectTypeOf<Effect.Services<typeof none>>().toEqualTypeOf<never>();
 	});
 
 	it("keeps handler coverage and service checks independent of observers", () => {
