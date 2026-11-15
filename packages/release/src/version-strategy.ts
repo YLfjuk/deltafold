@@ -13,16 +13,15 @@ import {
 import type { Bump } from "./release-change.ts";
 
 /**
- * The recorded state of a prerelease line. It is written next to each prerelease
- * version and supplied back as input; it is never inferred from a version label.
+ * A prerelease line, derived from a version id and its ancestry and never recorded:
+ * `2.0.0-beta.3` is on the line with target `2.0.0`, tag `beta`, and counter 3. Packages
+ * share a line when its target and tag match.
  *
  * @since @next
  */
 export type Line = {
-	/** The stable version the line started from. */
-	readonly baseline: string;
-	/** The strongest magnitude the line has accumulated. */
-	readonly bump: Bump;
+	/** The nearest stable ancestor, absent when the line starts at the root of the history. */
+	readonly baseline: string | undefined;
 	/** The stable version the line is preparing. */
 	readonly target: string;
 	readonly tag: string;
@@ -36,7 +35,7 @@ export type Line = {
  */
 export type Pre = {
 	readonly tag: string;
-	/** `false` starts a new line; `true` continues the recorded one. */
+	/** `false` starts a new line; `true` continues the line `previous` is on. */
 	readonly continue: boolean;
 };
 
@@ -49,6 +48,7 @@ export type Participant<M extends object> = {
 	readonly package: string;
 	readonly previous: string;
 	readonly changes: ReadonlyArray<Change.Change<M>>;
+	/** The line `previous` is on, derived from its id and ancestry. */
 	readonly line: Line | undefined;
 	/**
 	 * Released dependencies whose range edits require this package to release. They are
@@ -67,8 +67,6 @@ export type Context<M extends object> = {
 export type Calculation = {
 	/** A canonical SemVer version. */
 	readonly version: string;
-	/** Present when `version` is a prerelease. */
-	readonly line?: Line;
 	/**
 	 * What happens to participants without changes when the version advances.
 	 * Defaults to `"align"`.
@@ -104,20 +102,35 @@ export type SemverOptions<M extends object> = {
 };
 
 /**
- * Parses a canonical SemVer version, failing with `InvalidVersion`.
+ * Parses a canonical SemVer version for the SemVer strategy, failing with
+ * `InvalidVersion`. Build metadata (a `+...` suffix) is refused: it does not affect
+ * precedence, so the strategy cannot order or calculate with it.
  *
  * @since @next
  */
-export const parse: (version: string) => SemVer.SemVer = parseVersion;
+export const parse = (version: string): SemVer.SemVer => {
+	const parsed = parseVersion(version);
+	if (parsed.build.length > 0) {
+		throw new PlanError(
+			issue(
+				"InvalidVersion",
+				`"${version}" has build metadata, which VersionStrategy.semver does not support.`,
+				[version],
+			),
+		);
+	}
+
+	return parsed;
+};
 
 /**
  * A SemVer strategy over consumer-defined change metadata.
  *
  * Stable plans bump the baseline by the strongest change. Prerelease plans keep a line:
- * `continue` keeps the line's target unless stronger accumulated intent raises it, and
+ * `continue` keeps the line's target unless stronger intent raises it, and
  * the counter restarts at 0 whenever the tag or the target changes.
  *
- * A stable plan from a prerelease baseline promotes the recorded line: the version is the
+ * A stable plan from a prerelease baseline promotes its line: the version is the
  * line's target, raised by stronger selected changes. The plan's changes are exactly the
  * ones the stable version records; `Release.prereleaseChanges` lists the line's changes
  * to choose from.
@@ -132,6 +145,7 @@ export const parse: (version: string) => SemVer.SemVer = parseVersion;
 export const semver =
 	<M extends object>(options: SemverOptions<M>): Strategy<M> =>
 	({ participants, pre }) => {
+		for (const participant of participants) parse(participant.previous);
 		const top = highest(participants);
 		const policy = options.baseline ?? "highest";
 		if (
@@ -148,7 +162,7 @@ export const semver =
 				),
 			);
 		}
-		const baseline = typeof policy === "object" ? parseVersion(policy.version) : top;
+		const baseline = typeof policy === "object" ? parse(policy.version) : top;
 		const unchanged = options.unchanged ?? "align";
 
 		const bumps: Array<Bump> = participants.flatMap((participant) =>

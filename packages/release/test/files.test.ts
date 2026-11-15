@@ -416,3 +416,48 @@ describe("resolving input from manifests", () => {
 		}).pipe(provide);
 	});
 });
+
+describe("generated version files", () => {
+	it.effect("are named after the version verbatim and record no prerelease state", () => {
+		const { files, provide } = memoryFs(workspace());
+		const result = release.plan({
+			pre: { tag: "beta", continue: false },
+			packages: [
+				{ package: widgets, previous: "1.5.2", changes: [retries, headers] },
+				{ package: react, previous: "1.5.2", changes: [headers] },
+			],
+		});
+		if (Result.isFailure(result)) throw new Error(result.failure.message);
+
+		return Effect.gen(function* () {
+			yield* ReleaseFiles.apply(yield* ReleaseFiles.prepare(result.success, options));
+			const generated = files.get("packages/widgets/versions/1.6.0-beta.0.ts") ?? "";
+
+			expect(generated).toContain(`export const version = Version.make("1.6.0-beta.0", {`);
+			expect(generated).not.toContain("prerelease");
+		}).pipe(provide);
+	});
+});
+
+describe("bare packages in resolve input", () => {
+	it.effect("stand for members with no changes and read their previous version", () => {
+		const { provide } = memoryFs(workspace());
+
+		return Effect.gen(function* () {
+			const { input } = yield* ReleaseFiles.resolve(release, {
+				packages: [{ package: widgets, changes: [retries] }, react],
+			});
+
+			expect(
+				input.packages.map((selection) => [
+					selection.package.name,
+					selection.previous,
+					selection.changes.length,
+				]),
+			).toEqual([
+				["@acme/widgets", "1.5.2", 1],
+				["@acme/widgets-react", "1.5.2", 0],
+			]);
+		}).pipe(provide);
+	});
+});
