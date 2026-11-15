@@ -312,9 +312,6 @@ The executor waits for each observer before it continues, so a slow observer
 slows the run. A failing observer never changes the outcome; the report lists it
 under `observation`.
 
-The events, their order, and their delivery are documented on
-[`Observer`](https://github.com/YLfjuk/deltafold/blob/main/packages/deltafold/src/features/execution/observer.ts).
-
 ## Simplify routes with rules and shortcuts
 
 Rules replace consecutive actions when you assert that they are equivalent.
