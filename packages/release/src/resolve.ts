@@ -29,7 +29,13 @@ export type Snapshot = {
 };
 
 /** @since @next */
-export type Resolved<M extends object> = { readonly input: Input<M>; readonly snapshot: Snapshot };
+export type Resolved<M extends object> = {
+	/** Every member with its manifest version as a stated `previous`. */
+	readonly input: Omit<Input<M>, "packages"> & {
+		readonly packages: ReadonlyArray<Selection<M> & { readonly previous: string }>;
+	};
+	readonly snapshot: Snapshot;
+};
 
 /**
  * One member's part of the input before resolution: its previous version comes from its
@@ -128,7 +134,7 @@ export const resolve = <M extends object>(
 				return { path: key, manifest: readManifest(text) };
 			});
 
-		const packages: Array<Selection<M>> = [];
+		const packages: Array<Selection<M> & { readonly previous: string }> = [];
 		const manifests: Array<{ readonly path: string; readonly manifest: Manifest }> = [];
 		for (const member of options.packages) {
 			const selection: Unresolved<M> = Package.isPackage(member)
@@ -206,7 +212,7 @@ export const resolve = <M extends object>(
 					: [],
 			),
 		);
-		const input: Input<M> = {
+		const input: Resolved<M>["input"] = {
 			...Struct.omit(options, ["manifests", "root", "base"]),
 			packages,
 			requirements,

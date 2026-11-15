@@ -353,8 +353,7 @@ describe("resolving input from manifests", () => {
 				const { input } = yield* resolveWidgets;
 				expect(
 					input.packages.map(
-						(selection) =>
-							`${selection.package.name}@${typeof selection.previous === "string" ? selection.previous : selection.previous.id}`,
+						(selection) => `${selection.package.name}@${selection.previous}`,
 					),
 				).toEqual(["@acme/widgets@1.5.2", "@acme/widgets-react@1.5.2"]);
 				const result = release.plan(input);
@@ -452,7 +451,7 @@ describe("bare packages in resolve input", () => {
 				input.packages.map((selection) => [
 					selection.package.name,
 					selection.previous,
-					selection.changes.length,
+					selection.changes?.length,
 				]),
 			).toEqual([
 				["@acme/widgets", "1.5.2", 1],
