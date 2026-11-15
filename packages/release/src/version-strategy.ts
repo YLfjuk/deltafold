@@ -1,7 +1,15 @@
-import { Array as Arr, Result, SemVer } from "effect";
+import { SemVer } from "effect";
 
 import type { Change } from "deltafold";
 import { issue, PlanError } from "./error.ts";
+import {
+	bumpStable,
+	highest,
+	parse as parseVersion,
+	prerelease,
+	promote,
+	strongest,
+} from "./line.ts";
 import type { Bump } from "./release-change.ts";
 
 /**
@@ -95,39 +103,7 @@ export type SemverOptions<M extends object> = {
  *
  * @since @next
  */
-export const parse = (version: string): SemVer.SemVer => {
-	const parsed = SemVer.parse(version);
-	if (Result.isFailure(parsed) || SemVer.format(parsed.success) !== version) {
-		throw new PlanError(
-			issue("InvalidVersion", `"${version}" is not a canonical SemVer version.`, [version]),
-		);
-	}
-
-	return parsed.success;
-};
-
-const magnitude: Record<Bump, number> = { patch: 1, minor: 2, major: 3 };
-const strongest = (bumps: ReadonlyArray<Bump>): Bump | undefined =>
-	bumps.reduce<Bump | undefined>(
-		(best, bump) => (best === undefined || magnitude[bump] > magnitude[best] ? bump : best),
-		undefined,
-	);
-
-const bumpStable = (version: SemVer.SemVer, bump: Bump): SemVer.SemVer =>
-	bump === "major"
-		? SemVer.bumpMajor(version)
-		: bump === "minor"
-			? SemVer.bumpMinor(version)
-			: SemVer.bumpPatch(version);
-
-const sameLine = (a: Line, b: Line) =>
-	a.baseline === b.baseline &&
-	a.bump === b.bump &&
-	a.target === b.target &&
-	a.tag === b.tag &&
-	a.counter === b.counter;
-
-const identifier = /^[0-9A-Za-z-]+$/;
+export const parse: (version: string) => SemVer.SemVer = parseVersion;
 
 /**
  * A SemVer strategy over consumer-defined change metadata.
@@ -151,15 +127,12 @@ const identifier = /^[0-9A-Za-z-]+$/;
 export const semver =
 	<M extends object>(options: SemverOptions<M>): Strategy<M> =>
 	({ participants, pre }) => {
-		const versions = participants.map((participant) => parse(participant.previous));
-		if (!Arr.isReadonlyArrayNonEmpty(versions)) {
-			throw new PlanError(
-				issue("MissingMember", "A calculation needs at least one participant."),
-			);
-		}
-		const highest = Arr.reduce(versions, versions[0], (a, b) => SemVer.max(a, b));
+		const top = highest(participants);
 		const policy = options.baseline ?? "highest";
-		if (policy === "require-matching" && new Set(versions.map(SemVer.format)).size > 1) {
+		if (
+			policy === "require-matching" &&
+			new Set(participants.map((participant) => participant.previous)).size > 1
+		) {
 			throw new PlanError(
 				issue(
 					"BaselineMismatch",
@@ -170,7 +143,7 @@ export const semver =
 				),
 			);
 		}
-		const baseline = typeof policy === "object" ? parse(policy.version) : highest;
+		const baseline = typeof policy === "object" ? parseVersion(policy.version) : top;
 		const unchanged = options.unchanged ?? "align";
 
 		const bumps = participants.flatMap((participant) =>
@@ -189,99 +162,15 @@ export const semver =
 				return bump;
 			}),
 		);
+
+		if (pre !== undefined) return prerelease({ participants, pre, baseline, bumps, unchanged });
+		if (SemVer.isPrerelease(baseline)) {
+			return { version: SemVer.format(promote(participants, bumps)), unchanged };
+		}
 		const intent = strongest(bumps);
 
-		const lines = participants.map((participant) => participant.line);
-		const prior = lines[0];
-		const requireSharedLine = (purpose: string) => {
-			if (
-				prior === undefined ||
-				lines.some((line) => line === undefined || !sameLine(line, prior))
-			) {
-				throw new PlanError(
-					issue(
-						"PrereleaseContext",
-						`${purpose} needs one recorded prerelease line shared by every participant of the calculation. Calculate independent lines separately.`,
-						participants.map((participant) => participant.package),
-					),
-				);
-			}
-
-			return prior;
-		};
-
-		if (pre === undefined) {
-			if (SemVer.isPrerelease(baseline)) {
-				const line = requireSharedLine("Promoting a prerelease to stable");
-				const bump = strongest([...bumps, line.bump]) ?? line.bump;
-
-				return {
-					version: SemVer.format(bumpStable(parse(line.baseline), bump)),
-					unchanged,
-				};
-			}
-
-			return {
-				version: SemVer.format(
-					intent === undefined ? baseline : bumpStable(baseline, intent),
-				),
-				unchanged,
-			};
-		}
-
-		if (
-			!identifier.test(pre.tag) ||
-			/^\d+$/.test(pre.tag) ||
-			typeof pre.continue !== "boolean"
-		) {
-			throw new PlanError(
-				issue(
-					"InvalidPre",
-					"pre needs a non-numeric identifier tag and a boolean continue.",
-					[pre.tag],
-				),
-			);
-		}
-		if (pre.continue) requireSharedLine("Continuing a prerelease line");
-		else if (SemVer.isPrerelease(baseline) && prior === undefined) {
-			throw new PlanError(
-				issue(
-					"PrereleaseContext",
-					`${SemVer.format(baseline)} is a prerelease without a recorded line, so its stable baseline is unknown.`,
-					participants.map((participant) => participant.package),
-				),
-			);
-		}
-
-		const stable =
-			prior !== undefined && (pre.continue || SemVer.isPrerelease(baseline))
-				? parse(prior.baseline)
-				: baseline;
-		const accumulated =
-			pre.continue && prior !== undefined ? strongest([...bumps, prior.bump]) : intent;
-		if (accumulated === undefined) {
-			throw new PlanError(
-				issue("NoIntent", "Starting a prerelease line needs at least one change."),
-			);
-		}
-		const target = SemVer.format(bumpStable(stable, accumulated));
-		const counter =
-			pre.continue && prior !== undefined && prior.target === target && prior.tag === pre.tag
-				? prior.counter + 1
-				: 0;
-		const version = SemVer.format(
-			SemVer.withPrerelease(SemVer.parseUnsafe(target), [pre.tag, counter]),
-		);
-
 		return {
-			version,
-			line: {
-				baseline: SemVer.format(stable),
-				bump: accumulated,
-				target,
-				tag: pre.tag,
-				counter,
-			},
+			version: SemVer.format(intent === undefined ? baseline : bumpStable(baseline, intent)),
 			unchanged,
 		};
 	};

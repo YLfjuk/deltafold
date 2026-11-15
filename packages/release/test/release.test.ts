@@ -418,7 +418,7 @@ describe("prerelease lines", () => {
 		expect(() => step([headers], { tag: "alpha", continue: true })).toThrow("downgrade");
 	});
 
-	it("refuses continuation without a recorded line, and literal targets with pre", () => {
+	it("refuses continuation without a recorded line", () => {
 		const stable = packageWith("@acme/solo", ["1.5.2"]);
 		expect(
 			failure(
@@ -428,26 +428,74 @@ describe("prerelease lines", () => {
 				}),
 			).reason,
 		).toBe("PrereleaseContext");
+	});
 
-		const pre = packageWith("@acme/solo", ["1.5.2", "1.5.3-beta.0"]);
-		const line = {
+	it("treats a literal target with pre as the line's stable target", () => {
+		let pkg = packageWith("@acme/solo", ["1.5.2"]);
+		let previous = "1.5.2";
+		let line: VersionStrategy.Line | undefined;
+		const step = (input: {
+			readonly version?: string;
+			readonly pre?: VersionStrategy.Pre;
+			readonly changes: ReadonlyArray<Change.Change<ProjectMetadata>>;
+		}) => {
+			const planned = success(
+				lineGroup(pkg).plan({
+					...(input.version === undefined ? {} : { version: input.version }),
+					...(input.pre === undefined ? {} : { pre: input.pre }),
+					packages: [
+						{
+							package: pkg,
+							previous,
+							changes: input.changes,
+							...(line ? { line } : {}),
+						},
+					],
+				}),
+			).versions[0];
+			if (planned === undefined) throw new Error("expected a version");
+			pkg = advance(pkg, planned);
+			previous = planned.version.id;
+			line = planned.line;
+
+			return previous;
+		};
+
+		expect(
+			step({ version: "3.0.0", pre: { tag: "beta", continue: false }, changes: [retries] }),
+		).toBe("3.0.0-beta.0");
+		expect(line).toEqual({
 			baseline: "1.5.2",
-			bump: "patch",
-			target: "1.5.3",
+			bump: "major",
+			target: "3.0.0",
 			tag: "beta",
 			counter: 0,
+		});
+		// The calculated target would be 2.0.0; continuing keeps the line's 3.0.0.
+		expect(step({ pre: { tag: "beta", continue: true }, changes: [headers] })).toBe(
+			"3.0.0-beta.1",
+		);
+		expect(step({ changes: [retries, headers] })).toBe("3.0.0");
+	});
+
+	it("refuses prerelease literals with pre and literals below the line", () => {
+		const pre = packageWith("@acme/solo", ["1.5.2", "3.0.0-beta.1"]);
+		const line = {
+			baseline: "1.5.2",
+			bump: "major",
+			target: "3.0.0",
+			tag: "beta",
+			counter: 1,
 		} as const;
-		expect(
-			failure(
-				lineGroup(pre).plan({
-					version: "1.5.3",
-					packages: [
-						{ package: pre, previous: "1.5.3-beta.0", changes: [headers], line },
-					],
-					pre: { tag: "beta", continue: true },
-				}),
-			).reason,
-		).toBe("ExplicitTargetWithPre");
+		const plan = (version: string) =>
+			lineGroup(pre).plan({
+				version,
+				pre: { tag: "beta", continue: true },
+				packages: [{ package: pre, previous: "3.0.0-beta.1", changes: [headers], line }],
+			});
+
+		expect(failure(plan("3.0.0-beta.4")).reason).toBe("PrereleaseTarget");
+		expect(failure(plan("2.0.0")).reason).toBe("Downgrade");
 	});
 
 	it("requires the full pre object", () => {
