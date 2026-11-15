@@ -54,7 +54,7 @@ export type Options<A extends Action.Any, H extends Handler.Handler<A, any, any>
  * `migrate` forwards the package's observers to the executor, in attachment order, and
  * then adds its own observer that prints progress on stderr (none with `--json`).
  *
- * Building the command and showing help never load handlers, run preconditions, or touch
+ * Building the command and showing help never load handlers, run prepare phases, or touch
  * consumer files. Importing the module that declares the package still runs that module's
  * top-level code.
  *

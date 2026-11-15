@@ -114,7 +114,7 @@ export const make = (output: Output["Service"], cancel: () => void) =>
 				const { outcome } = event;
 				if (outcome._tag === "Declined")
 					stops.record({ occurrence, reason: "was declined" });
-				else if (outcome._tag === "Failed" || outcome._tag === "PreconditionFailed") {
+				else if (outcome._tag === "Failed" || outcome._tag === "PreparationFailed") {
 					stops.record({ occurrence, reason: "failed" });
 				} else if (outcome._tag === "Interrupted" && outcome.reason === "timeout") {
 					stops.record({ occurrence, reason: "timed out" });

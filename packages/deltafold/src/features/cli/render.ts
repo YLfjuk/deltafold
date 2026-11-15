@@ -106,7 +106,7 @@ const statusLabels = {
 	"would-execute": "would run",
 	"would-skip": "would skip",
 	undetermined: "undetermined",
-	"precondition-failed": "precondition failed",
+	"preparation-failed": "preparation failed",
 } as const satisfies Record<OutcomeStatus, string>;
 
 const labelWidth = Math.max(...Object.values(statusLabels).map((label) => label.length));
@@ -143,7 +143,7 @@ const actionLine = (tag: Outcome["_tag"], occurrence: string, detail: string, st
 	const colored =
 		status === "completed" || status === "would-execute"
 			? style.green(label)
-			: status === "failed" || status === "precondition-failed" || status === "declined"
+			: status === "failed" || status === "preparation-failed" || status === "declined"
 				? style.red(label)
 				: status === "interrupted" || status === "undetermined"
 					? style.yellow(label)
@@ -154,16 +154,16 @@ const actionLine = (tag: Outcome["_tag"], occurrence: string, detail: string, st
 
 const reportDetail = (value: Outcome) => {
 	if (value._tag === "Failed") return ` (${value.phase}): ${outcomeError(value).message}`;
-	if (value._tag === "PreconditionFailed") return `: ${outcomeError(value).message}`;
+	if (value._tag === "PreparationFailed") return `: ${outcomeError(value).message}`;
 
 	return commonDetail(value);
 };
 
 const summaryDetail = (value: Observer.OutcomeSummary) => {
 	const tag =
-		value._tag === "Failed" || value._tag === "PreconditionFailed" ? value.errorTag : undefined;
+		value._tag === "Failed" || value._tag === "PreparationFailed" ? value.errorTag : undefined;
 	if (value._tag === "Failed") return ` (${value.phase})${tag === undefined ? "" : `: ${tag}`}`;
-	if (value._tag === "PreconditionFailed") return tag === undefined ? "" : `: ${tag}`;
+	if (value._tag === "PreparationFailed") return tag === undefined ? "" : `: ${tag}`;
 
 	return commonDetail(value);
 };
@@ -206,7 +206,7 @@ const headline = (value: Report, style: Style) => {
 		case "would-complete":
 			return `${successMark(style)}Dry run ${route}: every check passed`;
 		case "would-fail":
-			return style.red(`${failureMark(style.rich)}Dry run ${route}: a precondition failed`);
+			return style.red(`${failureMark(style.rich)}Dry run ${route}: a prepare phase failed`);
 		case "failed":
 			return style.red(`${failureMark(style.rich)}Migration ${route} failed`);
 		case "interrupted":

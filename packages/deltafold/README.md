@@ -409,21 +409,21 @@ wizard; the only prompts are the manual-handler confirmations described below,
 and there are none with `--json`, in CI, without a terminal, or in a dry run. The
 command has these subcommands:
 
-| Command     | What it does                                                                                  |
-| ----------- | --------------------------------------------------------------------------------------------- |
-| `validate`  | Lists every declaration issue.                                                                |
-| `plan`      | Resolves the route and instructions between `--from` and `--to`. Runs no handlers.            |
-| `upgrades`  | Lists versions reachable by upgrade from `--from`, with their routes. `downgrades` likewise.  |
-| `migrate`   | Runs the plan with your handlers. `--dry-run` only evaluates preconditions. Needs `handlers`. |
-| `guide`     | Renders the upgrade or downgrade guide as Markdown or HTML (`--format`, `--output`).          |
-| `changelog` | Renders the release history, or one `--release`. Needs `releases` metadata.                   |
+| Command     | What it does                                                                                 |
+| ----------- | -------------------------------------------------------------------------------------------- |
+| `validate`  | Lists every declaration issue.                                                               |
+| `plan`      | Resolves the route and instructions between `--from` and `--to`. Runs no handlers.           |
+| `upgrades`  | Lists versions reachable by upgrade from `--from`, with their routes. `downgrades` likewise. |
+| `migrate`   | Runs the plan with your handlers. `--dry-run` runs only prepare phases. Needs `handlers`.    |
+| `guide`     | Renders the upgrade or downgrade guide as Markdown or HTML (`--format`, `--output`).         |
+| `changelog` | Renders the release history, or one `--release`. Needs `releases` metadata.                  |
 
 When several routes connect two versions, the command fails and lists them;
 pass `--route` with one of the listed identifiers, or `--policy`. A missing or
 unknown version never falls back to another one.
 
 Help, `validate`, `plan`, `upgrades`, `downgrades`, `guide`, and `changelog`
-never load handlers or run preconditions. Pass `handlers` as a function that
+never load handlers or run prepare phases. Pass `handlers` as a function that
 imports the handler module, so that only `migrate` loads it. Importing the
 module that declares your package still runs that module's top-level code.
 
@@ -435,7 +435,12 @@ with `schemaVersion: 1`, and a failure that happens before there is a result
 prints one JSON error document on stderr instead, with a stable `reason`,
 structured `data`, and suggested follow-up commands as `argv`. `migrate` always
 prints its report on stdout, including after a failure or cancellation.
-Action payloads are not included in JSON output.
+Action payloads are not included in JSON output. A change's `metadata` keeps
+every key: plain JSON values stay as they are, `undefined` becomes `null`, and
+other values are named by type, such as `"[Date]"`, `"[Map]"`, or `"[Circular]"`.
+Outcome statuses and phases use the executor's names, for example
+`preparation-failed` and the `prepare`, `apply`, `confirmation`, and
+`verification` phases.
 
 `migrate` passes the observers attached to your package with
 `Package.withObserver` to the executor, in attachment order, and then adds

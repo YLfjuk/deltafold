@@ -2,7 +2,7 @@ import { describe, expect, expectTypeOf, it } from "@effect/vitest";
 import { Cause, Context, Deferred, Effect, Exit, Fiber } from "effect";
 import * as EffectCli from "effect/cli";
 
-import { Action, Handler, History, Migration, Observer, Package, Version } from "deltafold";
+import { Action, Change, Handler, History, Migration, Observer, Package, Version } from "deltafold";
 import { Changelog } from "deltafold/changelog";
 import { Cli, Command } from "deltafold/cli";
 import {
@@ -26,19 +26,16 @@ const typeOnly = (_check: () => void) => {};
 type Calls = Array<string>;
 
 const handlersFor = (calls: Calls, options: { readonly failAddRetries?: boolean } = {}) => [
-	Handler.promise(
-		renameTimeout,
-		async () => {
+	Handler.promise(renameTimeout, {
+		prepare: async () => {
+			calls.push("prepare rename-timeout");
+
+			return Handler.prepared();
+		},
+		apply: async () => {
 			calls.push("rename-timeout");
 		},
-		{
-			when: async () => {
-				calls.push("check rename-timeout");
-
-				return true;
-			},
-		},
-	),
+	}),
 	Handler.promise(addRetryLimit, async () => {
 		calls.push("add-retry-limit");
 		if (options.failAddRetries === true) {
@@ -300,11 +297,13 @@ describe("plan", () => {
 			});
 			expect(plan.occurrences[0]).not.toHaveProperty("payload");
 			expect(plan.changes).toEqual([
-				expect.objectContaining({
+				{
 					id: "2026-11-06.rename-timeout",
-					kind: "changed",
-					breaking: true,
-				}),
+					description: "Rename the timeout configuration option to requestTimeout.",
+					metadata: { kind: "changed", breaking: true },
+					reverts: [],
+					backportOf: null,
+				},
 			]);
 		}),
 	);
@@ -407,6 +406,52 @@ describe("plan", () => {
 	);
 });
 
+describe("change metadata", () => {
+	it.effect("keeps every key and names values that JSON cannot hold", () =>
+		Effect.gen(function* () {
+			const nested: Record<string, unknown> = { team: "config" };
+			nested["self"] = nested;
+			const noted = Change.define<Record<string, unknown>>().make("2026-11-15.noted", {
+				breaking: true,
+				ticket: "ACME-42",
+				labels: ["config", 2, false, null],
+				releasedAt: new Date(0),
+				owners: new Set(["a"]),
+				size: 10n,
+				render: () => "x",
+				ratio: Number.NaN,
+				unset: undefined,
+				nested,
+			})`Note the change.`;
+			const later = Version.make("2.0.0", { previous: v1, changes: [noted] });
+			const step = Migration.make("1.0.0-to-2.0.0", {
+				from: v1,
+				to: later,
+				addresses: [noted],
+			})`${renameTimeout}`;
+			const pkg = Package.make("@acme/noted", {
+				history: History.make({ versions: [v1, later], migrations: [step] }),
+			});
+			const result = yield* capture(
+				start(Command.make(pkg), ["plan", "--from", "1.0.0", "--to", "2.0.0", "--json"]),
+			);
+
+			expect(json(result.stdout).plan.changes[0].metadata).toEqual({
+				breaking: true,
+				ticket: "ACME-42",
+				labels: ["config", 2, false, null],
+				releasedAt: "[Date]",
+				owners: "[Set]",
+				size: "[BigInt]",
+				render: "[Function]",
+				ratio: "[NaN]",
+				unset: null,
+				nested: { team: "config", self: "[Circular]" },
+			});
+		}),
+	);
+});
+
 describe("upgrades and downgrades", () => {
 	it.effect("list destinations with their routes", () =>
 		Effect.gen(function* () {
@@ -460,7 +505,7 @@ describe("migrate", () => {
 			const { report } = json(result.stdout);
 
 			expect(result.code).toBe(0);
-			expect(calls).toEqual(["check rename-timeout", "rename-timeout"]);
+			expect(calls).toEqual(["prepare rename-timeout", "rename-timeout"]);
 			expect(report).toMatchObject({
 				mode: "execute",
 				status: "completed",
@@ -494,7 +539,7 @@ describe("migrate", () => {
 
 			expect(result.code).toBe(0);
 			expect(result.stderr).toBe("");
-			expect(calls).toEqual(["check rename-timeout"]);
+			expect(calls).toEqual(["prepare rename-timeout"]);
 			expect(report).toMatchObject({
 				mode: "dry-run",
 				status: "would-complete",
@@ -531,7 +576,7 @@ describe("migrate", () => {
 			expect(report.summary).toMatchObject({ completed: 1, failed: 1 });
 			expect(report.occurrences[1].outcome).toMatchObject({
 				status: "failed",
-				phase: "body",
+				phase: "apply",
 				error: { tag: "UnexpectedHandlerError", cause: { code: "EACCES" } },
 			});
 			expect(human.code).toBe(1);
@@ -562,6 +607,43 @@ describe("migrate", () => {
 				action: "rename-timeout",
 				occurrence: "1.0.0-to-2.0.0/rename-timeout",
 			});
+		}),
+	);
+
+	it.effect("reports a failed prepare phase by mode", () =>
+		Effect.gen(function* () {
+			const command = Command.make(widgets, {
+				handlers: [
+					Handler.promise(renameTimeout, {
+						prepare: async () => {
+							throw new Error("config unreadable");
+						},
+						apply: async () => {},
+					}),
+				],
+			});
+			const argv = ["migrate", "--from", "1.0.0", "--to", "2.0.0"];
+			const real = yield* capture(start(command, [...argv, "--json"]));
+			const dry = yield* capture(start(command, [...argv, "--dry-run", "--json"]));
+			const human = yield* capture(start(command, [...argv, "--dry-run"]));
+			const error = {
+				tag: "UnexpectedHandlerError",
+				cause: { message: "config unreadable" },
+			};
+
+			expect(real.code).toBe(1);
+			expect(json(real.stdout).report.occurrences[0].outcome).toMatchObject({
+				status: "failed",
+				phase: "prepare",
+				error,
+			});
+			expect(dry.code).toBe(1);
+			expect(json(dry.stdout).report.occurrences[0].outcome).toMatchObject({
+				status: "preparation-failed",
+				error,
+			});
+			expect(human.stdout).toContain("preparation failed");
+			expect(human.stdout).toContain("Dry run from 1.0.0 to 2.0.0: a prepare phase failed");
 		}),
 	);
 
@@ -742,17 +824,26 @@ const failureReason = (exit: Exit.Exit<unknown, unknown>) => {
 
 const person = { stdinIsTerminal: true, stderrIsTerminal: true } as const;
 
-/** A migrator whose only handler is manual; `checks` records its precondition calls. */
-const manualMigrator = (checks: Calls = []) =>
-	Command.make(widgets, {
+/** A migrator whose only handler is manual. */
+const manualMigrator = () =>
+	Command.make(widgets, { name: "widgets-migrate", handlers: [Handler.manual(renameTimeout)] });
+
+/**
+ * A manual rename beside an automated retry limit, in parallel branches. `checks` records
+ * the automated prepare phase, which shows whether anything ran.
+ */
+const mixedMigrator = (checks: Calls) =>
+	Command.make(parallel([renameTimeout, addRetryLimit]), {
 		name: "widgets-migrate",
 		handlers: [
-			Handler.manual(renameTimeout, {
-				when: () => {
-					checks.push("when");
+			Handler.manual(renameTimeout),
+			Handler.promise(addRetryLimit, {
+				prepare: async () => {
+					checks.push("prepare add-retry-limit");
 
-					return true;
+					return Handler.prepared();
 				},
+				apply: async () => {},
 			}),
 		],
 	});
@@ -829,14 +920,14 @@ describe("manual handlers", () => {
 		Effect.gen(function* () {
 			const checks: Calls = [];
 			const machine = yield* capture(
-				start(manualMigrator(checks), [...argv, "--json"]),
+				start(mixedMigrator(checks), [...argv, "--json"]),
 				person,
 			);
-			const piped = yield* capture(start(manualMigrator(checks), argv), {
+			const piped = yield* capture(start(mixedMigrator(checks), argv), {
 				stdinIsTerminal: false,
 				stderrIsTerminal: true,
 			});
-			const ci = yield* capture(start(manualMigrator(checks), argv), {
+			const ci = yield* capture(start(mixedMigrator(checks), argv), {
 				...person,
 				env: { CI: "true" },
 			});
@@ -869,14 +960,19 @@ describe("manual handlers", () => {
 		Effect.gen(function* () {
 			const checks: Calls = [];
 			const result = yield* capture(
-				start(manualMigrator(checks), [...argv, "--dry-run", "--json"]),
+				start(mixedMigrator(checks), [...argv, "--dry-run", "--json"]),
+			);
+
+			const { occurrences } = json(result.stdout).report;
+			const manual = occurrences.find(
+				(entry: { readonly action: string }) => entry.action === "rename-timeout",
 			);
 
 			expect(result.code).toBe(0);
-			expect(checks).toEqual(["when"]);
-			expect(json(result.stdout).report.occurrences[0].outcome).toEqual({
+			expect(checks).toEqual(["prepare add-retry-limit"]);
+			expect(manual.outcome).toEqual({
 				status: "would-execute",
-				evaluated: true,
+				evaluated: false,
 				performer: "manual",
 			});
 		}),
@@ -1071,8 +1167,9 @@ describe("observers", () => {
 				message: "loop",
 			};
 			loop.cause = loop;
+			const unprintable: object = Object.create(null);
 			const observed = widgets.pipe(
-				Package.withObserver(Observer.effect(() => Effect.fail(Object.create(null)))),
+				Package.withObserver(Observer.effect(() => Effect.fail(unprintable))),
 				Package.withObserver(Observer.effect(() => Effect.fail(loop))),
 			);
 			const command = Command.make(observed, { handlers: () => handlersFor([]) });

@@ -165,6 +165,8 @@ export const terminal = (options: Terminal = {}) => {
 	);
 	const provide = <A, E>(program: Effect.Effect<A, E, Command.Environment>) =>
 		program.pipe(
+			// The harness is the entry point of each program under test.
+			// oxlint-disable-next-line effecttsgo/strict-effect-provide
 			Effect.provide(layer),
 			Effect.provideService(Console.Console, consoleTo(stdout, stderr)),
 			Effect.provideService(

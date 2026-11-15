@@ -345,7 +345,15 @@ it is not mistaken for a total limit. Handlers are passed as a function so only
 supplied as data; `Command.make` still rejects handlers for actions outside the
 package and carries their services in its type.
 
-**Streams and formats.** Results go to stdout, everything else to stderr.
+**Streams and formats.** JSON outcome statuses and phases follow the executor's
+names (`preparation-failed`; `prepare`, `apply`, `confirmation`, `verification`),
+so core, observer events, and the CLI share one vocabulary. Change metadata is
+package-defined, so plan JSON keeps its keys and replaces values that JSON cannot
+hold with a marker naming their type (`[Date]`, `[Map]`, `[BigInt]`, `[Function]`,
+`[Circular]`); `undefined` becomes `null`. No serialization library is used: each
+one adds a dependency and an encoding that every consumer must decode.
+
+Results go to stdout, everything else to stderr.
 `--log-level` filters diagnostics only. Effect logs go to stderr. With `--json`,
 stdout holds one document with `schemaVersion: 1`, diagnostics are dropped, and a
 failure before any result prints one error document on stderr with `status`,

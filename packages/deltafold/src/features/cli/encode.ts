@@ -1,6 +1,6 @@
 import { Cause } from "effect";
 
-import type { Change } from "../../foundation/change.ts";
+import type { Any as AnyChange } from "../../foundation/change.ts";
 import type { Any as AnyPlan, Explanation, Occurrence, Step } from "../../foundation/plan.ts";
 import type { OccurrenceReport, Outcome, Report } from "../execution/executor.ts";
 import type { Destination, Issue } from "../planning/history.ts";
@@ -14,11 +14,66 @@ export const issue = (value: Issue) => ({
 	message: value.message,
 });
 
-const change = (value: Change) => ({
+/** Runs a projection that may throw on hostile values, such as getters or proxies. */
+const attempt = <A>(project: () => A, fallback: A): A => {
+	try {
+		return project();
+	} catch {
+		return fallback;
+	}
+};
+
+/** A JSON value. */
+type Json =
+	| null
+	| boolean
+	| number
+	| string
+	| ReadonlyArray<Json>
+	| { readonly [key: string]: Json };
+
+/** Names a value that JSON cannot hold, such as `[Date]`, `[Map]`, or `[BigInt]`. */
+const marker = (value: unknown) => {
+	if (typeof value === "function") return "[Function]";
+	if (typeof value !== "object" || value === null) {
+		return `[${typeof value === "bigint" ? "BigInt" : typeof value === "symbol" ? "Symbol" : String(value)}]`;
+	}
+	const name: unknown = attempt(() => Object.getPrototypeOf(value)?.constructor?.name, undefined);
+
+	return `[${typeof name === "string" && name !== "" ? name : "Object"}]`;
+};
+
+/**
+ * Projects package-defined data to JSON. Plain JSON values are kept, `undefined` becomes
+ * `null`, and any other value keeps its key with a marker naming its type, so that a
+ * consumer sees that the field exists.
+ */
+const plain = (value: unknown, seen: ReadonlySet<object> = new Set()): Json =>
+	attempt((): Json => {
+		if (value === undefined || value === null) return null;
+		if (typeof value === "boolean" || typeof value === "string") return value;
+		if (typeof value === "number") return Number.isFinite(value) ? value : marker(value);
+		if (typeof value !== "object") return marker(value);
+		if (seen.has(value)) return "[Circular]";
+		const inner = new Set([...seen, value]);
+		if (Array.isArray(value)) return value.map((item: unknown) => plain(item, inner));
+		const prototype: unknown = Object.getPrototypeOf(value);
+		if (prototype !== Object.prototype && prototype !== null) return marker(value);
+
+		return Object.fromEntries(
+			Object.entries(value).map(([key, field]: [string, unknown]) => [
+				key,
+				plain(field, inner),
+			]),
+		);
+	}, "[Unreadable]");
+
+const change = (value: AnyChange) => ({
 	id: value.id,
-	kind: value.kind,
-	breaking: value.breaking,
 	description: value.description,
+	metadata: plain(value.metadata),
+	reverts: value.reverts.map((reverted) => reverted.id),
+	backportOf: value.backportOf?.id ?? null,
 });
 
 export const occurrence = (value: Occurrence, step: string | null) => ({
@@ -97,15 +152,6 @@ export const destination = (value: Destination) => ({
 	version: value.version.id,
 	routes: value.routes,
 });
-
-/** Runs a projection that may throw on hostile values, such as getters or proxies. */
-const attempt = <A>(project: () => A, fallback: A): A => {
-	try {
-		return project();
-	} catch {
-		return fallback;
-	}
-};
 
 const stringField = (value: unknown, key: string) =>
 	attempt(() => {
@@ -196,7 +242,7 @@ export const outcome = (value: Outcome) => {
 			};
 	}
 
-	return { status: "precondition-failed" as const, error: outcomeError(value) };
+	return { status: "preparation-failed" as const, error: outcomeError(value) };
 };
 
 export type OutcomeStatus = ReturnType<typeof outcome>["status"];
@@ -211,7 +257,7 @@ export const statusByTag = {
 	WouldExecute: "would-execute",
 	WouldSkip: "would-skip",
 	Undetermined: "undetermined",
-	PreconditionFailed: "precondition-failed",
+	PreparationFailed: "preparation-failed",
 } as const satisfies Record<Outcome["_tag"], OutcomeStatus>;
 
 const statuses: ReadonlyArray<OutcomeStatus> = [
@@ -224,7 +270,7 @@ const statuses: ReadonlyArray<OutcomeStatus> = [
 	"would-execute",
 	"would-skip",
 	"undetermined",
-	"precondition-failed",
+	"preparation-failed",
 ];
 
 /** Counts of each outcome status, including zeros, in a stable order. */

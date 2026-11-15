@@ -240,7 +240,7 @@ const planCommand = (definition: Definition) =>
 						]);
 						yield* output.diagnostic([
 							"",
-							"Check preconditions without running actions:",
+							"Preview with prepare phases, without applying actions:",
 							`    ${output.err.bold(next.command)}`,
 						]);
 					}
@@ -248,7 +248,7 @@ const planCommand = (definition: Definition) =>
 			),
 	).pipe(
 		Command.withDescription(
-			"Resolve the route and instructions between two versions. Runs no handlers or preconditions.",
+			"Resolve the route and instructions between two versions. Runs no handlers or prepare phases.",
 		),
 		Command.withExamples(
 			examples([
@@ -531,11 +531,11 @@ const migrateCommand = (
 			policy: policyFlag,
 			dryRun: Flag.Boolean("dry-run").pipe(
 				Flag.withDefault(false),
-				Flag.withDescription("Evaluate preconditions without running any action body"),
+				Flag.withDescription("Run prepare phases without applying any action"),
 			),
 			actionTimeout: durationFlag(
 				"action-timeout",
-				"Interrupt a precondition or body that runs longer, and start no new actions",
+				"Interrupt a prepare, apply, or verification phase that runs longer, and start no new actions",
 			),
 			settleTimeout: durationFlag(
 				"settle-timeout",
@@ -574,7 +574,7 @@ const migrateCommand = (
 					const actions = `${Render.plural(plan.occurrences.length, "action")} in ${Render.plural(plan.steps.length, "migration")}`;
 					yield* output.diagnostic(
 						input.dryRun
-							? `Checking preconditions of ${actions} from ${plan.from.id} to ${plan.to.id} (dry run)`
+							? `Preparing ${actions} from ${plan.from.id} to ${plan.to.id} (dry run)`
 							: `Running ${actions} from ${plan.from.id} to ${plan.to.id}`,
 					);
 
@@ -673,7 +673,7 @@ const migrateCommand = (
 						return yield* settled.report.status === "would-fail"
 							? new CliFailure({
 									reason: "would_fail",
-									message: "A precondition failed in the dry run",
+									message: "A prepare phase failed in the dry run",
 									exitCode: 1,
 								})
 							: Effect.void;
@@ -702,7 +702,7 @@ const migrateCommand = (
 							next: [
 								{
 									purpose: "dry-run",
-									label: "Check preconditions without running actions",
+									label: "Preview without applying actions",
 									args: [
 										...selectionArgs("migrate", input),
 										"--route",
@@ -778,13 +778,13 @@ const migrateCommand = (
 			),
 	).pipe(
 		Command.withDescription(
-			"Run the planned actions with the package's handlers. Pass --dry-run to only evaluate preconditions.",
+			"Run the planned actions with the package's handlers. Pass --dry-run to run only prepare phases.",
 		),
 		Command.withExamples(
 			examples([
 				{
 					args: "--from 1.0.0 --to 2.0.0 --dry-run",
-					description: "Check preconditions without running actions",
+					description: "Preview without applying actions",
 				},
 				{ args: "--from 1.0.0 --to 2.0.0", description: "Run the migration" },
 				{
