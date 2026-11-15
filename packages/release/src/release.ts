@@ -336,22 +336,44 @@ const buildPlan = <M extends object>(release: Release<M>, input: Input<M>): Plan
 				),
 				input.pre,
 			);
-			const target = parse(calculation.version);
+			// In a drifting group, packages on one prerelease line keep their own counters: a
+			// package continues its own, and a package joining the line starts at 0.
+			const ownCounters = calculation.line !== undefined && calculation.unchanged === "drift";
+			const placementOf = (entry: (typeof entries)[number]) => {
+				const line = calculation.line;
+				if (!ownCounters || line === undefined)
+					return { version: calculation.version, line };
+				const own = entry.selection.line;
+				const counter =
+					input.pre?.continue === true &&
+					own !== undefined &&
+					own.target === line.target &&
+					own.tag === line.tag
+						? own.counter + 1
+						: 0;
+				const version = SemVer.format(
+					SemVer.withPrerelease(parse(line.target), [line.tag, counter]),
+				);
+
+				return { version, line: { ...line, counter } };
+			};
 			for (const entry of group) {
 				const { selection, previous } = entry;
 				const name = selection.package.name;
+				const placement = placementOf(entry);
+				const target = parse(placement.version);
 				const fromDependencies = dependenciesOf(name).length > 0;
 				const intent = selection.changes.length > 0 || fromDependencies;
 				if (SemVer.isLessThan(target, parse(previous.id))) {
 					fail(
 						"Downgrade",
-						`${calculation.version} would downgrade ${name} from ${previous.id}.`,
+						`${placement.version} would downgrade ${name} from ${previous.id}.`,
 						[name],
 					);
 				}
 				if (
 					!intent &&
-					(calculation.unchanged === "drift" || calculation.version === previous.id)
+					(calculation.unchanged === "drift" || placement.version === previous.id)
 				) {
 					unchanged.push({
 						package: name,
@@ -360,7 +382,7 @@ const buildPlan = <M extends object>(release: Release<M>, input: Input<M>): Plan
 					});
 					continue;
 				}
-				if (calculation.version === previous.id) {
+				if (placement.version === previous.id) {
 					fail(
 						"ExistingVersion",
 						`${name}@${previous.id} already exists; new contents need a new version.`,
@@ -369,11 +391,11 @@ const buildPlan = <M extends object>(release: Release<M>, input: Input<M>): Plan
 				}
 				versions.push({
 					package: name,
-					version: Version.make(calculation.version, {
+					version: Version.make(placement.version, {
 						previous,
 						changes: selection.changes,
 					}),
-					line: calculation.line,
+					line: placement.line,
 					source,
 					reason:
 						typeof setting === "string"

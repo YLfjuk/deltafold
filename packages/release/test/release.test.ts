@@ -783,3 +783,106 @@ describe("stable promotion", () => {
 		expect(failure(promote([timeout], null)).reason).toBe("PrereleaseContext");
 	});
 });
+
+const planLines = (input: {
+	readonly unchanged: "align" | "drift";
+	readonly a: { readonly previous: string; readonly line?: VersionStrategy.Line };
+	readonly b: { readonly previous: string; readonly line?: VersionStrategy.Line };
+}) => {
+	const a = packageWith("@acme/a", [
+		"1.5.2",
+		"2.0.0-beta.0",
+		"2.0.0-beta.1",
+		"2.0.0-beta.2",
+		"2.0.0-beta.3",
+	]);
+	const b = packageWith("@acme/b", ["1.5.2", "2.0.0-beta.0", "2.0.0-beta.1", "1.6.0-beta.0"]);
+
+	return Release.make("lines", {
+		packages: [{ package: a }, { package: b }],
+		change: ProjectChange,
+		version: VersionStrategy.semver({
+			bump: (change) => change.metadata.bump,
+			unchanged: input.unchanged,
+		}),
+	}).plan({
+		pre: { tag: "beta", continue: true },
+		packages: [
+			{ package: a, changes: [headers], ...input.a },
+			{ package: b, changes: [headers], ...input.b },
+		],
+	});
+};
+const placed = (plan: Release.Plan) =>
+	plan.versions.map(
+		(planned) => `${planned.package}@${planned.version.id}#${planned.line?.counter}`,
+	);
+
+describe("prerelease lines across a group", () => {
+	const lineA = {
+		baseline: "1.5.2",
+		bump: "major",
+		target: "2.0.0",
+		tag: "beta",
+		counter: 1,
+	} as const;
+	it("lets a package without a line take the shared version in an aligned group", () => {
+		expect(
+			placed(
+				success(
+					planLines({
+						unchanged: "align",
+						a: { previous: "2.0.0-beta.1", line: lineA },
+						b: { previous: "1.5.2" },
+					}),
+				),
+			),
+		).toEqual(["@acme/a@2.0.0-beta.2#2", "@acme/b@2.0.0-beta.2#2"]);
+	});
+
+	it("gives each package its own counter on the line in a drifting group", () => {
+		expect(
+			placed(
+				success(
+					planLines({
+						unchanged: "drift",
+						a: { previous: "2.0.0-beta.1", line: lineA },
+						b: { previous: "1.5.2" },
+					}),
+				),
+			),
+		).toEqual(["@acme/a@2.0.0-beta.2#2", "@acme/b@2.0.0-beta.0#0"]);
+		expect(
+			placed(
+				success(
+					planLines({
+						unchanged: "drift",
+						a: { previous: "2.0.0-beta.2", line: { ...lineA, counter: 2 } },
+						b: { previous: "2.0.0-beta.0", line: { ...lineA, counter: 0 } },
+					}),
+				),
+			),
+		).toEqual(["@acme/a@2.0.0-beta.3#3", "@acme/b@2.0.0-beta.1#1"]);
+	});
+
+	it("still refuses different lines in one calculation", () => {
+		expect(
+			failure(
+				planLines({
+					unchanged: "drift",
+					a: { previous: "2.0.0-beta.1", line: lineA },
+					b: {
+						previous: "1.6.0-beta.0",
+						line: {
+							baseline: "1.5.2",
+							bump: "minor",
+							target: "1.6.0",
+							tag: "beta",
+							counter: 0,
+						},
+					},
+				}),
+			).reason,
+		).toBe("PrereleaseContext");
+	});
+});
