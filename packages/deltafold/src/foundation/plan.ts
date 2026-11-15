@@ -9,14 +9,14 @@ import type { Version } from "./version.ts";
 /**
  * Which side of a migration runs.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Direction = "forward" | "revert";
 
 /**
  * How an occurrence entered the plan.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Origin =
 	| { readonly _tag: "Declared" }
@@ -32,7 +32,7 @@ export type Origin =
  * it combines the migration, direction, and action identifiers, or the rule and the
  * replaced occurrences for a replacement.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Occurrence<A extends Action.Any = Action.Any> = {
 	readonly _tag: "Occurrence";
@@ -51,13 +51,13 @@ export type Occurrence<A extends Action.Any = Action.Any> = {
 	readonly origin: Origin;
 };
 
-/** @since @next */
+/** @since 0.0.1 */
 export type Sequence<A extends Action.Any = Action.Any> = {
 	readonly _tag: "Sequence";
 	readonly children: ReadonlyArray<Node<A>>;
 };
 
-/** @since @next */
+/** @since 0.0.1 */
 export type Parallel<A extends Action.Any = Action.Any> = {
 	readonly _tag: "Parallel";
 	readonly branches: ReadonlyArray<Node<A>>;
@@ -67,14 +67,14 @@ export type Parallel<A extends Action.Any = Action.Any> = {
 /**
  * The declared execution structure.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Node<A extends Action.Any = Action.Any> = Occurrence<A> | Sequence<A> | Parallel<A>;
 
 /**
  * Resolved prose for a guide. Occurrences render as their instruction or description.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type GuideItem<A extends Action.Any = Action.Any> =
 	| Text
@@ -91,7 +91,7 @@ export type GuideItem<A extends Action.Any = Action.Any> =
  * One migration in the route. Steps are sequential barriers: a step starts only after
  * the previous step completed.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Step<A extends Action.Any = Action.Any> = {
 	readonly _tag: "Step";
@@ -112,7 +112,7 @@ export type Step<A extends Action.Any = Action.Any> = {
 /**
  * Why the plan differs from the declared migrations.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Explanation =
 	| {
@@ -131,7 +131,7 @@ export type Explanation =
 /**
  * A hop in a route: the migrations between two versions, or a shortcut.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Hop =
 	| {
@@ -154,7 +154,7 @@ export type Hop =
 			readonly shortcut: Shortcut.Any;
 	  };
 
-/** @since @next */
+/** @since 0.0.1 */
 export type Route = {
 	/**
 	 * Identifies the route for explicit selection: version identifiers joined by `>`,
@@ -168,7 +168,7 @@ export type Route = {
 /**
  * How the requested target relates to the source in release ancestry.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type RequestDirection = "none" | "upgrade" | "downgrade" | "cross-branch";
 
@@ -176,7 +176,7 @@ export type RequestDirection = "none" | "upgrade" | "downgrade" | "cross-branch"
  * When executors check handler coverage. Static plans also expose uncovered actions in
  * the execution's type.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Coverage = "static" | "runtime";
 
@@ -184,7 +184,7 @@ export type Coverage = "static" | "runtime";
  * A resolved, optimized route between two versions. Every step stays traceable to its
  * migration and the changes that migration addresses.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Plan<
 	A extends Action.Any = Action.Any,
@@ -212,21 +212,21 @@ export type Plan<
 /**
  * Any plan.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Any = Plan<any, any>;
 
 /**
  * The action instances of a plan.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type ActionsOf<P> = P extends Plan<infer A, any> ? A : never;
 
 /**
  * Whether the plan has no action occurrences. An empty plan is valid.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const isEmpty = (plan: Any): boolean => plan.occurrences.length === 0;
 
@@ -235,7 +235,7 @@ export const isEmpty = (plan: Any): boolean => plan.occurrences.length === 0;
  * loaded plans whose action union is not known statically. Executors still reject
  * missing handlers before any action body runs.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const withRuntimeCoverage = <A extends Action.Any, Ch extends Change.Any>(
 	plan: Plan<A, Coverage, Ch>,

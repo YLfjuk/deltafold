@@ -7,7 +7,7 @@ import { describeValue, dedent, isScalar, type Scalar } from "./template.ts";
 /**
  * Literal prose.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Text = {
 	readonly _tag: "Text";
@@ -17,14 +17,14 @@ export type Text = {
 /**
  * Prose content: text and action mentions.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Prose = ReadonlyArray<Text | Action.Ref>;
 
 /**
  * Values accepted inside prose templates.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type ProseValue = Scalar | Action.Ref;
 
@@ -33,7 +33,7 @@ export type ProseValue = Scalar | Action.Ref;
  * occurrence; when optimization removes the action, the block leaves the resolved guide
  * with it.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Instruction<A extends Action.Any = Action.Any> = {
 	readonly _tag: "Instruction";
@@ -99,7 +99,7 @@ export const prose = (
  * `;
  * ```
  *
- * @since @next
+ * @since 0.0.1
  */
 export const instruction =
 	<A extends Action.Any>(action: A) =>

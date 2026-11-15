@@ -11,7 +11,7 @@ import { stepKey } from "./rewrite.ts";
 /**
  * A problem in a history's declarations.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Issue = {
 	readonly _tag:

@@ -13,7 +13,7 @@ import { asRelease, blocksOf, insertAll } from "./sections.ts";
  * A change section of a release. The first section whose `select` matches wins. Selectors
  * read the metadata that the consumer declared on each change.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type SectionDefinition = {
 	readonly _tag: "ChangelogSection";
@@ -22,7 +22,7 @@ export type SectionDefinition = {
 	readonly select: (change: Change.Change) => boolean;
 };
 
-/** @since @next */
+/** @since 0.0.1 */
 export const section = (
 	id: string,
 	options: { readonly title: string; readonly select: (change: Change.Change) => boolean },
@@ -31,7 +31,7 @@ export const section = (
 /**
  * Release metadata does not match the package history.
  *
- * @since @next
+ * @since 0.0.1
  */
 export class ReleaseMetadataError extends Data.TaggedError("ReleaseMetadataError")<{
 	readonly reason: "duplicate" | "unrelated" | "missing";
@@ -39,7 +39,7 @@ export class ReleaseMetadataError extends Data.TaggedError("ReleaseMetadataError
 	readonly message: string;
 }> {}
 
-/** @since @next */
+/** @since 0.0.1 */
 export type HistoryOptions<M> = {
 	/**
 	 * Release metadata annotations, one per included version, in any order. Missing,
@@ -50,7 +50,7 @@ export type HistoryOptions<M> = {
 	readonly versions?: ReadonlyArray<Version>;
 };
 
-/** @since @next */
+/** @since 0.0.1 */
 export type GuideOptions = {
 	/** The modeled package, for the guide title. */
 	readonly package?: Package;
@@ -58,7 +58,7 @@ export type GuideOptions = {
 	readonly explain?: boolean;
 };
 
-/** @since @next */
+/** @since 0.0.1 */
 export type Changelog<M> = {
 	readonly sections: ReadonlyArray<SectionDefinition>;
 	readonly plugins: ReadonlyArray<Document.Plugin<M>>;
@@ -85,7 +85,7 @@ export type Changelog<M> = {
 	) => Document.Document;
 };
 
-/** @since @next */
+/** @since 0.0.1 */
 export type Options<M> = {
 	readonly sections?: ReadonlyArray<SectionDefinition>;
 	readonly plugins?: ReadonlyArray<Document.Plugin<M>>;
@@ -216,7 +216,7 @@ const stepId = (step: Step) =>
  * Markdown.render(changelog.history(widgets, { releases: [release100, release200] }));
  * ```
  *
- * @since @next
+ * @since 0.0.1
  */
 export const make = <M = unknown>(options: Options<M> = {}): Changelog<M> => {
 	const sections = options.sections ?? [];

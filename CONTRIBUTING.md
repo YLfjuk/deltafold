@@ -48,10 +48,14 @@ pnpm run changeset
 
 Changes that only touch tooling, tests, or notes do not need one.
 
-To release, a maintainer runs `pnpm run version` in a pull request. The release
-workflow builds, tests, and packs every pull request as a publish dry run. After
-the merge, it publishes each package version that npm does not have yet, and
-creates its release tag and GitHub release.
+To release, a maintainer runs `pnpm run version` in a pull request. After the
+bump and before publishing, replace `@since @next` on APIs included in that
+release with their assigned package version. Preserve tags already stamped
+with a version, and review the tag diff.
+
+The release workflow builds, tests, and packs every pull request as a publish
+dry run. After the merge, it publishes each package version that npm does not
+have yet, and creates its release tag and GitHub release.
 
 ## Branches and merging
 

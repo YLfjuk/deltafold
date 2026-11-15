@@ -1,24 +1,24 @@
-/** @since @next */
+/** @since 0.0.1 */
 export * as Action from "./foundation/action.ts";
-/** @since @next */
+/** @since 0.0.1 */
 export * as Change from "./foundation/change.ts";
-/** @since @next */
+/** @since 0.0.1 */
 export * as Executor from "./features/execution/executor.ts";
-/** @since @next */
+/** @since 0.0.1 */
 export * as Handler from "./features/execution/handler.ts";
-/** @since @next */
+/** @since 0.2.0 */
 export * as Interaction from "./features/execution/interaction.ts";
-/** @since @next */
+/** @since 0.0.1 */
 export * as History from "./features/planning/history.ts";
-/** @since @next */
+/** @since 0.0.1 */
 export * as Migration from "./foundation/migration.ts";
-/** @since @next */
+/** @since 0.0.1 */
 export * as Package from "./features/package.ts";
-/** @since @next */
+/** @since 0.0.1 */
 export * as Plan from "./foundation/plan.ts";
-/** @since @next */
+/** @since 0.0.1 */
 export * as Rule from "./foundation/rule.ts";
-/** @since @next */
+/** @since 0.0.1 */
 export * as Shortcut from "./foundation/shortcut.ts";
-/** @since @next */
+/** @since 0.0.1 */
 export * as Version from "./foundation/version.ts";

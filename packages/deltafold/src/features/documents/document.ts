@@ -3,45 +3,45 @@ import { Data, Predicate, type Pipeable } from "effect";
 import type { Version } from "../../foundation/version.ts";
 import type { Package } from "../package.ts";
 
-/** @since @next */
+/** @since 0.0.1 */
 export type Text = { readonly _tag: "Text"; readonly value: string };
-/** @since @next */
+/** @since 0.0.1 */
 export type Code = { readonly _tag: "Code"; readonly value: string };
-/** @since @next */
+/** @since 0.0.1 */
 export type Link = {
 	readonly _tag: "Link";
 	readonly url: string;
 	readonly children: ReadonlyArray<Inline>;
 };
-/** @since @next */
+/** @since 0.0.1 */
 export type Strong = { readonly _tag: "Strong"; readonly children: ReadonlyArray<Inline> };
-/** @since @next */
+/** @since 0.0.1 */
 export type Emphasis = { readonly _tag: "Emphasis"; readonly children: ReadonlyArray<Inline> };
 
 /**
  * Phrasing content.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Inline = Text | Code | Link | Strong | Emphasis;
 
-/** @since @next */
+/** @since 0.0.1 */
 export type Paragraph = { readonly _tag: "Paragraph"; readonly children: ReadonlyArray<Inline> };
-/** @since @next */
+/** @since 0.0.1 */
 export type List = {
 	readonly _tag: "List";
 	readonly ordered: boolean;
 	/** One entry per item. */
 	readonly items: ReadonlyArray<ReadonlyArray<Block>>;
 };
-/** @since @next */
+/** @since 0.0.1 */
 export type CodeBlock = {
 	readonly _tag: "CodeBlock";
 	readonly value: string;
 	readonly lang: string | undefined;
 };
 
-/** @since @next */
+/** @since 0.0.1 */
 export type Title = Pipeable.Pipeable & {
 	readonly _tag: "Title";
 	readonly children: ReadonlyArray<Inline>;
@@ -53,7 +53,7 @@ export type Title = Pipeable.Pipeable & {
  * A titled part of a document. Its `id` must be unique within the containing release,
  * or within the document outside releases.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Section = Pipeable.Pipeable & {
 	readonly _tag: "Section";
@@ -68,13 +68,13 @@ export type Section = Pipeable.Pipeable & {
 	readonly release: Version | undefined;
 };
 
-/** @since @next */
+/** @since 0.0.1 */
 export type Block = Paragraph | List | CodeBlock | Section;
 
 /**
  * A complete document returned by changelog builders.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Document = {
 	readonly _tag: "Document";
@@ -85,7 +85,7 @@ export type Document = {
 /**
  * Text, or inline nodes.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type InlineInput = string | Inline | ReadonlyArray<string | Inline>;
 
@@ -109,32 +109,32 @@ const inlines = (value: InlineInput): ReadonlyArray<Inline> => {
 	return value.map((item) => (typeof item === "string" ? Text(item) : item));
 };
 
-/** @since @next */
+/** @since 0.0.1 */
 export const Text = (value: string): Text => ({ _tag: "Text", value });
-/** @since @next */
+/** @since 0.0.1 */
 export const Code = (value: string): Code => ({ _tag: "Code", value });
-/** @since @next */
+/** @since 0.0.1 */
 export const Link = (text: InlineInput, url: string): Link => ({
 	_tag: "Link",
 	url,
 	children: inlines(text),
 });
-/** @since @next */
+/** @since 0.0.1 */
 export const Strong = (children: InlineInput): Strong => ({
 	_tag: "Strong",
 	children: inlines(children),
 });
-/** @since @next */
+/** @since 0.0.1 */
 export const Emphasis = (children: InlineInput): Emphasis => ({
 	_tag: "Emphasis",
 	children: inlines(children),
 });
-/** @since @next */
+/** @since 0.0.1 */
 export const Paragraph = (children: InlineInput): Paragraph => ({
 	_tag: "Paragraph",
 	children: inlines(children),
 });
-/** @since @next */
+/** @since 0.0.1 */
 export const CodeBlock = (value: string, options: { readonly lang?: string } = {}): CodeBlock => ({
 	_tag: "CodeBlock",
 	value,
@@ -144,7 +144,7 @@ export const CodeBlock = (value: string, options: { readonly lang?: string } = {
 /**
  * Builds a list. Each item is text, an inline node, a block, or several blocks.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const List = (
 	items: ReadonlyArray<string | Inline | Block | ReadonlyArray<Block>>,
@@ -163,7 +163,7 @@ export const List = (
 /**
  * An insertion point inside a plugin's scope.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Anchor = {
 	readonly _tag: "Anchor";
@@ -189,7 +189,7 @@ const makeTitle = (text: InlineInput, options: { readonly level?: number } = {})
  * Builds a title. `Document.Title.pre` and `Document.Title.post` are the insertion points
  * around a scoped section's title.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const Title = Object.assign(makeTitle, {
 	pre: anchor("title", "pre"),
@@ -199,14 +199,14 @@ export const Title = Object.assign(makeTitle, {
 /**
  * The insertion points around a scoped section's body.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const Body = { pre: anchor("body", "pre"), post: anchor("body", "post") } as const;
 
 const titleOf = (title: Title | string | undefined) =>
 	typeof title === "string" ? makeTitle(title) : title;
 
-/** @since @next */
+/** @since 0.0.1 */
 export const Section = (id: string, options: SectionOptions = {}): Section => {
 	if (id.startsWith(reservedPrefix)) {
 		throw new DocumentError({
@@ -240,7 +240,7 @@ export const generatedSection = (id: string, options: SectionOptions = {}): Sect
 /**
  * Sets an absolute heading level on a title. Levels outside 1 to 6 fail at render time.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const withLevel =
 	(level: number) =>
@@ -250,7 +250,7 @@ export const withLevel =
 /**
  * Sets the title of a section.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const withTitle =
 	(title: Title | string) =>
@@ -260,7 +260,7 @@ export const withTitle =
 /**
  * Appends blocks to a section's body.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const append =
 	(...blocks: ReadonlyArray<Block>) =>
@@ -270,7 +270,7 @@ export const append =
 /**
  * A document structure that cannot be rendered.
  *
- * @since @next
+ * @since 0.0.1
  */
 export class DocumentError extends Data.TaggedError("DocumentError")<{
 	readonly reason: "duplicate-section" | "heading-level" | "reserved-id";
@@ -282,24 +282,24 @@ export class DocumentError extends Data.TaggedError("DocumentError")<{
 /**
  * Release-scoped plugins run once per included release.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const Release = "release";
 /**
  * History-scoped plugins run once per history document.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const History = "history";
 
-/** @since @next */
+/** @since 0.0.1 */
 export type ReleaseContext<M> = {
 	readonly package: Package;
 	readonly version: Version;
 	readonly metadata: M;
 };
 
-/** @since @next */
+/** @since 0.0.1 */
 export type HistoryContext<M> = {
 	readonly package: Package;
 	readonly releases: ReadonlyArray<ReleaseContext<M>>;
@@ -308,7 +308,7 @@ export type HistoryContext<M> = {
 /**
  * Plugin output: blocks to insert, or `null` for nothing.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type PluginOutput = Block | ReadonlyArray<Block> | null;
 
@@ -319,7 +319,7 @@ export type PluginOutput = Block | ReadonlyArray<Block> | null;
  * `Document.Body.post` of that scope's section. Each insertion point receives every
  * plugin's content in configuration order.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type PluginOptions<M> =
 	| {
@@ -338,11 +338,11 @@ export type PluginOptions<M> =
  * they must not fetch metadata or execute migrations. Output is inserted once and is not
  * processed by other plugins.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Plugin<M> = { readonly _tag: "Plugin"; readonly id: string } & PluginOptions<M>;
 
-/** @since @next */
+/** @since 0.0.1 */
 export const makePlugin = <M>(id: string, options: PluginOptions<M>): Plugin<M> => ({
 	_tag: "Plugin",
 	id,
@@ -352,6 +352,6 @@ export const makePlugin = <M>(id: string, options: PluginOptions<M>): Plugin<M> 
 /**
  * `Document.Plugin.make`
  *
- * @since @next
+ * @since 0.0.1
  */
 export const Plugin = { make: makePlugin } as const;

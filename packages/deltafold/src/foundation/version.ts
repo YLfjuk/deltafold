@@ -2,7 +2,7 @@ import { Predicate } from "effect";
 
 import type * as Change from "./change.ts";
 
-/** @since @next */
+/** @since 0.0.1 */
 export type Version<C extends Change.Any = Change.Any> = {
 	readonly _tag: "Version";
 	readonly id: string;
@@ -16,7 +16,7 @@ export type Version<C extends Change.Any = Change.Any> = {
 	readonly changes: ReadonlyArray<C>;
 };
 
-/** @since @next */
+/** @since 0.0.1 */
 export type Options<C extends Change.Any = Change.Any> = {
 	readonly previous?: Version;
 	readonly changes: ReadonlyArray<C>;
@@ -31,7 +31,7 @@ export type Options<C extends Change.Any = Change.Any> = {
  * const v100 = Version.make("1.0.0", { previous: v0, changes: [timeoutRenamed] });
  * ```
  *
- * @since @next
+ * @since 0.0.1
  */
 export const make = <C extends Change.Any = never>(
 	id: string,
@@ -43,14 +43,14 @@ export const make = <C extends Change.Any = never>(
 	changes: options.changes,
 });
 
-/** @since @next */
+/** @since 0.0.1 */
 export const isVersion = (value: unknown): value is Version => Predicate.isTagged(value, "Version");
 
 /**
  * Release metadata attached to a version by release tooling. It does not modify the
  * version registered in history.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Release<M> = {
 	readonly _tag: "Release";
@@ -69,7 +69,7 @@ export type Release<M> = {
  * });
  * ```
  *
- * @since @next
+ * @since 0.0.1
  */
 export const withMetadata = <const M>(version: Version, metadata: M): Release<M> => ({
 	_tag: "Release",

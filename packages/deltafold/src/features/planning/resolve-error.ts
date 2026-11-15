@@ -6,7 +6,7 @@ import type { Issue } from "./validate.ts";
 /**
  * A candidate route, summarized for diagnostics and explicit selection.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type RouteSummary = {
 	/** Pass this as the `route` option to select the route. */
@@ -23,7 +23,7 @@ export type RouteSummary = {
 /**
  * An ancestry hop with no declared route in the requested direction.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Blocker = {
 	readonly from: string;
@@ -34,7 +34,7 @@ export type Blocker = {
 /**
  * The history's declarations are invalid. Resolution needs a valid history.
  *
- * @since @next
+ * @since 0.0.1
  */
 export class InvalidHistory extends Data.TaggedError("InvalidHistory")<{
 	readonly issues: ReadonlyArray<Issue>;
@@ -46,7 +46,7 @@ export class InvalidHistory extends Data.TaggedError("InvalidHistory")<{
 	}
 }
 
-/** @since @next */
+/** @since 0.0.1 */
 export class UnknownVersion extends Data.TaggedError("UnknownVersion")<{
 	readonly version: string;
 	readonly known: ReadonlyArray<string>;
@@ -60,7 +60,7 @@ export class UnknownVersion extends Data.TaggedError("UnknownVersion")<{
  * No declared route connects the versions. This never means that no work is needed:
  * declare `Migration.noop` for a supported zero-work transition.
  *
- * @since @next
+ * @since 0.0.1
  */
 export class UnsupportedRoute extends Data.TaggedError("UnsupportedRoute")<{
 	readonly from: string;
@@ -83,7 +83,7 @@ export class UnsupportedRoute extends Data.TaggedError("UnsupportedRoute")<{
 /**
  * Several routes connect the versions and no selection or policy chose one.
  *
- * @since @next
+ * @since 0.0.1
  */
 export class AmbiguousRoute extends Data.TaggedError("AmbiguousRoute")<{
 	readonly from: string;
@@ -103,7 +103,7 @@ export class AmbiguousRoute extends Data.TaggedError("AmbiguousRoute")<{
 /**
  * The `route` option names no candidate route.
  *
- * @since @next
+ * @since 0.0.1
  */
 export class UnknownRoute extends Data.TaggedError("UnknownRoute")<{
 	readonly route: string;
@@ -119,7 +119,7 @@ export class UnknownRoute extends Data.TaggedError("UnknownRoute")<{
 /**
  * Rules rewrite a sequence back into itself.
  *
- * @since @next
+ * @since 0.0.1
  */
 export class RewriteCycle extends Data.TaggedError("RewriteCycle")<{
 	readonly route: string;
@@ -134,7 +134,7 @@ export class RewriteCycle extends Data.TaggedError("RewriteCycle")<{
 /**
  * Rules can produce different results depending on which applies first.
  *
- * @since @next
+ * @since 0.0.1
  */
 export class ConflictingRewrites extends Data.TaggedError("ConflictingRewrites")<{
 	readonly route: string;
@@ -152,7 +152,7 @@ export class ConflictingRewrites extends Data.TaggedError("ConflictingRewrites")
  * Optimization explored too many states or chained too many rule applications, for
  * example because a rule keeps growing the sequence.
  *
- * @since @next
+ * @since 0.0.1
  */
 export class RewriteLimitExceeded extends Data.TaggedError("RewriteLimitExceeded")<{
 	readonly route: string;
@@ -169,7 +169,7 @@ export class RewriteLimitExceeded extends Data.TaggedError("RewriteLimitExceeded
 /**
  * More candidate routes exist than the resolver enumerates.
  *
- * @since @next
+ * @since 0.0.1
  */
 export class TooManyRoutes extends Data.TaggedError("TooManyRoutes")<{
 	readonly from: string;
@@ -181,7 +181,7 @@ export class TooManyRoutes extends Data.TaggedError("TooManyRoutes")<{
 	}
 }
 
-/** @since @next */
+/** @since 0.0.1 */
 export type RewriteError = RewriteCycle | ConflictingRewrites | RewriteLimitExceeded;
 
 /**
@@ -189,7 +189,7 @@ export type RewriteError = RewriteCycle | ConflictingRewrites | RewriteLimitExce
  * closest ones by release ancestry, and blockers. `AmbiguousRoute` lists the candidate
  * routes: pass one as `route`, or choose a `policy`.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type ResolveError =
 	| InvalidHistory

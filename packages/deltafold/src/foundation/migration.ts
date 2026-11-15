@@ -13,7 +13,7 @@ export type { Instruction, Prose, ProseValue, Text } from "./instruction.ts";
 /**
  * Prose, mentions, and occurrence-declaring steps in template order.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Content<A extends Action.Any = Action.Any> = ReadonlyArray<
 	Text | Action.Ref | Action.Step<A>
@@ -22,11 +22,11 @@ export type Content<A extends Action.Any = Action.Any> = ReadonlyArray<
 /**
  * Values accepted in migration templates.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Interpolation = Scalar | Action.Ref | Action.Step;
 
-/** @since @next */
+/** @since 0.0.1 */
 export type Migration<A extends Action.Any = Action.Any, C extends Change.Any = Change.Any> = {
 	readonly _tag: "Migration";
 	readonly id: string;
@@ -48,25 +48,25 @@ export type Migration<A extends Action.Any = Action.Any, C extends Change.Any = 
 /**
  * Any migration.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Any = Migration<any>;
 
 /**
  * The action instances a migration can contribute to a plan.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type ActionsOf<M> = M extends Migration<infer A> ? A : never;
 
 /**
  * The changes a migration addresses.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type ChangesOf<M> = M extends Migration<any, infer C> ? C : never;
 
-/** @since @next */
+/** @since 0.0.1 */
 export type Options<C extends Change.Any = Change.Any> = {
 	readonly from: Version;
 	readonly to: Version;
@@ -74,7 +74,7 @@ export type Options<C extends Change.Any = Change.Any> = {
 	readonly cost?: number;
 };
 
-/** @since @next */
+/** @since 0.0.1 */
 export const isMigration = (value: unknown): value is Any => Predicate.isTagged(value, "Migration");
 
 const isStep = (value: unknown): value is Action.Step =>
@@ -162,7 +162,7 @@ const content = (
  * `;
  * ```
  *
- * @since @next
+ * @since 0.0.1
  */
 export const make =
 	<C extends Change.Any = never>(id: string, options: Options<C>) =>
@@ -181,7 +181,7 @@ export const make =
 		revert: undefined,
 	});
 
-/** @since @next */
+/** @since 0.0.1 */
 export type NoopOptions<C extends Change.Any = Change.Any> = Options<C> & {
 	/** Also declares the reverse transition as zero-work. */
 	readonly reversible?: boolean;
@@ -192,7 +192,7 @@ export type NoopOptions<C extends Change.Any = Change.Any> = Options<C> & {
  * like any migration. Do not use it to hide missing support for changes that need
  * instructions.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const noop = <C extends Change.Any = never>(
 	id: string,
@@ -223,7 +223,7 @@ export const noop = <C extends Change.Any = never>(
  * `;
  * ```
  *
- * @since @next
+ * @since 0.0.1
  */
 export const withRevert =
 	<A extends Action.Any, C extends Change.Any>(migration: Migration<A, C>) =>
