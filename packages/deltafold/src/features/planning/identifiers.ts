@@ -11,15 +11,18 @@ const occurrencePart = (id: string) => escape(id, /[\\/()+]/g);
 
 const routePart = (id: string) => escape(id, /[\\>[\]]/g);
 
+/** A plan step: `<migration>` forward, `<migration>/revert` in reverse. */
+export const stepId = (migration: Migration.Any, direction: Direction): string =>
+	direction === "forward"
+		? occurrencePart(migration.id)
+		: `${occurrencePart(migration.id)}/revert`;
+
 /** `<migration>/<action>` forward, `<migration>/revert/<action>` in reverse. */
 export const declaredOccurrenceId = (
 	migration: Migration.Any,
 	direction: Direction,
 	action: Action.Any,
-): string =>
-	direction === "forward"
-		? `${occurrencePart(migration.id)}/${occurrencePart(action.id)}`
-		: `${occurrencePart(migration.id)}/revert/${occurrencePart(action.id)}`;
+): string => `${stepId(migration, direction)}/${occurrencePart(action.id)}`;
 
 /**
  * `<rule>(<replaced>+<replaced>)/<action>`. Replaced identifiers are complete occurrence

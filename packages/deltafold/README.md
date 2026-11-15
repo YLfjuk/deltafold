@@ -31,9 +31,14 @@ deltafold requires `effect` 4 as a peer dependency and a runtime with a global
 `AbortSignal`, such as Node.js 22.18 or later, Deno, Bun, or a browser. Type
 checking needs DOM or Node.js types for `AbortSignal`.
 
-- `deltafold`: declarations, planning, handlers, interactions, and executors.
+- `deltafold`: declarations, planning, handlers, interactions, observers, and executors.
 - `deltafold/changelog`: changelog and document builders.
 - `deltafold/markdown` and `deltafold/html`: renderers for those documents.
+
+Get plans and execution reports through deltafold's APIs. Patch-version
+compatibility guarantees don't cover these structures when you construct them
+by hand, such as a `Plan.Step` or an `Executor.Report`. If you create them
+yourself, their required fields may change between patch releases.
 
 ## Declare a history
 
@@ -279,6 +284,33 @@ whatever terminal or interface the caller has, and answers `"confirmed"` or
 
 `Handler.manualEffect` and `Interaction.effect` take an Effect check and an
 Effect interaction, and keep their errors and services.
+
+## Observe execution
+
+Observers receive a run's events as they happen, for example to write logs or
+show progress. Like handlers, they are an input of the run: pass them to the
+executor's `observers` option.
+
+```ts
+import { Observer } from "deltafold";
+
+const logging = Observer.effect((event) => Effect.logDebug(event._tag));
+
+// Progress goes to stderr, so it stays out of the program's own output.
+const progress = Observer.sync((event) => {
+	if (event._tag !== "ActionSettled") return;
+	const { finished, total } = event.progress.actions;
+	console.error(`[${finished}/${total}] ${event.action.description}: ${event.outcome._tag}`);
+});
+
+await Executor.runPromise(plan, { handlers, observers: [logging, progress] });
+```
+
+`Observer.sync`, `Observer.promise`, and `Observer.effect` take a callback for
+each event. An Effect observer's services become requirements of the execution.
+The executor waits for each observer before it continues, so a slow observer
+slows the run. A failing observer never changes the outcome; the report lists it
+under `observation`.
 
 ## Simplify routes with rules and shortcuts
 
