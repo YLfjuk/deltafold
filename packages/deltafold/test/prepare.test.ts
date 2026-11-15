@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "@effect/vitest";
-import { Context, Effect, Exit, Fiber, Layer, Result } from "effect";
+import { Context, Effect, Exit, Fiber, Layer, Result, Scope } from "effect";
 import { TestClock } from "effect/testing";
 
 import { Action, Executor, Handler, History, Migration, Plan, Version } from "deltafold";
@@ -583,6 +583,66 @@ describe("Interrupted Promises that outlive the report", () => {
 		settle?.(Handler.prepared("late"));
 		await vi.waitFor(() => expect(events).toContain("release"));
 		expect(events).toEqual(["acquire", "update:late-prepare", "release"]);
+	});
+
+	it("closes a retained occurrence scope after settlement and before the services layer", async () => {
+		const events: Array<string> = [];
+		const action = touch("edit");
+		let settle: (() => void) | undefined;
+		let openGate: (() => void) | undefined;
+		const gate = new Promise<void>((resolve) => {
+			openGate = resolve;
+		});
+		const promised = Handler.promise(
+			action,
+			() =>
+				new Promise<void>((resolve) => {
+					settle = resolve;
+				}),
+			{ services: { editor: ConfigEditor } },
+		);
+		// Promise callbacks cannot register cleanup, so the occurrence finalizer goes in
+		// through the handler's scope boundary. It waits on a gate so the test can tell
+		// whether the layer waits for cleanup to finish, not only to start.
+		const handler: typeof promised = {
+			...promised,
+			prepare: (scope) =>
+				Effect.andThen(
+					Scope.addFinalizer(
+						scope,
+						Effect.sync(() => events.push("finalize:start")).pipe(
+							Effect.andThen(Effect.promise(() => gate)),
+							Effect.andThen(Effect.sync(() => events.push("finalize:end"))),
+						),
+					),
+					promised.prepare(scope),
+				),
+		};
+		const error = await rejection(
+			Executor.runPromise(planOf(action), {
+				timeout: "10 millis",
+				settleTimeout: "1 millis",
+				services: editorLayer(events),
+				handlers: [handler],
+			}),
+		);
+
+		expect(reportOf(error)?.occurrences[0]?.outcome).toEqual({
+			_tag: "Interrupted",
+			phase: "apply",
+			reason: "timeout",
+			settled: false,
+		});
+		expect(events).toEqual(["acquire"]);
+
+		settle?.();
+		await vi.waitFor(() => expect(events).toContain("finalize:start"));
+		await Effect.runPromise(Effect.sleep("20 millis"));
+		expect(events).toEqual(["acquire", "finalize:start"]);
+
+		openGate?.();
+		await vi.waitFor(() => expect(events).toContain("release"));
+		expect(events).toEqual(["acquire", "finalize:start", "finalize:end", "release"]);
 	});
 
 	it("releases services after a late rejection", async () => {
