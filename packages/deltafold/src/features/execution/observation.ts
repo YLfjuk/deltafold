@@ -196,7 +196,7 @@ export type EmitterOptions<R> = {
 	readonly mode: Report["mode"];
 	readonly runId: string | undefined;
 	readonly observers: ReadonlyArray<Observer.Observer<R>>;
-	readonly outcomes: ReadonlyMap<string, Outcome<unknown>>;
+	readonly outcomes: ReadonlyMap<string, Outcome>;
 	/** Completes when cancellation or a timeout stops the run. */
 	readonly stopped: Deferred.Deferred<void>;
 	readonly grace: Duration.Input;
@@ -274,7 +274,7 @@ export const makeEmitter = <R>(options: EmitterOptions<R>): Effect.Effect<Emitte
 				: Effect.andThen(Deferred.await(stopped), Effect.sleep(grace));
 
 			return Effect.raceFirst(
-				Effect.map(notify, (exit) => Option.some(exit)),
+				Effect.asSome(notify),
 				Effect.as(limit, Option.none<Exit.Exit<unknown, unknown>>()),
 			);
 		};

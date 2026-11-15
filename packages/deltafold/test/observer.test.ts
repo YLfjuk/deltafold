@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it } from "@effect/vitest";
-import { Context, Duration, Effect, Fiber, Result, Schema } from "effect";
+import { Cause, Context, Duration, Effect, Fiber, Option, Result, Schema } from "effect";
 import { TestClock } from "effect/testing";
 
 import {
@@ -203,7 +203,7 @@ describe("Observer typing", () => {
 		expect.assertions(0);
 		typeOnly(() => {
 			// @ts-expect-error b has no handler.
-			Executor.effect(plan, { handlers: [ok(a)], observers: [logging] });
+			void Executor.effect(plan, { handlers: [ok(a)], observers: [logging] });
 			// @ts-expect-error the Logger service is missing.
 			void Executor.runPromise(plan, { handlers: [ok(a), ok(b)], observers: [logging] });
 			void Executor.runPromise(plan, {
@@ -489,6 +489,17 @@ describe("Delivery", () => {
 		expect(report.observation.filter((failure) => failure.observer === 3)).toHaveLength(
 			events.length,
 		);
+		// Each cause fails with the value the observer threw, rejected with, or failed with.
+		const byObserver = (index: number) =>
+			report.observation.find((failure) => failure.observer === index);
+		const [thrown, rejected, typed] = [byObserver(0), byObserver(1), byObserver(2)];
+		expect(thrown && Cause.findErrorOption(thrown.cause)).toEqual(
+			Option.some(new Error("broken stream")),
+		);
+		expect(rejected && Cause.findErrorOption(rejected.cause)).toEqual(
+			Option.some(new Error("rejected")),
+		);
+		expect(typed && Cause.findErrorOption(typed.cause)).toEqual(Option.some("typed"));
 	});
 
 	it("emits nothing when handler coverage fails", async () => {
