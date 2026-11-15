@@ -309,11 +309,47 @@ describe("custom factories and strategies", () => {
 			Release.make("app", {
 				packages: [{ package: app }],
 				change: TeamChange,
-				version: "5.0.0",
+				version: calendar,
 				// @ts-expect-error pre is a per-plan choice.
 				pre: { tag: "beta", continue: false },
 			}),
 		).toThrow("per-plan");
+	});
+
+	it("takes literal targets only as plan input", () => {
+		Release.make("app", {
+			packages: [{ package: app }],
+			change: TeamChange,
+			// @ts-expect-error a fixed version would apply to every release of the group.
+			version: "5.0.0",
+		});
+		const custom = Release.make("app", {
+			packages: [
+				{
+					package: app,
+					// @ts-expect-error per-package group settings are strategies too.
+					version: "5.0.0",
+				},
+			],
+			change: TeamChange,
+			version: calendar,
+		});
+		expect(
+			summary(
+				success(
+					custom.plan({
+						packages: [
+							{
+								package: app,
+								previous: "4.1.0",
+								changes: [breaking],
+								version: "5.0.0",
+							},
+						],
+					}),
+				),
+			),
+		).toEqual(["@acme/app@5.0.0<4.1.0"]);
 	});
 });
 
@@ -403,11 +439,8 @@ describe("prerelease lines", () => {
 		} as const;
 		expect(
 			failure(
-				Release.make("solo", {
-					packages: [{ package: pre }],
-					change: ProjectChange,
+				lineGroup(pre).plan({
 					version: "1.5.3",
-				}).plan({
 					packages: [
 						{ package: pre, previous: "1.5.3-beta.0", changes: [headers], line },
 					],

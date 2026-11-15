@@ -76,7 +76,9 @@ pending declaration. A shared change can be included for several packages.
 Release.plan remains the one-off equivalent of a configured planner. Root
 version settings supply a shared calculation; per-package overrides supply
 independent versions or strategies. Only inheriting packages influence the
-shared calculation. Literal target versions are supported at either level.
+shared calculation. Literal target versions are plan input only, at the root or
+per package. Release.make takes strategies only, in its type: a group is reused
+across releases, so a fixed version there would apply to every future release.
 
 Per-run options override configured defaults at the same level; per-package
 options override root settings. Arrays replace arrays rather than concatenate.
@@ -232,7 +234,7 @@ These contracts worked as accepted:
 
 - Bounded groups with a required ID. Per-package settings leave the shared
   calculation, plan options replace configured ones, and literal targets work at
-  both levels. Every generated version keeps its package's own `previous`.
+  both levels of plan input. Every generated version keeps its package's own `previous`.
 - The configured factory's metadata type reaches strategies, and changes from
   another factory are type errors. Strategies are synchronous in their type and
   at run time.
