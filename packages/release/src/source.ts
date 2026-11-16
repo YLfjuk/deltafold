@@ -61,6 +61,65 @@ const localsOf = (clause: string): ReadonlyArray<string> => {
 	return locals;
 };
 
+const statementStart =
+	/^(?:export|import|const|let|var|function|class|async|type|interface|enum|declare|namespace|abstract)\b/;
+
+/**
+ * The end of the first top-level statement: just after a `;` outside brackets, strings,
+ * template literals, and comments, or the end of the text. A line that starts another
+ * statement at the top level ends it too, so a missing semicolon cannot hide a second
+ * statement. Returns `undefined` for unbalanced text.
+ */
+const statementEnd = (text: string): number | undefined => {
+	let depth = 0;
+	// Each entry is the bracket depth at which a template's `${` was opened.
+	const templates: Array<number> = [];
+	let inTemplate = false;
+	for (let index = 0; index < text.length; index++) {
+		const char = text[index];
+		if (inTemplate) {
+			if (char === "\\") index++;
+			else if (char === "`") inTemplate = false;
+			else if (char === "$" && text[index + 1] === "{") {
+				templates.push(depth);
+				depth++;
+				inTemplate = false;
+				index++;
+			}
+			continue;
+		}
+		if (char === "/" && text[index + 1] === "/") {
+			const newline = text.indexOf("\n", index);
+			index = newline === -1 ? text.length : newline - 1;
+		} else if (char === "/" && text[index + 1] === "*") {
+			const close = text.indexOf("*/", index + 2);
+			if (close === -1) return undefined;
+			index = close + 1;
+		} else if (char === '"' || char === "'") {
+			let close = index + 1;
+			while (close < text.length && text[close] !== char)
+				close += text[close] === "\\" ? 2 : 1;
+			if (close >= text.length) return undefined;
+			index = close;
+		} else if (char === "`") inTemplate = true;
+		else if (char === "(" || char === "[" || char === "{") depth++;
+		else if (char === ")" || char === "]" || char === "}") {
+			depth--;
+			if (depth < 0) return undefined;
+			if (char === "}" && templates.at(-1) === depth) {
+				templates.pop();
+				inTemplate = true;
+			}
+		} else if (char === ";" && depth === 0) return index + 1;
+		else if (char === "\n" && depth === 0 && index > 0) {
+			const next = text.slice(index + 1).replace(/^[ \t]*/, "");
+			if (statementStart.test(next)) return index;
+		}
+	}
+
+	return depth === 0 && !inTemplate ? text.length : undefined;
+};
+
 const unsupported = (path: string, detail: string): Issue =>
 	issue(
 		"UnsupportedRelocation",
@@ -111,7 +170,21 @@ export const scan = (source: PendingSource): Declaration | Issue => {
 		);
 	}
 
-	return { path: source.path, imports, name: head[1], changeId: id[2], text: rest.trim() };
+	const end = statementEnd(rest);
+	if (end === undefined || rest.slice(end).replace(leading, "") !== "") {
+		return unsupported(
+			source.path,
+			"only the exported change declaration may follow the imports; other statements would be copied into the version module.",
+		);
+	}
+
+	return {
+		path: source.path,
+		imports,
+		name: head[1],
+		changeId: id[2],
+		text: rest.slice(0, end).trim(),
+	};
 };
 
 /**

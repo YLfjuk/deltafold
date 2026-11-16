@@ -11,6 +11,7 @@
 					"@effect/vitest#it",
 					"effect/Graph",
 					"effect/SemVer",
+					"effect/SemVerRange",
 					"effect/FileSystem",
 					"effect/PlatformError"
 				]

@@ -118,6 +118,28 @@ export type Paths = {
 
 const sameDrive = (a: string, b: string) => prefixOf(a) === prefixOf(b);
 
+const segments = (path: string) => {
+	const normalized = normalize(path);
+	return normalized
+		.slice(prefixOf(normalized).length)
+		.split("/")
+		.filter((part) => part !== "");
+};
+
+/**
+ * The path of `path` inside `directory`, segment by segment: "" for the directory itself,
+ * and `undefined` when `path` is not inside it.
+ */
+const within = (directory: string, path: string): string | undefined => {
+	const outer = segments(directory);
+	const inner = segments(path);
+	if (inner.length < outer.length || outer.some((part, index) => inner[index] !== part)) {
+		return undefined;
+	}
+
+	return inner.slice(outer.length).join("/");
+};
+
 export const paths = (location: Location = {}): Paths => {
 	const root = normalize(location.root ?? "");
 	const outside = (path: string) =>
@@ -131,10 +153,11 @@ export const paths = (location: Location = {}): Paths => {
 	const inWorkspace = (given: string, path: string): string | Issue => {
 		if (isAbsolute(path)) {
 			if (!isAbsolute(root) || !sameDrive(root, path)) return outside(given);
-			const rel = relative(root, path).replace(/^\.\//, "");
-			return rel.startsWith("..") ? outside(given) : normalize(rel);
+			const rel = within(root, path);
+			return rel === undefined ? outside(given) : rel;
 		}
 		const rel = normalize(path);
+		// Only an actual parent segment leaves the workspace; "..cache" is an ordinary name.
 		return rel === ".." || rel.startsWith("../") ? outside(given) : rel;
 	};
 	const baseDir = location.base === undefined ? "" : location.base;
@@ -156,7 +179,8 @@ export const paths = (location: Location = {}): Paths => {
 		fromFs: (path) => {
 			if (isAbsolute(path) || root === "" || isAbsolute(root)) return inWorkspace(path, path);
 
-			return inWorkspace(path, relative(root, path).replace(/^\.\//, ""));
+			const rel = within(root, path);
+			return rel === undefined ? outside(path) : rel;
 		},
 	};
 };

@@ -1,4 +1,4 @@
-import { Result, SemVer } from "effect";
+import { Result, SemVer, SemVerRange } from "effect";
 
 // Dependency ranges in the forms release planning can rewrite: `^x.y.z`, `~x.y.z`, and an
 // exact `x.y.z`. `workspace:` ranges are resolved by the package manager at publish time.
@@ -25,19 +25,19 @@ export const form = (range: string): Form => {
 };
 
 /**
- * Whether a version satisfies a rewritable range. A prerelease version satisfies only an
- * exact range naming it, so moving to a prerelease always edits the range.
+ * Whether a version satisfies a range, with npm range semantics: a prerelease satisfies
+ * only a range with a prerelease on the same version, and build metadata is ignored. Any
+ * range SemVer can parse is checked, including forms that cannot be rewritten; anything
+ * else, such as a dist-tag, is not satisfied.
  */
-export const satisfies = (range: Form, version: SemVer.SemVer): boolean => {
-	if (range._tag !== "Rewritable") return false;
-	const base = range.version;
-	if (range.operator === "") return SemVer.equals(base, version);
-	if (SemVer.isPrerelease(version) || SemVer.isLessThan(version, base)) return false;
-	if (range.operator === "~") return version.major === base.major && version.minor === base.minor;
-	if (base.major > 0) return version.major === base.major;
-	if (base.minor > 0) return version.major === 0 && version.minor === base.minor;
-
-	return version.major === 0 && version.minor === 0 && version.patch === base.patch;
+export const satisfies = (range: string, version: string): boolean => {
+	const parsed = SemVerRange.parse(range);
+	const target = SemVer.parse(version);
+	return (
+		Result.isSuccess(parsed) &&
+		Result.isSuccess(target) &&
+		SemVerRange.matches(parsed.success, target.success)
+	);
 };
 
 /** Keeps the range's operator and replaces its version. */
