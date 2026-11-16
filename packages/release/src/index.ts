@@ -11,5 +11,9 @@ export * as ReleaseFiles from "./files.ts";
 /** @since @next */
 export * as ReleaseSource from "./source.ts";
 /** @since @next */
+export * as SemVerStrategy from "./semver-strategy.ts";
+/** @since @next */
+export * as VersionScheme from "./version-scheme.ts";
+/** @since @next */
 export * as VersionStrategy from "./version-strategy.ts";
 export * from "./error.ts";

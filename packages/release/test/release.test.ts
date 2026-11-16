@@ -1,7 +1,13 @@
 import { describe, expect, expectTypeOf, it } from "@effect/vitest";
-import { Result } from "effect";
+import { Result, SemVer } from "effect";
 
-import { DependentsPolicy, Release, VersionStrategy, type PlanError } from "@deltafold/release";
+import {
+	DependentsPolicy,
+	Release,
+	VersionStrategy,
+	type PlanError,
+	SemVerStrategy,
+} from "@deltafold/release";
 import { Change, History, Package, Version } from "deltafold";
 import {
 	advance,
@@ -18,7 +24,7 @@ const widgets = packageWith("@acme/widgets", ["1.5.0", "1.5.2"]);
 const react = packageWith("@acme/widgets-react", ["1.4.0"]);
 const tools = packageWith("@acme/tools", ["0.3.0"]);
 
-const semver = VersionStrategy.semver({
+const semver = SemVerStrategy.make({
 	bump: (change: Change.Change<{ readonly bump: "major" | "minor" | "patch" }>) =>
 		change.metadata.bump,
 });
@@ -48,10 +54,14 @@ const summary = (plan: Release.Plan) =>
 	);
 
 const selectBaseline = (
-	version: Release.VersionSetting<{
-		readonly bump: "major" | "minor" | "patch";
-		readonly area: "api" | "docs";
-	}>,
+	version:
+		| string
+		| VersionStrategy.VersionStrategy<
+				ProjectMetadata,
+				SemVerStrategy.Version,
+				SemVerStrategy.Input,
+				SemVerStrategy.Details
+		  >,
 ) =>
 	group.plan({
 		version,
@@ -91,7 +101,7 @@ describe("group planning", () => {
 	it("lets unchanged members drift when the strategy allows it", () => {
 		const plan = success(
 			group.plan({
-				version: VersionStrategy.semver({
+				version: SemVerStrategy.make({
 					bump: (change) => change.metadata.bump,
 					unchanged: "drift",
 				}),
@@ -153,7 +163,7 @@ describe("group planning", () => {
 		expect(
 			failure(
 				selectBaseline(
-					VersionStrategy.semver({
+					SemVerStrategy.make({
 						bump: (change) => change.metadata.bump,
 						baseline: "require-matching",
 					}),
@@ -164,7 +174,7 @@ describe("group planning", () => {
 			summary(
 				success(
 					selectBaseline(
-						VersionStrategy.semver({
+						SemVerStrategy.make({
 							bump: (change) => change.metadata.bump,
 							baseline: { version: "1.9.0" },
 						}),
@@ -174,7 +184,7 @@ describe("group planning", () => {
 		).toEqual(["@acme/widgets@1.9.1<1.5.2", "@acme/widgets-react@1.9.1<1.4.0"]);
 		const downgrade = failure(
 			selectBaseline(
-				VersionStrategy.semver({
+				SemVerStrategy.make({
 					bump: (change) => change.metadata.bump,
 					baseline: { version: "1.4.0" },
 				}),
@@ -243,18 +253,38 @@ type Impact = { readonly impact: "breaking" | "feature" | "fix" };
 const TeamChange = Change.define<Impact>();
 const breaking = TeamChange.make("drop-node-18", { impact: "breaking" })`Drop Node.js 18.`;
 const app = packageWith("@acme/app", ["4.1.0"]);
-const calendar: VersionStrategy.Strategy<Impact> = ({ participants }) => ({
-	version: `2026.${participants.length}.0`,
+const calendar = VersionStrategy.make<Impact, SemVerStrategy.Version>({
+	name: "calendar",
+	scheme: SemVerStrategy.scheme,
+	calculate: ({ participants }) => ({
+		version: SemVer.make({ major: 2026, minor: participants.length, patch: 0 }),
+	}),
 });
-// @ts-expect-error strategies are synchronous.
-const asynchronous: VersionStrategy.Strategy<Impact> = async () => ({ version: "5.0.0" });
+const asynchronous = VersionStrategy.make<Impact, SemVerStrategy.Version>({
+	name: "asynchronous",
+	scheme: SemVerStrategy.scheme,
+	// @ts-expect-error strategies are synchronous.
+	calculate: async () => ({ version: SemVer.parseUnsafe("5.0.0") }),
+});
+
+const plain = () => ({ version: SemVer.parseUnsafe("5.0.0") });
+const strategyThat = (calculate: () => never) =>
+	Release.make("app", {
+		packages: [member(app)],
+		change: TeamChange,
+		version: VersionStrategy.make<Impact, SemVerStrategy.Version>({
+			name: "picky",
+			scheme: SemVerStrategy.scheme,
+			calculate,
+		}),
+	}).plan({ packages: [{ package: app, changes: [breaking] }] });
 
 describe("custom factories and strategies", () => {
 	it("passes the factory's metadata type to strategies", () => {
 		const custom = Release.make("app", {
 			packages: [member(app)],
 			change: TeamChange,
-			version: VersionStrategy.semver({
+			version: SemVerStrategy.make({
 				bump: (change) => {
 					expectTypeOf(change.metadata).toEqualTypeOf<Impact>();
 
@@ -310,6 +340,32 @@ describe("custom factories and strategies", () => {
 		).toBe("InvalidStrategyResult");
 	});
 
+	it("refuses plain functions, reports refusals, and wraps foreign throws", () => {
+		expect(() =>
+			Release.make("app", {
+				packages: [member(app)],
+				change: TeamChange,
+				// @ts-expect-error a plain function is not a strategy.
+				version: plain,
+			}),
+		).toThrow("not a version strategy");
+
+		expect(
+			failure(strategyThat(() => VersionStrategy.refuse("not today", ["@acme/app"]))),
+		).toMatchObject({
+			reason: "StrategyRefused",
+			message: "picky: not today",
+			subjects: ["picky", "@acme/app"],
+		});
+		expect(
+			failure(
+				strategyThat(() => {
+					throw new TypeError("boom");
+				}),
+			),
+		).toMatchObject({ reason: "InvalidStrategyResult", subjects: ["picky"] });
+	});
+
 	it("does not accept a prerelease choice on the group", () => {
 		expect(() =>
 			Release.make("app", {
@@ -317,18 +373,20 @@ describe("custom factories and strategies", () => {
 				change: TeamChange,
 				version: calendar,
 				// @ts-expect-error pre is a per-plan choice.
-				pre: { tag: "beta", continue: false },
+				input: { pre: { tag: "beta", continue: false } },
 			}),
 		).toThrow("per-plan");
 	});
 
 	it("takes literal targets only as plan input", () => {
-		Release.make("app", {
-			packages: [member(app)],
-			change: TeamChange,
-			// @ts-expect-error a fixed version would apply to every release of the group.
-			version: "5.0.0",
-		});
+		expect(() =>
+			Release.make("app", {
+				packages: [member(app)],
+				change: TeamChange,
+				// @ts-expect-error a fixed version would apply to every release of the group.
+				version: "5.0.0",
+			}),
+		).toThrow("not a version strategy");
 		const custom = Release.make("app", {
 			packages: [
 				{
@@ -360,7 +418,7 @@ describe("custom factories and strategies", () => {
 });
 
 describe("prerelease lines", () => {
-	const strategy = VersionStrategy.semver({
+	const strategy = SemVerStrategy.make({
 		bump: (change: Change.Change<{ readonly bump: "major" | "minor" | "patch" }>) =>
 			change.metadata.bump,
 	});
@@ -374,7 +432,7 @@ describe("prerelease lines", () => {
 	it("starts, continues, elevates, and changes tags", () => {
 		let pkg = packageWith("@acme/solo", ["1.5.2"]);
 		let previous = "1.5.2";
-		let line: VersionStrategy.Line | undefined;
+		let line: SemVerStrategy.Line | undefined;
 		const step = (
 			changes: ReadonlyArray<
 				Change.Change<{
@@ -382,19 +440,19 @@ describe("prerelease lines", () => {
 					readonly area: "api" | "docs";
 				}>
 			>,
-			pre: VersionStrategy.Pre,
+			pre: SemVerStrategy.Pre,
 		) => {
 			const plan = success(
 				lineGroup(pkg).plan({
 					packages: [{ package: pkg, previous, changes }],
-					pre,
+					input: { pre },
 				}),
 			);
 			const [planned] = plan.versions;
 			if (planned === undefined) throw new Error("expected a version");
 			pkg = advance(pkg, planned);
 			previous = planned.version.id;
-			line = planned.line;
+			line = planned.details?.line;
 
 			return previous;
 		};
@@ -403,7 +461,7 @@ describe("prerelease lines", () => {
 		expect(step([headers], { tag: "beta", continue: true })).toBe("1.5.3-beta.1");
 		expect(step([timeout], { tag: "beta", continue: true })).toBe("2.0.0-beta.0");
 		expect(step([headers], { tag: "beta", continue: true })).toBe("2.0.0-beta.1");
-		expect(line).toEqual({
+		expect(line && SemVerStrategy.encodeLine(line)).toEqual({
 			baseline: "1.5.2",
 			target: "2.0.0",
 			tag: "beta",
@@ -429,58 +487,58 @@ describe("prerelease lines", () => {
 			failure(
 				lineGroup(stable).plan({
 					packages: [{ package: stable, previous: "1.5.2", changes: [headers] }],
-					pre: { tag: "beta", continue: true },
+					input: { pre: { tag: "beta", continue: true } },
 				}),
 			).reason,
 		).toBe("PrereleaseContext");
 	});
 
-	it("treats a literal target with pre as the line's stable target", () => {
+	it("treats a target with pre as the line's stable target", () => {
 		let pkg = packageWith("@acme/solo", ["1.5.2"]);
 		let previous = "1.5.2";
-		let line: VersionStrategy.Line | undefined;
-		const step = (input: {
-			readonly version?: string;
-			readonly pre?: VersionStrategy.Pre;
+		let line: SemVerStrategy.Line | undefined;
+		const step = (options: {
+			readonly input?: SemVerStrategy.Input;
 			readonly changes: ReadonlyArray<Change.Change<ProjectMetadata>>;
 		}) => {
 			const planned = success(
 				lineGroup(pkg).plan({
-					...(input.version === undefined ? {} : { version: input.version }),
-					...(input.pre === undefined ? {} : { pre: input.pre }),
-					packages: [{ package: pkg, previous, changes: input.changes }],
+					...(options.input === undefined ? {} : { input: options.input }),
+					packages: [{ package: pkg, previous, changes: options.changes }],
 				}),
 			).versions[0];
 			if (planned === undefined) throw new Error("expected a version");
 			pkg = advance(pkg, planned);
 			previous = planned.version.id;
-			line = planned.line;
+			line = planned.details?.line;
 
 			return previous;
 		};
 
 		expect(
-			step({ version: "3.0.0", pre: { tag: "beta", continue: false }, changes: [retries] }),
+			step({
+				input: { pre: { tag: "beta", continue: false }, target: "3.0.0" },
+				changes: [retries],
+			}),
 		).toBe("3.0.0-beta.0");
-		expect(line).toEqual({
+		expect(line && SemVerStrategy.encodeLine(line)).toEqual({
 			baseline: "1.5.2",
 			target: "3.0.0",
 			tag: "beta",
 			counter: 0,
 		});
 		// The calculated target would be 2.0.0; continuing keeps the line's 3.0.0.
-		expect(step({ pre: { tag: "beta", continue: true }, changes: [headers] })).toBe(
+		expect(step({ input: { pre: { tag: "beta", continue: true } }, changes: [headers] })).toBe(
 			"3.0.0-beta.1",
 		);
 		expect(step({ changes: [retries, headers] })).toBe("3.0.0");
 	});
 
-	it("refuses prerelease literals with pre and literals below the line", () => {
+	it("refuses prerelease targets with pre and targets below the line", () => {
 		const pre = packageWith("@acme/solo", ["1.5.2", "3.0.0-beta.1"]);
-		const plan = (version: string) =>
+		const plan = (target: string) =>
 			lineGroup(pre).plan({
-				version,
-				pre: { tag: "beta", continue: true },
+				input: { pre: { tag: "beta", continue: true }, target },
 				packages: [{ package: pre, previous: "3.0.0-beta.1", changes: [headers] }],
 			});
 
@@ -493,12 +551,12 @@ describe("prerelease lines", () => {
 		const missingContinue = lineGroup(stable).plan({
 			packages: [{ package: stable, previous: "1.5.2", changes: [headers] }],
 			// @ts-expect-error continue is required.
-			pre: { tag: "beta" },
+			input: { pre: { tag: "beta" } },
 		});
 		const shortcut = lineGroup(stable).plan({
 			packages: [{ package: stable, previous: "1.5.2", changes: [headers] }],
 			// @ts-expect-error there is no boolean shortcut.
-			pre: true,
+			input: { pre: true },
 		});
 
 		expect(failure(missingContinue).reason).toBe("InvalidPre");
@@ -526,7 +584,7 @@ const actions = (plan: Release.Plan) =>
 	);
 
 describe("dependents", () => {
-	const drifting = VersionStrategy.semver({
+	const drifting = SemVerStrategy.make({
 		bump: (change: Change.Change<ProjectMetadata>) => change.metadata.bump,
 		unchanged: "drift",
 	});
@@ -534,7 +592,14 @@ describe("dependents", () => {
 		readonly widgetChanges: ReadonlyArray<Change.Change<ProjectMetadata>>;
 		readonly requirements: ReadonlyArray<DependentsPolicy.Requirement>;
 		readonly dependents: DependentsPolicy.Policy;
-		readonly version?: Release.VersionSetting<ProjectMetadata>;
+		readonly version?:
+			| string
+			| VersionStrategy.VersionStrategy<
+					ProjectMetadata,
+					SemVerStrategy.Version,
+					SemVerStrategy.Input,
+					SemVerStrategy.Details
+			  >;
 	}) =>
 		group.plan({
 			dependents: input.dependents,
@@ -685,7 +750,7 @@ describe("dependents", () => {
 		const lines = Release.make("pre-dep", {
 			packages: [member(prerelease), member(dependent)],
 			change: ProjectChange,
-			version: VersionStrategy.semver({
+			version: SemVerStrategy.make({
 				bump: (change) => change.metadata.bump,
 				unchanged: "drift",
 			}),
@@ -694,7 +759,7 @@ describe("dependents", () => {
 		const continued = (range: string) =>
 			success(
 				lines.plan({
-					pre: { tag: "beta", continue: true },
+					input: { pre: { tag: "beta", continue: true } },
 					requirements: [requirement("@acme/pre-user", "@acme/pre-dep", range)],
 					packages: [{ package: prerelease, changes: [headers] }, dependent],
 				}),
@@ -740,13 +805,13 @@ describe("stable promotion", () => {
 		Release.make("solo", {
 			packages: [member(solo)],
 			change: ProjectChange,
-			version: VersionStrategy.semver({ bump: (change) => change.metadata.bump }),
+			version: SemVerStrategy.make({ bump: (change) => change.metadata.bump }),
 		}).plan({
 			packages: [{ package: solo, previous: "2.0.0-beta.1", changes }],
 		});
 
 	it("lists the line's changes since the last stable ancestor without choosing", () => {
-		const listed = success(Release.prereleaseChanges(solo, "2.0.0-beta.1"));
+		const listed = success(SemVerStrategy.prereleaseChanges(solo, "2.0.0-beta.1"));
 
 		expect(listed.stable).toBe("1.5.2");
 		expect(listed.versions).toEqual(["2.0.0-beta.0", "2.0.0-beta.1"]);
@@ -778,8 +843,12 @@ describe("stable promotion", () => {
 			},
 			{ id: "fix-beta-crash", versions: ["2.0.0-beta.1"], revertedBy: [], reverts: [] },
 		]);
-		expect(failure(Release.prereleaseChanges(solo, "1.5.2")).reason).toBe("NotPrerelease");
-		expect(failure(Release.prereleaseChanges(solo, "9.9.9")).reason).toBe("UnknownPrevious");
+		expect(failure(SemVerStrategy.prereleaseChanges(solo, "1.5.2")).reason).toBe(
+			"NotPrerelease",
+		);
+		expect(failure(SemVerStrategy.prereleaseChanges(solo, "9.9.9")).reason).toBe(
+			"UnknownPrevious",
+		);
 	});
 
 	it("records exactly the selected changes at the line's target", () => {
@@ -789,7 +858,7 @@ describe("stable promotion", () => {
 		expect(planned?.version.id).toBe("2.0.0");
 		expect(planned?.version.previous?.id).toBe("2.0.0-beta.1");
 		expect(planned?.version.changes.map((change) => change.id)).toEqual(["rename-timeout"]);
-		expect(planned?.line).toBeUndefined();
+		expect(planned?.details?.line).toBeUndefined();
 	});
 
 	it("raises the target for stronger selected changes and needs a line-shaped prerelease", () => {
@@ -797,7 +866,7 @@ describe("stable promotion", () => {
 		const raised = Release.make("patch", {
 			packages: [member(patchOnly)],
 			change: ProjectChange,
-			version: VersionStrategy.semver({ bump: (change) => change.metadata.bump }),
+			version: SemVerStrategy.make({ bump: (change) => change.metadata.bump }),
 		}).plan({
 			packages: [
 				{
@@ -815,7 +884,7 @@ describe("stable promotion", () => {
 				Release.make("unshaped", {
 					packages: [member(unshaped)],
 					change: ProjectChange,
-					version: VersionStrategy.semver({ bump: (change) => change.metadata.bump }),
+					version: SemVerStrategy.make({ bump: (change) => change.metadata.bump }),
 				}).plan({
 					packages: [{ package: unshaped, previous: "2.0.0-alpha", changes: [timeout] }],
 				}),
@@ -845,21 +914,21 @@ const planLines = (input: {
 	return Release.make("lines", {
 		packages: [member(a), member(b)],
 		change: ProjectChange,
-		version: VersionStrategy.semver({
+		version: SemVerStrategy.make({
 			bump: (change) => change.metadata.bump,
 			unchanged: input.unchanged,
 		}),
 	}).plan({
-		pre: { tag: "beta", continue: true },
+		input: { pre: { tag: "beta", continue: true } },
 		packages: [
 			{ package: a, changes: [headers], ...input.a },
 			{ package: b, changes: [headers], ...input.b },
 		],
 	});
 };
-const placed = (plan: Release.Plan) =>
+const placed = (plan: Release.Plan<any, SemVerStrategy.Details>) =>
 	plan.versions.map(
-		(planned) => `${planned.package}@${planned.version.id}#${planned.line?.counter}`,
+		(planned) => `${planned.package}@${planned.version.id}#${planned.details?.line?.counter}`,
 	);
 
 describe("prerelease lines across a group", () => {
@@ -919,13 +988,11 @@ describe("prerelease lines across a group", () => {
 
 describe("build metadata", () => {
 	it("is refused by the SemVer strategy only", () => {
-		expect(() => VersionStrategy.parse("1.6.0+build.7")).toThrow("build metadata");
-
 		const built = packageWith("@acme/built", ["1.5.2+build.3"]);
 		const strategy = Release.make("built", {
 			packages: [member(built)],
 			change: ProjectChange,
-			version: VersionStrategy.semver({ bump: (change) => change.metadata.bump }),
+			version: SemVerStrategy.make({ bump: (change) => change.metadata.bump }),
 		});
 		expect(
 			failure(
@@ -935,7 +1002,8 @@ describe("build metadata", () => {
 			).reason,
 		).toBe("InvalidVersion");
 
-		// The planner is format-neutral: a literal target passes through as written.
+		// Build metadata is refused by the SemVer strategy, not by the planner: a literal
+		// target is decoded by the SemVer scheme, which accepts it, and passes through.
 		const literal = success(
 			strategy.plan({
 				version: "1.6.0+build.4",
@@ -950,7 +1018,7 @@ const groupOf = (...packages: ReadonlyArray<Package.Package>) =>
 	Release.make("previous", {
 		packages: packages.map(member),
 		change: ProjectChange,
-		version: VersionStrategy.semver({ bump: (change) => change.metadata.bump }),
+		version: SemVerStrategy.make({ bump: (change) => change.metadata.bump }),
 	});
 
 describe("previous versions in plan input", () => {
@@ -1024,17 +1092,19 @@ describe("previous versions in plan input", () => {
 		});
 	});
 
-	it("says when the head it uses is a prerelease", () => {
+	it("continues from a prerelease head", () => {
 		const pre = packageWith("@acme/pre", ["1.5.2", "2.0.0-rc.0"]);
 		const plan = success(
 			groupOf(pre).plan({
-				pre: { tag: "rc", continue: true },
+				input: { pre: { tag: "rc", continue: true } },
 				packages: [{ package: pre, changes: [headers] }],
 			}),
 		);
 
 		expect(summary(plan)).toEqual(["@acme/pre@2.0.0-rc.1<2.0.0-rc.0"]);
-		expect(plan.explanations[0]).toContain("a prerelease, so this release continues from it");
+		expect(plan.explanations[0]).toBe(
+			"@acme/pre: no previous stated; using the only head of its history, 2.0.0-rc.0.",
+		);
 	});
 
 	it("refuses a planned version that already exists anywhere in the history", () => {
@@ -1055,7 +1125,11 @@ describe("custom strategies and forks", () => {
 			Release.make("custom", {
 				packages: [member(solo)],
 				change: ProjectChange,
-				version: () => ({ version, unchanged: "drift" }),
+				version: VersionStrategy.make<ProjectMetadata, SemVerStrategy.Version>({
+					name: "fixed",
+					scheme: SemVerStrategy.scheme,
+					calculate: () => ({ version: SemVer.parseUnsafe(version), unchanged: "drift" }),
+				}),
 			}).plan({ packages: [{ package: solo, changes: [headers] }] });
 
 		expect(summary(success(custom("2.0.0-beta.7")))).toEqual([

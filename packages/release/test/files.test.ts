@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Effect, Result } from "effect";
 
-import { DependentsPolicy, Release, ReleaseFiles, VersionStrategy } from "@deltafold/release";
+import { DependentsPolicy, Release, ReleaseFiles, SemVerStrategy } from "@deltafold/release";
 import { memoryFs } from "./__fixtures__/memory-fs.ts";
 import { headers, packageWith, ProjectChange, retries } from "./__fixtures__/packages.ts";
 
@@ -23,7 +23,7 @@ const release = Release.make("widgets", {
 		},
 	],
 	change: ProjectChange,
-	version: VersionStrategy.semver({ bump: (change) => change.metadata.bump }),
+	version: SemVerStrategy.make({ bump: (change) => change.metadata.bump }),
 	replacements: [
 		{
 			files: ["packages/widgets/src/**/*.ts", "docs/**/*.md"],
@@ -251,7 +251,7 @@ const planDependents = (input: {
 }) => {
 	const result = release.plan({
 		dependents: input.dependents,
-		version: VersionStrategy.semver({
+		version: SemVerStrategy.make({
 			bump: (change) => change.metadata.bump,
 			unchanged: input.unchanged ?? "align",
 		}),
@@ -334,7 +334,7 @@ const resolvedWorkspace = () => ({
 });
 
 const resolveWidgets = ReleaseFiles.resolve(release, {
-	version: VersionStrategy.semver({ bump: (change) => change.metadata.bump, unchanged: "drift" }),
+	version: SemVerStrategy.make({ bump: (change) => change.metadata.bump, unchanged: "drift" }),
 	dependents: DependentsPolicy.propose(),
 	manifests: ["apps/*/package.json"],
 	packages: [
@@ -420,7 +420,7 @@ describe("generated version files", () => {
 	it.effect("are named after the version verbatim and record no prerelease state", () => {
 		const { files, provide } = memoryFs(workspace());
 		const result = release.plan({
-			pre: { tag: "beta", continue: false },
+			input: { pre: { tag: "beta", continue: false } },
 			packages: [
 				{ package: widgets, previous: "1.5.2", changes: [retries, headers] },
 				{ package: react, previous: "1.5.2", changes: [headers] },

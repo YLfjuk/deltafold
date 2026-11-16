@@ -1,25 +1,12 @@
-import { Array as Arr, Order, Result, SemVer } from "effect";
+import { Array as Arr, Order, Result } from "effect";
 
 import { Package, Version, type Change } from "deltafold";
 import type { Policy, Proposal, Requirement } from "./dependents-policy.ts";
 import { issue, PlanError } from "./error.ts";
-import { highest, lineOf, onLine, parse, prerelease } from "./line.ts";
 import { form, rewrite } from "./ranges.ts";
-import {
-	type Calculation,
-	type Line,
-	type Participant,
-	type Pre,
-	type Strategy,
-} from "./version-strategy.ts";
+import * as VersionStrategy from "./version-strategy.ts";
 
-/**
- * A literal target version, or a strategy that calculates one. Literal targets belong to
- * one plan's input; group configuration takes strategies only.
- *
- * @since @next
- */
-export type VersionSetting<M extends object> = string | Strategy<M>;
+type AnyPackage = Package.Package<any>;
 
 /**
  * Where a package's files live. Relative paths resolve against the release config file's
@@ -37,12 +24,13 @@ export type Files = {
 
 /** @since @next */
 export type Registration<M extends object> = {
-	readonly package: Package.Package;
+	readonly package: AnyPackage;
 	/**
-	 * An independent strategy. The package then leaves the shared calculation. A group is
-	 * reused across releases, so a fixed version is passed to one plan instead.
+	 * An independent strategy, possibly with another scheme. The package then leaves the
+	 * shared calculation. A group is reused across releases, so a fixed version is passed
+	 * to one plan instead.
 	 */
-	readonly version?: Strategy<M>;
+	readonly version?: VersionStrategy.VersionStrategy<M, any, any, any>;
 	readonly files: Files;
 };
 
@@ -57,32 +45,61 @@ export type Replacement = {
 	readonly exclude?: ReadonlyArray<string>;
 	/** The literal token to replace, such as `@next`. */
 	readonly match: string;
-	readonly versionOf: Package.Package;
+	readonly versionOf: AnyPackage;
 };
 
 /** @since @next */
-export type Config<M extends object> = {
-	readonly packages: ReadonlyArray<Registration<M>>;
+export type Config<
+	M extends object,
+	V,
+	I,
+	D,
+	Rs extends ReadonlyArray<Registration<M>> = ReadonlyArray<Registration<M>>,
+> = {
+	readonly packages: Rs;
 	/** The change factory whose metadata type policies and strategies receive. */
 	readonly change: Change.Definition<M>;
 	/**
 	 * The shared strategy for packages without their own. A fixed version would apply to
 	 * every future release of the group, so literal targets are plan input only.
 	 */
-	readonly version: Strategy<M>;
+	readonly version: VersionStrategy.VersionStrategy<M, V, I, D>;
 	readonly dependents?: Policy;
 	readonly replacements?: ReadonlyArray<Replacement>;
 	/** The export name of generated version modules. Defaults to `version`. */
 	readonly exportName?: string;
 };
 
+type StrategyOf<R, Shared> = R extends { readonly version: infer S extends VersionStrategy.Any }
+	? S
+	: Shared;
+type RegistrationFor<Rs extends ReadonlyArray<unknown>, P> = Extract<
+	Rs[number],
+	{ readonly package: P }
+>;
+type PackageOf<E> = E extends { readonly package: infer P } ? P : E;
+type NameOf<P> = P extends Package.Package<any, infer N> ? N : string;
+type OwnsStrategy<R, E> = R extends { readonly version: VersionStrategy.Any }
+	? true
+	: E extends { readonly version: VersionStrategy.Any }
+		? true
+		: false;
+
 /**
- * One package's part of a plan.
+ * The message a per-package `input` gets when the package shares the group calculation.
  *
  * @since @next
  */
-export type Selection<M extends object> = {
-	readonly package: Package.Package;
+export type SharedInputError<N extends string> =
+	`${N} shares the group calculation; add version: <strategy> to calculate it with its own input`;
+
+/**
+ * One package's part of a plan, checked against its registration.
+ *
+ * @since @next
+ */
+export type Selection<M extends object, R, Shared, E> = {
+	readonly package: PackageOf<E>;
 	/**
 	 * The released version this release descends from. It must be in the package history.
 	 * Omitted, it is the history's single head, the one version nothing descends from;
@@ -91,27 +108,76 @@ export type Selection<M extends object> = {
 	readonly previous?: Version.Version | string;
 	/** Omitted means no changes. */
 	readonly changes?: ReadonlyArray<Change.Change<M>>;
-	/** Overrides the registered and shared version setting for this run. */
-	readonly version?: VersionSetting<M>;
+	/**
+	 * An exact version for this run, decoded by the package's scheme, or a strategy that
+	 * keeps the registered strategy's version and input types.
+	 */
+	readonly version?:
+		| string
+		| VersionStrategy.VersionStrategy<
+				M,
+				VersionStrategy.VersionOf<StrategyOf<R, Shared>>,
+				VersionStrategy.InputOf<StrategyOf<R, Shared>>,
+				VersionStrategy.DetailsOf<StrategyOf<R, Shared>>
+		  >;
+	/** Input for the package's own strategy. Shared packages take the plan's `input`. */
+	readonly input?: OwnsStrategy<R, E> extends true
+		? VersionStrategy.InputOf<StrategyOf<R, Shared>>
+		: SharedInputError<NameOf<PackageOf<E>>>;
 };
 
 /**
- * Plan input. Options replace the configured value at the same level; arrays replace,
- * and an empty array disables. `pre` exists only here.
+ * An element of a plan's `packages`: a registered package, bare, or a selection for it.
  *
  * @since @next
  */
-export type Input<M extends object> = {
+export type Entry<Rs extends ReadonlyArray<Registration<any>>> =
+	| Rs[number]["package"]
+	| { readonly package: Rs[number]["package"] };
+
+type Checked<
+	M extends object,
+	Rs extends ReadonlyArray<Registration<M>>,
+	Shared,
+	E,
+> = E extends AnyPackage ? E : Selection<M, RegistrationFor<Rs, PackageOf<E>>, Shared, E>;
+
+/**
+ * Plan input. Options replace the configured value at the same level; arrays replace,
+ * and an empty array disables.
+ *
+ * @since @next
+ */
+export type Input<
+	M extends object,
+	V,
+	I,
+	D,
+	Rs extends ReadonlyArray<Registration<M>>,
+	Ps extends ReadonlyArray<unknown>,
+> = {
 	/**
 	 * Every registered package. A bare Package stands for a member with no changes and no
 	 * overrides, descending from the single head of its history.
 	 */
-	readonly packages: ReadonlyArray<Selection<M> | Package.Package>;
-	readonly version?: VersionSetting<M>;
+	readonly packages: {
+		readonly [K in keyof Ps]: Checked<
+			M,
+			Rs,
+			VersionStrategy.VersionStrategy<M, V, I, D>,
+			Ps[K]
+		>;
+	};
+	/**
+	 * An exact version for every shared package, decoded by the shared scheme, or a strategy
+	 * replacing the shared one for this run.
+	 */
+	readonly version?: string | VersionStrategy.VersionStrategy<M, V, I, D>;
+	/** Input for the shared strategy, such as SemVer's `{ pre }`. */
+	readonly input?: I;
 	readonly dependents?: Policy;
 	readonly replacements?: ReadonlyArray<Replacement>;
 	readonly requirements?: ReadonlyArray<Requirement>;
-	readonly pre?: Pre;
 };
 
 /**
@@ -119,12 +185,12 @@ export type Input<M extends object> = {
  *
  * @since @next
  */
-export type PlannedVersion = {
+export type PlannedVersion<D = unknown> = {
 	readonly package: string;
 	/** Its `previous` is the package's own previous version, never a shared baseline. */
 	readonly version: Version.Version;
-	/** The prerelease line the new version is on, derived from its id and ancestry. */
-	readonly line: Line | undefined;
+	/** What the strategy reported about this version, such as SemVer's prerelease line. */
+	readonly details: D | undefined;
 	/** The version came from a shared calculation or the package's own setting. */
 	readonly source: "shared" | "override";
 	/**
@@ -171,10 +237,10 @@ export type Unchanged = {
 };
 
 /** @since @next */
-export type Plan<M extends object = any> = {
+export type Plan<M extends object = any, D = unknown> = {
 	readonly _tag: "ReleasePlan";
 	readonly release: Release<M>;
-	readonly versions: ReadonlyArray<PlannedVersion>;
+	readonly versions: ReadonlyArray<PlannedVersion<D>>;
 	readonly unchanged: ReadonlyArray<Unchanged>;
 	/** Every policy decision, sorted by dependent, field, dependency, and action. */
 	readonly dependents: ReadonlyArray<Proposal>;
@@ -188,13 +254,31 @@ export type Plan<M extends object = any> = {
 	readonly explanations: ReadonlyArray<string>;
 };
 
+/**
+ * The details a plan's versions can carry: the shared strategy's and every registered
+ * strategy's.
+ *
+ * @since @next
+ */
+export type PlanDetails<D, Rs extends ReadonlyArray<Registration<any>>> =
+	| D
+	| VersionStrategy.DetailsOf<NonNullable<Rs[number]["version"]>>;
+
 /** @since @next */
-export type Release<M extends object = any> = {
+export type Release<
+	M extends object = any,
+	V = any,
+	I = any,
+	D = any,
+	Rs extends ReadonlyArray<Registration<M>> = ReadonlyArray<Registration<M>>,
+> = {
 	readonly _tag: "Release";
 	readonly group: string;
-	readonly config: Config<M>;
+	readonly config: Config<M, V, I, D, Rs>;
 	/** Calculates a plan. It reads and writes nothing. */
-	readonly plan: (input: Input<M>) => Result.Result<Plan<M>, PlanError>;
+	readonly plan: <const Ps extends ReadonlyArray<Entry<Rs>>>(
+		input: Input<M, V, I, D, Rs, Ps>,
+	) => Result.Result<Plan<M, PlanDetails<D, Rs>>, PlanError>;
 };
 
 const fail = (...args: Parameters<typeof issue>): never => {
@@ -211,30 +295,76 @@ const fail = (...args: Parameters<typeof issue>): never => {
  *
  * @since @next
  */
-export const heads = (pkg: Package.Package): ReadonlyArray<Version.Version> => {
+export const heads = (pkg: AnyPackage): ReadonlyArray<Version.Version> => {
 	const parents = new Set(pkg.history.versions.flatMap((version) => version.previous?.id ?? []));
 
 	return pkg.history.versions.filter((version) => !parents.has(version.id));
 };
 
-type Member<M extends object> = {
-	readonly package: Package.Package;
+// The planner works on loosely typed values; the public types check them at the call site.
+type LooseStrategy = VersionStrategy.Any;
+type LooseSetting = string | LooseStrategy;
+type LooseRelease = {
+	readonly group: string;
+	readonly config: Config<object, unknown, unknown, unknown>;
+};
+type LooseInput = {
+	readonly packages: ReadonlyArray<unknown>;
+	readonly version?: LooseSetting;
+	readonly input?: unknown;
+	readonly dependents?: Policy;
+	readonly replacements?: ReadonlyArray<Replacement>;
+	readonly requirements?: ReadonlyArray<Requirement>;
+};
+type Member = {
+	readonly package: AnyPackage;
 	readonly previous: Version.Version | string | undefined;
-	readonly changes: ReadonlyArray<Change.Change<M>>;
-	readonly version: VersionSetting<M> | undefined;
+	readonly changes: ReadonlyArray<Change.Any>;
+	readonly version: unknown;
+	readonly input: unknown;
 };
 
-const memberOf = <M extends object>(entry: Selection<M> | Package.Package): Member<M> =>
-	Package.isPackage(entry)
-		? { package: entry, previous: undefined, changes: [], version: undefined }
-		: {
-				package: entry.package,
-				previous: entry.previous,
-				changes: entry.changes ?? [],
-				version: entry.version,
-			};
+const memberOf = (entry: unknown): Member => {
+	if (Package.isPackage(entry)) {
+		return {
+			package: entry,
+			previous: undefined,
+			changes: [],
+			version: undefined,
+			input: undefined,
+		};
+	}
+	// Plan input elements are packages or selections; the public types guarantee the shape.
+	// oxlint-disable-next-line typescript/no-unsafe-type-assertion
+	const selection = entry as {
+		readonly package: AnyPackage;
+		readonly previous?: Version.Version | string;
+		readonly changes?: ReadonlyArray<Change.Any>;
+		readonly version?: unknown;
+		readonly input?: unknown;
+	};
 
-const statedPrevious = <M extends object>(member: Member<M>, id: string): Version.Version =>
+	return {
+		package: selection.package,
+		previous: selection.previous,
+		changes: selection.changes ?? [],
+		version: selection.version,
+		input: selection.input,
+	};
+};
+
+const strategyOrLiteral = (value: unknown, where: string): LooseSetting | undefined => {
+	if (value === undefined || typeof value === "string") return value;
+	if (VersionStrategy.isVersionStrategy(value)) return value;
+
+	return fail(
+		"NotAStrategy",
+		`${where} is not a version strategy. Build strategies with VersionStrategy.make.`,
+		[where],
+	);
+};
+
+const statedPrevious = (member: Member, id: string): Version.Version =>
 	member.package.history.versions.find((version) => version.id === id) ??
 	fail(
 		"UnknownPrevious",
@@ -243,7 +373,7 @@ const statedPrevious = <M extends object>(member: Member<M>, id: string): Versio
 	);
 
 /** Resolves every member's previous version, reporting all ambiguous members at once. */
-const previousVersions = <M extends object>(members: ReadonlyArray<Member<M>>) => {
+const previousVersions = (members: ReadonlyArray<Member>) => {
 	const resolved = new Map<string, { previous: Version.Version; from: PreviousFrom }>();
 	const ambiguous: Array<string> = [];
 	const empty: Array<string> = [];
@@ -287,74 +417,68 @@ const previousVersions = <M extends object>(members: ReadonlyArray<Member<M>>) =
 	return resolved;
 };
 
-const calculate = <M extends object>(
-	setting: VersionSetting<M>,
-	participants: ReadonlyArray<Participant<M>>,
-	pre: Pre | undefined,
-): Calculation => {
-	if (typeof setting === "string") {
-		const target = parse(setting);
-		if (pre === undefined) return { version: setting, unchanged: "align" };
-		// With pre, a literal is the stable version the prerelease line prepares.
-		if (SemVer.isPrerelease(target)) {
-			fail(
-				"PrereleaseTarget",
-				`With pre, the literal target is the stable version the line prepares; use ${SemVer.format(SemVer.release(target))} instead of ${setting}.`,
-				[setting],
-			);
-		}
+const decodeWith = (strategy: LooseStrategy, id: string, subject: string): unknown =>
+	Result.getOrElse(strategy.scheme.decode(id), (message) =>
+		fail("InvalidVersion", `${subject}: ${message}`, [subject, id]),
+	);
 
-		return prerelease({
-			participants,
-			pre,
-			baseline: highest(participants),
-			bumps: [],
-			target,
-			unchanged: "align",
-		});
+/** `version`, then its own previous, and so on, decoded by the strategy's scheme. */
+const ancestryOf = (strategy: LooseStrategy, version: Version.Version, name: string) => {
+	const ancestry: Array<unknown> = [];
+	for (let current: Version.Version | undefined = version; current; current = current.previous) {
+		ancestry.push(decodeWith(strategy, current.id, name));
 	}
-	const result: unknown = setting({ participants, pre });
+
+	return ancestry;
+};
+
+/** Runs a strategy, turning refusals and foreign throws into plan errors. */
+const run = (
+	strategy: LooseStrategy,
+	context: VersionStrategy.Context<object, unknown, unknown>,
+): VersionStrategy.Calculation<unknown, unknown> => {
+	let result: unknown;
+	try {
+		result = strategy(context);
+	} catch (error) {
+		if (error instanceof PlanError) throw error;
+		if (error instanceof VersionStrategy.StrategyRefusal) {
+			return fail("StrategyRefused", `${strategy.name}: ${error.message}`, [
+				strategy.name,
+				...error.subjects,
+			]);
+		}
+		return fail(
+			"InvalidStrategyResult",
+			`${strategy.name} threw instead of refusing: ${error instanceof Error ? error.message : String(error)}`,
+			[strategy.name],
+		);
+	}
 	if (
 		typeof result !== "object" ||
 		result === null ||
 		"then" in result ||
 		!("version" in result) ||
-		typeof result.version !== "string"
+		result.version === undefined
 	) {
 		return fail(
 			"InvalidStrategyResult",
-			"A version strategy must synchronously return { version }.",
+			`${strategy.name} must synchronously return { version }.`,
+			[strategy.name],
 		);
 	}
-	// The shape is checked above; `version` is validated next.
-	// oxlint-disable-next-line typescript/no-unsafe-type-assertion
-	const calculation = result as Calculation;
-	parse(calculation.version);
-
-	return calculation;
+	return result;
 };
-
-const toParticipant = <M extends object>(
-	selection: Member<M>,
-	previous: Version.Version,
-	dependencies: ReadonlyArray<string>,
-): Participant<M> => ({
-	package: selection.package.name,
-	previous: previous.id,
-	changes: selection.changes,
-	line: lineOf(previous),
-	dependencies,
-});
 
 const versionsOf = (planned: ReadonlyArray<PlannedVersion>) =>
 	new Map(planned.map((entry) => [entry.package, entry.version.id]));
 
 const byText = (select: (proposal: Proposal) => string) => Order.mapInput(Order.String, select);
 
-const buildPlan = <M extends object>(release: Release<M>, input: Input<M>): Plan<M> => {
+const buildPlan = (release: LooseRelease, input: LooseInput, owner: Release): Plan => {
 	const { config } = release;
 	const members = config.packages.map((registration) => registration.package.name);
-	const selections = input.packages.map((entry) => memberOf(entry));
+	const selections = input.packages.map(memberOf);
 	const selected = selections.map((selection) => selection.package.name);
 	const duplicates = selected.filter((name, index) => selected.indexOf(name) !== index);
 	if (duplicates.length > 0) fail("DuplicatePackage", "Select each package once.", duplicates);
@@ -371,23 +495,37 @@ const buildPlan = <M extends object>(release: Release<M>, input: Input<M>): Plan
 		);
 	}
 
+	const planVersion = strategyOrLiteral(input.version, "The plan's version");
+	const sharedStrategy: LooseStrategy =
+		typeof planVersion === "function" ? planVersion : config.version;
+	const sharedLiteral = typeof planVersion === "string" ? planVersion : undefined;
 	const previousOf = previousVersions(selections);
 	const entries = selections.map((selection) => {
-		const registration = config.packages.find(
-			(candidate) => candidate.package.name === selection.package.name,
-		);
-		const resolved = previousOf.get(selection.package.name);
+		const name = selection.package.name;
+		const registration = config.packages.find((candidate) => candidate.package.name === name);
+		const resolved = previousOf.get(name);
 		if (resolved === undefined) {
-			return fail("UnknownPrevious", `${selection.package.name} has no previous version.`, [
-				selection.package.name,
-			]);
+			return fail("UnknownPrevious", `${name} has no previous version.`, [name]);
 		}
+		const chosen = strategyOrLiteral(selection.version, `${name}'s version`);
+		const registered = strategyOrLiteral(registration?.version, `${name}'s registered version`);
+		// A package with its own strategy, or a literal of its own, leaves the shared calculation.
+		const ownStrategy =
+			typeof chosen === "object" || typeof chosen === "function"
+				? chosen
+				: typeof registered === "function"
+					? registered
+					: undefined;
+		const literal = typeof chosen === "string" ? chosen : undefined;
 
 		return {
 			selection,
 			previous: resolved.previous,
 			previousFrom: resolved.from,
-			override: selection.version ?? registration?.version,
+			strategy: ownStrategy ?? sharedStrategy,
+			literal,
+			ownInput: selection.input,
+			override: ownStrategy !== undefined || literal !== undefined,
 		};
 	});
 
@@ -405,7 +543,9 @@ const buildPlan = <M extends object>(release: Release<M>, input: Input<M>): Plan
 
 		const place = (
 			group: ReadonlyArray<(typeof entries)[number]>,
-			setting: VersionSetting<M>,
+			strategy: LooseStrategy,
+			literal: string | undefined,
+			strategyInput: unknown,
 			source: PlannedVersion["source"],
 		) => {
 			if (group.length === 0) return;
@@ -414,7 +554,7 @@ const buildPlan = <M extends object>(release: Release<M>, input: Input<M>): Plan
 					entry.selection.changes.length > 0 ||
 					dependenciesOf(entry.selection.package.name).length > 0,
 			);
-			if (!hasIntent && typeof setting !== "string") {
+			if (!hasIntent && literal === undefined) {
 				for (const entry of group) {
 					unchanged.push({
 						package: entry.selection.package.name,
@@ -429,59 +569,57 @@ const buildPlan = <M extends object>(release: Release<M>, input: Input<M>): Plan
 
 				return;
 			}
-			const calculation = calculate(
-				setting,
-				group.map((entry) =>
-					toParticipant(
-						entry.selection,
-						entry.previous,
-						dependenciesOf(entry.selection.package.name),
-					),
-				),
-				input.pre,
-			);
-			// In a drifting group, packages on one prerelease line keep their own counters: a
-			// package continues its own, and a package joining the line starts at 0.
-			const shared = Version.make(calculation.version, { changes: [] });
-			const sharedLine = lineOf(shared);
-			const placementOf = (entry: (typeof entries)[number]): string => {
-				// Only a drifting group sharing a prerelease line renumbers counters per package.
-				// Any other calculation, such as a custom strategy's result, is kept verbatim.
-				if (
-					calculation.unchanged !== "drift" ||
-					sharedLine === undefined ||
-					input.pre === undefined ||
-					group.length < 2
-				) {
-					return calculation.version;
-				}
-				const own = lineOf(entry.previous);
-				const counter =
-					(input.pre?.continue ?? false) &&
-					own !== undefined &&
-					own.target === sharedLine.target &&
-					own.tag === sharedLine.tag
-						? own.counter + 1
-						: 0;
-
-				return onLine(sharedLine.target, sharedLine.tag, counter);
-			};
-			for (const entry of group) {
-				const { selection, previous } = entry;
+			const decoded = group.map((entry) => {
+				const ancestry = ancestryOf(strategy, entry.previous, entry.selection.package.name);
+				return { entry, previous: ancestry[0], ancestry };
+			});
+			// A literal is the exact version, decoded by the scheme; no strategy runs.
+			const calculation: VersionStrategy.Calculation<unknown, unknown> =
+				literal !== undefined
+					? { version: decodeWith(strategy, literal, literal), unchanged: "align" }
+					: run(strategy, {
+							participants: decoded.map(({ entry, previous, ancestry }) => ({
+								package: entry.selection.package.name,
+								previous,
+								ancestry,
+								changes: entry.selection.changes,
+								dependencies: dependenciesOf(entry.selection.package.name),
+							})),
+							input: strategyInput,
+						});
+			const names = new Set(group.map((entry) => entry.selection.package.name));
+			const stray = (calculation.versions ?? []).filter((item) => !names.has(item.package));
+			if (stray.length > 0) {
+				fail(
+					"InvalidStrategyResult",
+					`${strategy.name} returned versions for packages outside its calculation.`,
+					[strategy.name, ...stray.map((item) => item.package)],
+				);
+			}
+			for (const { entry, previous } of decoded) {
+				const { selection } = entry;
 				const name = selection.package.name;
-				const placement = placementOf(entry);
-				const target = parse(placement);
+				const own = calculation.versions?.find((item) => item.package === name);
+				const target = own === undefined ? calculation.version : own.version;
+				const details =
+					own === undefined ? calculation.details : (own.details ?? calculation.details);
+				const placement = strategy.scheme.encode(target);
 				const fromDependencies = dependenciesOf(name).length > 0;
 				const intent = selection.changes.length > 0 || fromDependencies;
-				if (SemVer.isLessThan(target, parse(previous.id))) {
-					fail("Downgrade", `${placement} would downgrade ${name} from ${previous.id}.`, [
-						name,
-					]);
+				if (strategy.scheme.order(target, previous) < 0) {
+					fail(
+						"Downgrade",
+						`${placement} would downgrade ${name} from ${entry.previous.id}.`,
+						[name],
+					);
 				}
-				if (!intent && (calculation.unchanged === "drift" || placement === previous.id)) {
+				if (
+					!intent &&
+					(calculation.unchanged === "drift" || placement === entry.previous.id)
+				) {
 					unchanged.push({
 						package: name,
-						version: previous.id,
+						version: entry.previous.id,
 						reason: calculation.unchanged === "drift" ? "drift" : "no-changes",
 						previousFrom: entry.previousFrom,
 					});
@@ -496,16 +634,16 @@ const buildPlan = <M extends object>(release: Release<M>, input: Input<M>): Plan
 					);
 				}
 				const version = Version.make(placement, {
-					previous,
+					previous: entry.previous,
 					changes: [...selection.changes],
 				});
 				versions.push({
 					package: name,
 					version,
-					line: lineOf(version),
+					details,
 					source,
 					reason:
-						typeof setting === "string"
+						literal !== undefined
 							? "target"
 							: selection.changes.length > 0
 								? "changes"
@@ -518,59 +656,18 @@ const buildPlan = <M extends object>(release: Release<M>, input: Input<M>): Plan
 			}
 		};
 
-		// A dependency-only release joins the calculation as patch intent. When unchanged
-		// members drift and the release is stable, it is calculated on its own, from its own
-		// previous version.
-		const assign = (
-			group: ReadonlyArray<(typeof entries)[number]>,
-			setting: VersionSetting<M>,
-			source: PlannedVersion["source"],
-		) => {
-			const dependencyOnly = group.filter(
-				(entry) =>
-					entry.selection.changes.length === 0 &&
-					dependenciesOf(entry.selection.package.name).length > 0,
-			);
-			const rest = group.filter((entry) => !dependencyOnly.includes(entry));
-			if (typeof setting === "string" || dependencyOnly.length === 0 || group.length === 1) {
-				place(group, setting, source);
-
-				return;
-			}
-			const probe = rest.some((entry) => entry.selection.changes.length > 0)
-				? rest
-				: dependencyOnly;
-			const mode = calculate(
-				setting,
-				probe.map((entry) =>
-					toParticipant(
-						entry.selection,
-						entry.previous,
-						dependenciesOf(entry.selection.package.name),
-					),
-				),
-				input.pre,
-			).unchanged;
-			// A prerelease line is shared: dependency-only members join it with their own
-			// counters instead of calculating alone.
-			if (mode !== "drift" || input.pre !== undefined) {
-				place(group, setting, source);
-
-				return;
-			}
-			place(rest, setting, source);
-			for (const entry of dependencyOnly) place([entry], setting, source);
-		};
-
-		assign(
-			entries.filter((entry) => entry.override === undefined),
-			input.version ?? config.version,
+		place(
+			entries.filter((entry) => !entry.override),
+			sharedStrategy,
+			sharedLiteral,
+			input.input,
 			"shared",
 		);
 		for (const entry of entries) {
-			if (entry.override !== undefined) assign([entry], entry.override, "override");
+			if (entry.override)
+				place([entry], entry.strategy, entry.literal, entry.ownInput, "override");
 		}
-		if (entries.some((entry) => entry.override !== undefined)) {
+		if (entries.some((entry) => entry.override)) {
 			explanations.push(
 				"Packages with their own version setting do not take part in the shared calculation.",
 			);
@@ -659,7 +756,7 @@ const buildPlan = <M extends object>(release: Release<M>, input: Input<M>): Plan
 
 	return {
 		_tag: "ReleasePlan",
-		release,
+		release: owner,
 		versions: calculated.versions.map((planned) => ({
 			...planned,
 			dependencies: updates.filter((update) => update.dependent === planned.package),
@@ -685,7 +782,7 @@ const buildPlan = <M extends object>(release: Release<M>, input: Input<M>): Plan
 			...entries.flatMap((entry) =>
 				entry.previousFrom === "history-head"
 					? [
-							`${entry.selection.package.name}: no previous stated; using the only head of its history, ${entry.previous.id}${SemVer.isPrerelease(parse(entry.previous.id)) ? ", a prerelease, so this release continues from it" : ""}.`,
+							`${entry.selection.package.name}: no previous stated; using the only head of its history, ${entry.previous.id}.`,
 						]
 					: [],
 			),
@@ -713,125 +810,59 @@ const buildPlan = <M extends object>(release: Release<M>, input: Input<M>): Plan
 	};
 };
 
-/**
- * One change found on a prerelease line.
- *
- * @since @next
- */
-export type LineChange = {
-	readonly change: Change.Any;
-	/** The prerelease versions that contain it, oldest first. */
-	readonly versions: ReadonlyArray<string>;
-	/** Changes on the line that revert it. */
-	readonly revertedBy: ReadonlyArray<string>;
-	/** Changes on the line that it reverts. */
-	readonly reverts: ReadonlyArray<string>;
-};
-
-/**
- * The changes of a prerelease line since its last stable ancestor.
- *
- * @since @next
- */
-export type PrereleaseChanges = {
-	readonly package: string;
-	readonly from: string;
-	/** The last stable ancestor, absent when the line starts at the root of the history. */
-	readonly stable: string | undefined;
-	/** The prerelease versions of the line, oldest first. */
-	readonly versions: ReadonlyArray<string>;
-	/** Each change once, in order of first appearance. */
-	readonly changes: ReadonlyArray<LineChange>;
-};
-
-/**
- * Lists the changes on the prerelease line that ends at `from`, back to its last stable
- * ancestor, following `previous`. It chooses nothing: a stable plan records exactly the
- * changes passed to it, so this listing is for deciding which ones to pass.
- *
- * @example
- * ```ts
- * const line = Release.prereleaseChanges(widgets, "2.0.0-rc.1");
- * ```
- *
- * @since @next
- */
-export const prereleaseChanges = (
-	pkg: Package.Package,
-	from: Version.Version | string,
-): Result.Result<PrereleaseChanges, PlanError> =>
+const planOrError = (try_: () => Plan): Result.Result<Plan, PlanError> =>
 	Result.try({
-		try: () => {
-			const id = typeof from === "string" ? from : from.id;
-			const start =
-				pkg.history.versions.find((version) => version.id === id) ??
-				fail("UnknownPrevious", `${pkg.name}@${id} is not in the package history.`, [
-					pkg.name,
-					id,
-				]);
-			if (!SemVer.isPrerelease(parse(start.id))) {
-				fail("NotPrerelease", `${pkg.name}@${id} is not a prerelease.`, [pkg.name, id]);
-			}
-			const line: Array<Version.Version> = [];
-			let current: Version.Version | undefined = start;
-			while (current !== undefined && SemVer.isPrerelease(parse(current.id))) {
-				line.unshift(current);
-				current = current.previous;
-			}
-			const found = new Map<string, { change: Change.Any; versions: Array<string> }>();
-			for (const version of line) {
-				for (const change of version.changes) {
-					const entry = found.get(change.id) ?? { change, versions: [] };
-					entry.versions.push(version.id);
-					found.set(change.id, entry);
-				}
-			}
-			const presentOnLine = (ids: ReadonlyArray<string>) =>
-				ids.filter((other) => found.has(other));
-
-			return {
-				package: pkg.name,
-				from: id,
-				stable: current?.id,
-				versions: line.map((version) => version.id),
-				changes: [...found.values()].map(({ change, versions }) => ({
-					change,
-					versions,
-					reverts: presentOnLine(change.reverts.map((reverted) => reverted.id)),
-					revertedBy: [...found.values()]
-						.filter((other) => other.change.reverts.some((r) => r.id === change.id))
-						.map((other) => other.change.id),
-				})),
-			};
-		},
+		try: try_,
 		catch: (error) => {
 			if (error instanceof PlanError) return error;
-			throw error;
+			if (error instanceof VersionStrategy.StrategyRefusal) {
+				return new PlanError(issue("StrategyRefused", error.message, error.subjects));
+			}
+			return new PlanError(
+				issue(
+					"InvalidStrategyResult",
+					`Planning failed: ${error instanceof Error ? error.message : String(error)}`,
+				),
+			);
 		},
 	});
 
 /**
  * Declares a bounded release group with a stable identifier. Plans can only release its
- * registered packages.
+ * registered packages. Strategies must be pure: the planner may call them several times.
  *
  * @example
  * ```ts
  * const release = Release.make("widgets", {
- * 	packages: [{ package: widgets, files: { manifest: "packages/widgets/package.json", versions: "packages/widgets/versions" } }],
+ * 	packages: [{ package: widgets, files: ReleaseFiles.at("packages/widgets", { manifest: "package.json" }) }],
  * 	change: ReleaseChange.define(),
- * 	version: VersionStrategy.semver({ bump: (change) => change.metadata.bump }),
+ * 	version: SemVerStrategy.make({ bump: (change) => change.metadata.bump }),
  * });
- * const plan = release.plan({ packages: [{ package: widgets, previous: "1.5.2", changes: [retries] }] });
+ * const plan = release.plan({ packages: [{ package: widgets, changes: [retries] }] });
  * ```
  *
  * @since @next
  */
-export const make = <M extends object>(group: string, config: Config<M>): Release<M> => {
+export const make = <M extends object, V, I, D, const Rs extends ReadonlyArray<Registration<M>>>(
+	group: string,
+	config: Config<M, V, I, D, Rs>,
+): Release<M, V, I, D, Rs> => {
 	if (group.trim() === "")
 		throw new PlanError(issue("GroupId", "A release group needs a stable identifier."));
-	if ("pre" in config) {
+	if ("pre" in config || "input" in config) {
 		throw new PlanError(
-			issue("InvalidPre", "pre is a per-plan choice and cannot be configured on a group."),
+			issue(
+				"InvalidPre",
+				"Strategy input, such as pre, is a per-plan choice and cannot be configured on a group.",
+			),
+		);
+	}
+	if (!VersionStrategy.isVersionStrategy(config.version)) {
+		throw new PlanError(
+			issue(
+				"NotAStrategy",
+				"The group's version is not a version strategy. Build strategies with VersionStrategy.make.",
+			),
 		);
 	}
 	const names = config.packages.map((registration) => registration.package.name);
@@ -839,21 +870,20 @@ export const make = <M extends object>(group: string, config: Config<M>): Releas
 	if (duplicates.length > 0)
 		throw new PlanError(issue("DuplicatePackage", "Register each package once.", duplicates));
 
-	const release: Release<M> = {
-		_tag: "Release",
+	// The loose planner checks values the public types already constrain.
+	// oxlint-disable-next-line typescript/no-unsafe-type-assertion
+	const loose = { group, config } as unknown as LooseRelease;
+	const release = {
+		_tag: "Release" as const,
 		group,
 		config,
-		plan: (input) =>
-			Result.try({
-				try: () => buildPlan(release, input),
-				catch: (error) => {
-					if (error instanceof PlanError) return error;
-					throw error;
-				},
-			}),
+		plan: (input: LooseInput) => planOrError(() => buildPlan(loose, input, owner)),
 	};
+	// The plan method's generic signature is enforced at the call site.
+	// oxlint-disable-next-line typescript/no-unsafe-type-assertion
+	const owner = release as unknown as Release<M, V, I, D, Rs>;
 
-	return release;
+	return owner;
 };
 
 /**
@@ -861,11 +891,18 @@ export const make = <M extends object>(group: string, config: Config<M>): Releas
  *
  * @since @next
  */
-export const plan = <M extends object>(
+export const plan = <
+	M extends object,
+	V,
+	I,
+	D,
+	const Rs extends ReadonlyArray<Registration<M>>,
+	const Ps extends ReadonlyArray<Entry<Rs>>,
+>(
 	group: string,
-	config: Config<M>,
-	input: Input<M>,
-): Result.Result<Plan<M>, PlanError> =>
+	config: Config<M, V, I, D, Rs>,
+	input: Input<M, V, I, D, Rs, Ps>,
+): Result.Result<Plan<M, PlanDetails<D, Rs>>, PlanError> =>
 	Result.flatMap(
 		Result.try({
 			try: () => make(group, config),
@@ -874,5 +911,5 @@ export const plan = <M extends object>(
 				throw error;
 			},
 		}),
-		(release) => release.plan(input),
+		(release) => release.plan<Ps>(input),
 	);

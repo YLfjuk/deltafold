@@ -12,7 +12,7 @@ import { Package } from "deltafold";
 import type { Requirement } from "./dependents-policy.ts";
 import { issue, PrepareError, type Issue } from "./error.ts";
 import { paths, type Location } from "./paths.ts";
-import type { Input, Release, Selection } from "./release.ts";
+import type { Entry, Input, Registration, Release } from "./release.ts";
 
 /**
  * The files a resolution read, so that preparation and apply can refuse when any of them
@@ -28,28 +28,48 @@ export type Snapshot = {
 	}>;
 };
 
+/**
+ * A plan entry after resolution: its previous version is the manifest's version.
+ *
+ * @since @next
+ */
+export type WithPrevious<E> =
+	E extends Package.Package<any>
+		? { readonly package: E; readonly previous: string; readonly changes: ReadonlyArray<never> }
+		: Omit<E, "previous"> & { readonly previous: string };
+
 /** @since @next */
-export type Resolved<M extends object> = {
+export type Resolved<
+	M extends object,
+	V,
+	I,
+	D,
+	Rs extends ReadonlyArray<Registration<M>>,
+	Ps extends ReadonlyArray<unknown>,
+> = {
 	/** Every member with its manifest version as a stated `previous`. */
-	readonly input: Omit<Input<M>, "packages"> & {
-		readonly packages: ReadonlyArray<Selection<M> & { readonly previous: string }>;
+	readonly input: Omit<Input<M, V, I, D, Rs, Ps>, "packages" | "requirements"> & {
+		readonly packages: { readonly [K in keyof Ps]: WithPrevious<Ps[K]> };
+		readonly requirements: ReadonlyArray<Requirement>;
 	};
 	readonly snapshot: Snapshot;
 };
 
 /**
- * One member's part of the input before resolution: its previous version comes from its
- * manifest.
+ * Resolution options: plan input whose previous versions and requirements come from
+ * manifests.
  *
  * @since @next
  */
-export type Unresolved<M extends object> = Omit<Selection<M>, "previous">;
-
-/** @since @next */
-export type ResolveOptions<M extends object> = Location &
-	Omit<Input<M>, "packages" | "requirements"> & {
-		/** Every member. A bare Package stands for a member with no changes and no overrides. */
-		readonly packages: ReadonlyArray<Unresolved<M> | Package.Package>;
+export type ResolveOptions<
+	M extends object,
+	V,
+	I,
+	D,
+	Rs extends ReadonlyArray<Registration<M>>,
+	Ps extends ReadonlyArray<unknown>,
+> = Location &
+	Omit<Input<M, V, I, D, Rs, Ps>, "requirements"> & {
 		/**
 		 * Glob patterns of other manifests to scan for dependents outside the group. They are
 		 * reported as cross-group requirements, never added.
@@ -108,10 +128,21 @@ const readManifest = (text: string): Manifest | undefined => {
  *
  * @since @next
  */
-export const resolve = <M extends object>(
-	release: Release<M>,
-	options: ResolveOptions<M>,
-): Effect.Effect<Resolved<M>, PrepareError | PlatformError.PlatformError, FileSystem.FileSystem> =>
+export const resolve = <
+	M extends object,
+	V,
+	I,
+	D,
+	Rs extends ReadonlyArray<Registration<M>>,
+	const Ps extends ReadonlyArray<Entry<Rs>>,
+>(
+	release: Release<M, V, I, D, Rs>,
+	options: ResolveOptions<M, V, I, D, Rs, Ps>,
+): Effect.Effect<
+	Resolved<M, V, I, D, Rs, Ps>,
+	PrepareError | PlatformError.PlatformError,
+	FileSystem.FileSystem
+> =>
 	Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem;
 		const location = paths(options);
@@ -134,12 +165,17 @@ export const resolve = <M extends object>(
 				return { path: key, manifest: readManifest(text) };
 			});
 
-		const packages: Array<Selection<M> & { readonly previous: string }> = [];
+		const packages: Array<{
+			readonly package: Package.Package<any>;
+			readonly previous: string;
+		}> = [];
 		const manifests: Array<{ readonly path: string; readonly manifest: Manifest }> = [];
-		for (const member of options.packages) {
-			const selection: Unresolved<M> = Package.isPackage(member)
-				? { package: member, changes: [] }
-				: member;
+		for (const member of options.packages as ReadonlyArray<unknown>) {
+			// Entries are bare packages or selections; the public types check them.
+			// oxlint-disable-next-line typescript/no-unsafe-type-assertion
+			const selection = (
+				Package.isPackage(member) ? { package: member, changes: [] } : member
+			) as { readonly package: Package.Package<any> };
 			const name = selection.package.name;
 			const configured = release.config.packages.find(
 				(registration) => registration.package.name === name,
@@ -212,11 +248,13 @@ export const resolve = <M extends object>(
 					: [],
 			),
 		);
-		const input: Resolved<M>["input"] = {
+		// Each entry keeps its own fields, with the manifest's version as `previous`.
+		// oxlint-disable-next-line typescript/no-unsafe-type-assertion
+		const input = {
 			...Struct.omit(options, ["manifests", "root", "base"]),
 			packages,
 			requirements,
-		};
+		} as unknown as Resolved<M, V, I, D, Rs, Ps>["input"];
 
 		return { input, snapshot: { reads, globs } };
 	});

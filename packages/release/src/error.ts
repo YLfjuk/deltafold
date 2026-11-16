@@ -17,6 +17,8 @@ export type Reason =
 	| "InvalidBump"
 	| "InvalidPre"
 	| "InvalidStrategyResult"
+	| "StrategyRefused"
+	| "NotAStrategy"
 	| "InvalidPolicyResult"
 	| "UnsupportedRange"
 	| "StaleRequirement"
