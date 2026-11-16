@@ -54,6 +54,28 @@ stop-on-failure.
   every public export, so released exports carry their release version and
   unreleased additions carry `@since @next`.
 
+## Integrations
+
+- **Codemod packages.** Each codemod engine ships as its own package that returns
+  ordinary handlers, so the core stays free of codemod engines and file formats.
+  The first is `@deltafold/typescript`. A shared engine-agnostic package can follow
+  once several packages repeat the same globs, file locks, temporary-file writes,
+  and text edits.
+- **TypeScript alias.** `@deltafold/typescript` depends on TypeScript 7.1.0-beta
+  under the npm alias `typescript-7.1`, because 7.0 has no snapshot API. The build
+  and test tools take `typescript` as a peer, so a second version under that name
+  would give the package a second copy of the test runner. The alias goes when the
+  catalog moves to a stable TypeScript with this API.
+- **Targets.** Payloads name files with globs relative to the run's root, never
+  tsconfig files, because a package author cannot know a consumer's layout.
+  Matching never enters `node_modules`, because migrations change the developer's
+  code, not installed packages.
+- **Writes per action.** Each action writes its files when its transforms finish,
+  so `Completed` means the files are on disk. Handlers see no migration
+  boundaries, and writing once per migration would let the report and the disk
+  disagree. File locks only narrow concurrency; `Action.parallel` still states
+  that branches are independent.
+
 ## Provisional choices
 
 These work today but need confirmation before 1.0:
@@ -102,6 +124,11 @@ These work today but need confirmation before 1.0:
 - A versioned JSON report format and a plan fingerprint.
 - A preview mode for integration engines, distinct from dry runs.
 - Branch labels in histories and an optional metadata schema.
+- Retrying a TypeScript action after a write conflict with a new snapshot.
+  Transforms only return edits, so rerunning them is safe.
+- A shared `@deltafold/typescript` helper that finds a symbol, such as member `a1`
+  of export `A`, once real migrations settle how it treats aliases, re-exports,
+  and missing modules.
 
 ## Open questions
 
@@ -120,6 +147,4 @@ These work today but need confirmation before 1.0:
 - CLI packaging: a separate `@deltafold/cli` package, or `deltafold/cli` with
   `deltafold/cli/node`, plus TypeScript entry loading, option spellings, and
   exit codes.
-- Whether codemod integrations ship as an official submodule, separate packages,
-  or third-party packages.
 - Whether generated API docs are committed or only produced in CI.
