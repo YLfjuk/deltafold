@@ -1,5 +1,3 @@
-import { SemVer } from "effect";
-
 import { form, satisfies } from "./ranges.ts";
 
 /**
@@ -79,7 +77,7 @@ const decide = (
 		const range = form(requirement.range);
 		if (range._tag === "Workspace") return [{ ...requirement, action: "workspace" }];
 		const version = context.versions.get(requirement.dependency);
-		const inRange = version !== undefined && satisfies(range, SemVer.parseUnsafe(version));
+		const inRange = version !== undefined && satisfies(requirement.range, version);
 		if (inRange && (options.updateRanges ?? "out-of-range") === "out-of-range") {
 			return [{ ...requirement, action: "satisfied" }];
 		}

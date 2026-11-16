@@ -1,11 +1,18 @@
 import { Array as Arr, Effect, FileSystem, Order, type PlatformError } from "effect";
 
-import { ApplyFailed, issue, PrepareError, StalePlan, type Issue } from "./error.ts";
+import {
+	ApplyFailed,
+	ChangedDuringApply,
+	issue,
+	PrepareError,
+	StalePlan,
+	type Issue,
+} from "./error.ts";
 import { paths, type Location, type Paths } from "./paths.ts";
 import type { Plan, PlannedVersion, Replacement } from "./release.ts";
 import type { Files } from "./release.ts";
 import type { Snapshot } from "./resolve.ts";
-import { join, relative, render, scan, type Declaration } from "./source.ts";
+import { dirname, join, relative, render, scan, type Declaration } from "./source.ts";
 
 export { resolve } from "./resolve.ts";
 export type { ResolveOptions, Resolved, Snapshot, Unresolved } from "./resolve.ts";
@@ -94,6 +101,8 @@ export type Prepared = {
 	readonly globs: ReadonlyArray<{
 		readonly pattern: ReadonlyArray<string>;
 		readonly exclude: ReadonlyArray<string>;
+		/** Paths matched but deliberately left out, such as pending modules. */
+		readonly except: ReadonlyArray<string>;
 		readonly matched: ReadonlyArray<string>;
 	}>;
 };
@@ -142,22 +151,72 @@ const occurrences = (text: string, token: string): ReadonlyArray<number> => {
 	return found;
 };
 
-const quote = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+type Frame = {
+	readonly object: boolean;
+	readonly path: ReadonlyArray<string>;
+	key: string | undefined;
+	expectKey: boolean;
+};
 
-/** Finds a dependency's range string inside one dependency field of a manifest's text. */
+/**
+ * Finds the string value at a key path in JSON text, such as `["version"]` or
+ * `["dependencies", "@acme/widgets"]`, counting from the top-level object. Nested
+ * properties with the same name are never matched. Returns the span inside the quotes.
+ */
+const locate = (text: string, path: ReadonlyArray<string>) => {
+	const stack: Array<Frame> = [];
+	const here = (): ReadonlyArray<string> => {
+		const top = stack.at(-1);
+		if (top === undefined) return [];
+		return top.key === undefined ? top.path : [...top.path, top.key];
+	};
+	for (let index = 0; index < text.length; index++) {
+		const char = text[index];
+		if (char === '"') {
+			let end = index + 1;
+			while (end < text.length && text[end] !== '"') end += text[end] === "\\" ? 2 : 1;
+			const value: unknown = JSON.parse(text.slice(index, end + 1));
+			const top = stack.at(-1);
+			if (typeof value === "string" && top?.object === true && top.expectKey) {
+				top.key = value;
+				top.expectKey = false;
+			} else if (typeof value === "string") {
+				const keys = here();
+				if (
+					keys.length === path.length &&
+					keys.every((key, position) => key === path[position])
+				) {
+					return { value, start: index + 1, end };
+				}
+			}
+			index = end;
+		} else if (char === "{" || char === "[") {
+			stack.push({
+				object: char === "{",
+				path: char === "{" ? here() : [...here(), "[]"],
+				key: undefined,
+				expectKey: char === "{",
+			});
+		} else if (char === "}" || char === "]") {
+			stack.pop();
+		} else if (char === ",") {
+			const top = stack.at(-1);
+			if (top?.object === true) {
+				top.key = undefined;
+				top.expectKey = true;
+			}
+		}
+	}
+
+	return undefined;
+};
+
+/** Finds a dependency's range string inside one top-level dependency field. */
 const findRange = (text: string, field: string, dependency: string) => {
-	const open = new RegExp(`"${quote(field)}"\\s*:\\s*\\{`).exec(text);
-	if (open === null) return undefined;
-	const bodyStart = open.index + open[0].length;
-	const bodyEnd = text.indexOf("}", bodyStart);
-	if (bodyEnd === -1) return undefined;
-	const entry = new RegExp(`"${quote(dependency)}"\\s*:\\s*"([^"]*)"`).exec(
-		text.slice(bodyStart, bodyEnd),
-	);
-	if (entry?.[1] === undefined) return undefined;
-	const end = bodyStart + entry.index + entry[0].length - 1;
-
-	return { range: entry[1], start: end - entry[1].length, end };
+	const found = locate(text, [field, dependency]);
+	return found === undefined
+		? undefined
+		: { range: found.value, start: found.start, end: found.end };
 };
 
 /**
@@ -198,7 +257,7 @@ export const prepare = (
 				return path === undefined ? [] : [path];
 			});
 		const globs: Array<Prepared["globs"][number]> = [];
-		const exportName = plan.release.config.exportName ?? "version";
+		const exportName = plan.exportName;
 
 		// Resolved sources must be unchanged; apply checks them again.
 		for (const [path, before] of options.snapshot?.reads ?? []) {
@@ -225,13 +284,13 @@ export const prepare = (
 					),
 				);
 			}
-			globs.push({ pattern: glob.pattern, exclude: [], matched: glob.matched });
+			globs.push({ pattern: glob.pattern, exclude: [], except: [], matched: glob.matched });
 		}
 
 		// Pending modules.
 		const pendingPatterns = allFromBase(options.pending);
 		const pendingPaths = yield* globAll(fs, location, pendingPatterns, []);
-		globs.push({ pattern: pendingPatterns, exclude: [], matched: pendingPaths });
+		globs.push({ pattern: pendingPatterns, exclude: [], except: [], matched: pendingPaths });
 		const declarations = new Map<string, Declaration>();
 		for (const path of pendingPaths) {
 			const scanned = scan({ path, text: (yield* read(path)) ?? "" });
@@ -277,10 +336,10 @@ export const prepare = (
 		};
 
 		// Version modules, written before anything is consumed.
-		const registration = (entry: PlannedVersion) =>
-			plan.release.config.packages.find(
-				(candidate) => candidate.package.name === entry.package,
-			);
+		const registration = (entry: PlannedVersion) => {
+			const files = plan.files.get(entry.package);
+			return files === undefined ? undefined : { files };
+		};
 		for (const entry of plan.versions) {
 			const configured = registration(entry)?.files;
 			const versionsDir =
@@ -349,19 +408,19 @@ export const prepare = (
 			const path = configured === undefined ? undefined : fromBase(configured);
 			if (path === undefined) continue;
 			const text = yield* current(path);
-			const field = text === null ? null : /("version"\s*:\s*")([^"]*)(")/.exec(text);
+			const field = text === null ? undefined : locate(text, ["version"]);
 			const previousId = entry.version.previous?.id;
-			if (text === null || field === null || field[2] !== previousId) {
+			if (text === null || field === undefined || field.value !== previousId) {
 				issues.push(
 					issue(
 						"ManifestMismatch",
-						`${path} must have version ${previousId ?? "(none)"}; found ${field?.[2] ?? "no version field"}.`,
+						`${path} must have version ${previousId ?? "(none)"}; found ${field?.value ?? "no top-level version field"}.`,
 						[path],
 					),
 				);
 				continue;
 			}
-			stage(path, text.replace(field[0], `${field[1]}${entry.version.id}${field[3]}`));
+			stage(path, `${text.slice(0, field.start)}${entry.version.id}${text.slice(field.end)}`);
 		}
 
 		// Dependency ranges. Every edge the plan used must still match its manifest.
@@ -409,19 +468,20 @@ export const prepare = (
 		for (const rule of plan.replacements) {
 			const patterns = allFromBase(rule.files);
 			const exclude = allFromBase(rule.exclude ?? []);
-			const matched = (yield* globAll(fs, location, patterns, exclude)).filter(
-				(path) => !pendingPaths.includes(path),
-			);
-			globs.push({ pattern: patterns, exclude, matched });
+			const found = yield* globAll(fs, location, patterns, exclude);
+			// Pending modules are consumed, never replacement targets.
+			const except = found.filter((path) => pendingPaths.includes(path));
+			const matched = found.filter((path) => !except.includes(path));
+			globs.push({ pattern: patterns, exclude, except, matched });
 			const version = plan.versions.find((entry) => entry.package === rule.versionOf.name)
 				?.version.id;
 			const files: Array<{ path: string; occurrences: number }> = [];
 			for (const path of matched) {
 				const text = (yield* read(path)) ?? "";
-				const found = occurrences(text, rule.match);
-				files.push({ path, occurrences: found.length });
+				const starts = occurrences(text, rule.match);
+				files.push({ path, occurrences: starts.length });
 				const ranges = claimed.get(path) ?? [];
-				for (const start of found) {
+				for (const start of starts) {
 					const end = start + rule.match.length;
 					const overlap = ranges.find(
 						(range) => range.rule !== rule && start < range.end && range.start < end,
@@ -521,48 +581,108 @@ export const apply = (
 	Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem;
 		const location = paths(prepared.location);
+		const contents = (path: string) =>
+			Effect.gen(function* () {
+				const fsPath = location.toFs(path);
+				return (yield* fs.exists(fsPath)) ? yield* fs.readFileString(fsPath) : null;
+			});
 		const stale: Array<string> = [];
 		for (const [path, before] of prepared.reads) {
-			const fsPath = location.toFs(path);
-			const now = (yield* fs.exists(fsPath)) ? yield* fs.readFileString(fsPath) : null;
-			if (now !== before) stale.push(path);
+			if ((yield* contents(path)) !== before) stale.push(path);
 		}
 		for (const glob of prepared.globs) {
 			const matched = yield* globAll(fs, location, glob.pattern, glob.exclude);
-			for (const path of matched)
-				if (!glob.matched.includes(path) && !stale.includes(path)) stale.push(path);
+			for (const path of matched) {
+				if (
+					!glob.matched.includes(path) &&
+					!glob.except.includes(path) &&
+					!stale.includes(path)
+				)
+					stale.push(path);
+			}
 		}
 		if (stale.length > 0) return yield* new StalePlan({ paths: Arr.sort(stale, Order.String) });
 
 		const done: Array<Edit> = [];
+		const write = (edit: Edit) =>
+			Effect.gen(function* () {
+				const fsPath = location.toFs(edit.path);
+				if (edit.after === null) {
+					yield* fs.remove(fsPath);
+					return;
+				}
+				// A new file may be the first in its directory, such as a fresh versions directory.
+				if (edit.before === null) {
+					yield* fs.makeDirectory(location.toFs(dirname(edit.path)), { recursive: true });
+				}
+				yield* fs.writeFileString(fsPath, edit.after);
+			});
+
+		/**
+		 * Restores files this operation changed, newest first. A file that no longer holds
+		 * this operation's contents was changed by someone else: it is left as it is and
+		 * reported. The failed edit is restored only when its own write changed the file.
+		 */
+		const recover = (failed: Edit | undefined) =>
+			Effect.gen(function* () {
+				const restored: Array<string> = [];
+				const unrestored: Array<{ path: string; cause: unknown }> = [];
+				const attempts: ReadonlyArray<{ edit: Edit; expected: string | null }> = [
+					...(failed === undefined ? [] : [{ edit: failed, expected: null }]),
+					...Arr.reverse(done).map((edit) => ({ edit, expected: edit.after })),
+				];
+				for (const { edit, expected } of attempts) {
+					const now = yield* Effect.result(contents(edit.path));
+					if (now._tag === "Failure") {
+						unrestored.push({ path: edit.path, cause: now.failure });
+						continue;
+					}
+					if (now.success === edit.before) {
+						if (edit !== failed) restored.push(edit.path);
+						continue;
+					}
+					if (edit !== failed && now.success !== expected) {
+						unrestored.push({
+							path: edit.path,
+							cause: new ChangedDuringApply({ path: edit.path }),
+						});
+						continue;
+					}
+					const restore = yield* Effect.result(
+						edit.before === null
+							? fs.remove(location.toFs(edit.path))
+							: fs.writeFileString(location.toFs(edit.path), edit.before),
+					);
+					if (restore._tag === "Success") restored.push(edit.path);
+					else unrestored.push({ path: edit.path, cause: restore.failure });
+				}
+
+				return { restored, unrestored };
+			});
+
 		for (const edit of prepared.edits) {
-			const result = yield* Effect.result(
-				edit.after === null
-					? fs.remove(location.toFs(edit.path))
-					: fs.writeFileString(location.toFs(edit.path), edit.after),
-			);
+			// Check the file again right before writing it, so an external change made while
+			// earlier edits were written is never overwritten.
+			const now = yield* Effect.result(contents(edit.path));
+			if (now._tag === "Failure" || now.success !== edit.before) {
+				const recovered = yield* recover(undefined);
+				return yield* new ApplyFailed({
+					path: edit.path,
+					cause:
+						now._tag === "Failure"
+							? now.failure
+							: new ChangedDuringApply({ path: edit.path }),
+					...recovered,
+				});
+			}
+			const result = yield* Effect.result(write(edit));
 			if (result._tag === "Success") {
 				done.push(edit);
 				continue;
 			}
-			const restored: Array<string> = [];
-			const unrestored: Array<{ path: string; cause: unknown }> = [];
-			for (const applied of Arr.reverse(done)) {
-				const restore = yield* Effect.result(
-					applied.before === null
-						? fs.remove(location.toFs(applied.path))
-						: fs.writeFileString(location.toFs(applied.path), applied.before),
-				);
-				if (restore._tag === "Success") restored.push(applied.path);
-				else unrestored.push({ path: applied.path, cause: restore.failure });
-			}
+			const recovered = yield* recover(edit);
 
-			return yield* new ApplyFailed({
-				path: edit.path,
-				cause: result.failure,
-				restored,
-				unrestored,
-			});
+			return yield* new ApplyFailed({ path: edit.path, cause: result.failure, ...recovered });
 		}
 
 		return {

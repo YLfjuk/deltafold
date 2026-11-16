@@ -181,6 +181,10 @@ export type Plan<M extends object = any> = {
 	/** Every range edit, including private dependents that do not release. */
 	readonly dependencyUpdates: ReadonlyArray<DependencyUpdate>;
 	readonly replacements: ReadonlyArray<Replacement>;
+	/** Each member's file locations, copied when the plan was made. */
+	readonly files: ReadonlyMap<string, Files>;
+	/** The export name of generated version modules. */
+	readonly exportName: string;
 	readonly explanations: ReadonlyArray<string>;
 };
 
@@ -441,12 +445,19 @@ const buildPlan = <M extends object>(release: Release<M>, input: Input<M>): Plan
 			const shared = Version.make(calculation.version, { changes: [] });
 			const sharedLine = lineOf(shared);
 			const placementOf = (entry: (typeof entries)[number]): string => {
-				if (calculation.unchanged !== "drift" || sharedLine === undefined) {
+				// Only a drifting group sharing a prerelease line renumbers counters per package.
+				// Any other calculation, such as a custom strategy's result, is kept verbatim.
+				if (
+					calculation.unchanged !== "drift" ||
+					sharedLine === undefined ||
+					input.pre === undefined ||
+					group.length < 2
+				) {
 					return calculation.version;
 				}
 				const own = lineOf(entry.previous);
 				const counter =
-					input.pre?.continue === true &&
+					(input.pre?.continue ?? false) &&
 					own !== undefined &&
 					own.target === sharedLine.target &&
 					own.tag === sharedLine.tag
@@ -484,7 +495,10 @@ const buildPlan = <M extends object>(release: Release<M>, input: Input<M>): Plan
 						[name, placement],
 					);
 				}
-				const version = Version.make(placement, { previous, changes: selection.changes });
+				const version = Version.make(placement, {
+					previous,
+					changes: [...selection.changes],
+				});
 				versions.push({
 					package: name,
 					version,
@@ -505,7 +519,8 @@ const buildPlan = <M extends object>(release: Release<M>, input: Input<M>): Plan
 		};
 
 		// A dependency-only release joins the calculation as patch intent. When unchanged
-		// members drift, it is calculated on its own, from its own previous version.
+		// members drift and the release is stable, it is calculated on its own, from its own
+		// previous version.
 		const assign = (
 			group: ReadonlyArray<(typeof entries)[number]>,
 			setting: VersionSetting<M>,
@@ -536,7 +551,9 @@ const buildPlan = <M extends object>(release: Release<M>, input: Input<M>): Plan
 				),
 				input.pre,
 			).unchanged;
-			if (mode !== "drift") {
+			// A prerelease line is shared: dependency-only members join it with their own
+			// counters instead of calculating alone.
+			if (mode !== "drift" || input.pre !== undefined) {
 				place(group, setting, source);
 
 				return;
@@ -650,7 +667,20 @@ const buildPlan = <M extends object>(release: Release<M>, input: Input<M>): Plan
 		unchanged: calculated.unchanged,
 		dependents: sorted,
 		dependencyUpdates: updates,
-		replacements: input.replacements ?? config.replacements ?? [],
+		// Copies, so changing the caller's configuration afterwards cannot change this plan.
+		replacements: (input.replacements ?? config.replacements ?? []).map((rule) => ({
+			files: [...rule.files],
+			...(rule.exclude === undefined ? {} : { exclude: [...rule.exclude] }),
+			match: rule.match,
+			versionOf: rule.versionOf,
+		})),
+		files: new Map(
+			config.packages.map((registration) => [
+				registration.package.name,
+				{ manifest: registration.files.manifest, versions: registration.files.versions },
+			]),
+		),
+		exportName: config.exportName ?? "version",
 		explanations: [
 			...entries.flatMap((entry) =>
 				entry.previousFrom === "history-head"
@@ -660,6 +690,25 @@ const buildPlan = <M extends object>(release: Release<M>, input: Input<M>): Plan
 					: [],
 			),
 			...calculated.explanations,
+			// Releasing from a version that already has later versions forks beside them. It is
+			// allowed: it may be intended, or come from a stale manifest or a bad merge.
+			...calculated.versions.flatMap((planned) => {
+				const from = planned.version.previous;
+				const pkg = entries.find(
+					(entry) => entry.selection.package.name === planned.package,
+				)?.selection.package;
+				const later =
+					from === undefined || pkg === undefined
+						? []
+						: pkg.history.versions.filter(
+								(version) => version.previous?.id === from.id,
+							);
+				return later.length === 0
+					? []
+					: [
+							`Note: ${planned.package}@${from?.id} already has later versions (${later.map((version) => version.id).join(", ")}); ${planned.version.id} forks beside them. Check the manifest or previous version if this is not intended.`,
+						];
+			}),
 		],
 	};
 };

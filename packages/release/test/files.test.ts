@@ -460,3 +460,198 @@ describe("bare packages in resolve input", () => {
 		}).pipe(provide);
 	});
 });
+
+describe("apply safety", () => {
+	it.effect("refuses to overwrite a file another writer changed during apply", () => {
+		const { files, provide } = memoryFs(workspace(), {
+			beforeWrite: (path, current) => {
+				if (path === "packages/react/versions/1.6.0.ts") {
+					current.set("packages/widgets/package.json", "external edit\n");
+				}
+			},
+		});
+
+		return Effect.gen(function* () {
+			const prepared = yield* ReleaseFiles.prepare(plan, options);
+			const error = yield* Effect.flip(ReleaseFiles.apply(prepared));
+
+			expect(error).toMatchObject({
+				_tag: "ApplyFailed",
+				path: "packages/widgets/package.json",
+				cause: { _tag: "ChangedDuringApply" },
+				restored: [
+					"packages/react/versions/1.6.0.ts",
+					"packages/widgets/versions/1.6.0.ts",
+				],
+				unrestored: [],
+			});
+			expect(files.get("packages/widgets/package.json")).toBe("external edit\n");
+			expect(files.has("packages/widgets/versions/1.6.0.ts")).toBe(false);
+		}).pipe(provide);
+	});
+
+	it.effect("keeps external edits it finds while recovering, and reports them", () => {
+		const { files, provide } = memoryFs(workspace(), {
+			failWrite: "packages/react/package.json",
+			beforeWrite: (path, current) => {
+				if (path === "packages/react/package.json") {
+					current.set("packages/widgets/versions/1.6.0.ts", "external edit\n");
+				}
+			},
+		});
+
+		return Effect.gen(function* () {
+			const prepared = yield* ReleaseFiles.prepare(plan, options);
+			const error = yield* Effect.flip(ReleaseFiles.apply(prepared));
+
+			expect(error).toMatchObject({
+				_tag: "ApplyFailed",
+				path: "packages/react/package.json",
+				restored: ["packages/widgets/package.json", "packages/react/versions/1.6.0.ts"],
+				unrestored: [
+					{
+						path: "packages/widgets/versions/1.6.0.ts",
+						cause: { _tag: "ChangedDuringApply" },
+					},
+				],
+			});
+			expect(files.get("packages/widgets/versions/1.6.0.ts")).toBe("external edit\n");
+		}).pipe(provide);
+	});
+
+	it.effect("repairs a file its own failed write left partly written", () => {
+		const { files, provide } = memoryFs(workspace(), {
+			partialWrite: { path: "packages/react/package.json", contents: '{"name":' },
+		});
+		const before = new Map(files);
+
+		return Effect.gen(function* () {
+			const prepared = yield* ReleaseFiles.prepare(plan, options);
+			const error = yield* Effect.flip(ReleaseFiles.apply(prepared));
+
+			expect(error).toMatchObject({
+				_tag: "ApplyFailed",
+				path: "packages/react/package.json",
+				restored: [
+					"packages/react/package.json",
+					"packages/widgets/package.json",
+					"packages/react/versions/1.6.0.ts",
+					"packages/widgets/versions/1.6.0.ts",
+				],
+				unrestored: [],
+			});
+			expect(new Map(files)).toEqual(before);
+		}).pipe(provide);
+	});
+
+	it.effect("creates the directory of each new file", () => {
+		const { directories, provide } = memoryFs(workspace());
+
+		return Effect.gen(function* () {
+			yield* ReleaseFiles.apply(yield* ReleaseFiles.prepare(plan, options));
+
+			expect(directories).toEqual(["packages/widgets/versions", "packages/react/versions"]);
+		}).pipe(provide);
+	});
+});
+
+const trailing = (body: string) => memoryFs({ ...workspace(), ".changes/retries.ts": body });
+
+const reasons = (body: string) =>
+	Effect.gen(function* () {
+		const error = yield* Effect.flip(ReleaseFiles.prepare(plan, options));
+		return error._tag === "PrepareError" ? error.issues.map((entry) => entry.reason) : [];
+	}).pipe(trailing(body).provide);
+
+describe("preparation details", () => {
+	it.effect("applies at once when a broad replacement glob also matches pending modules", () => {
+		const broad = Release.make("widgets", {
+			...release.config,
+			replacements: [
+				{ files: ["**/*.ts", "docs/**/*.md"], match: "@next", versionOf: widgets },
+			],
+		});
+		const result = broad.plan({
+			packages: [
+				{ package: widgets, previous: "1.5.2", changes: [retries, headers] },
+				{ package: react, previous: "1.5.2", changes: [headers] },
+			],
+		});
+		if (Result.isFailure(result)) throw new Error(result.failure.message);
+		const { provide } = memoryFs(workspace());
+
+		return Effect.gen(function* () {
+			const applied = yield* ReleaseFiles.apply(
+				yield* ReleaseFiles.prepare(result.success, options),
+			);
+			expect(applied.removed).toEqual([".changes/headers.ts", ".changes/retries.ts"]);
+		}).pipe(provide);
+	});
+
+	it.effect("edits the top-level manifest version, not a nested one", () => {
+		const nested = `{\n\t"name": "@acme/widgets",\n\t"config": { "version": "1.5.2" },\n\t"version": "1.5.2"\n}\n`;
+		const { files, provide } = memoryFs({
+			...workspace(),
+			"packages/widgets/package.json": nested,
+		});
+
+		return Effect.gen(function* () {
+			yield* ReleaseFiles.apply(yield* ReleaseFiles.prepare(plan, options));
+			expect(files.get("packages/widgets/package.json")).toBe(
+				`{\n\t"name": "@acme/widgets",\n\t"config": { "version": "1.5.2" },\n\t"version": "1.6.0"\n}\n`,
+			);
+		}).pipe(provide);
+	});
+
+	it.effect("is not changed by edits to the caller's configuration after planning", () => {
+		const rule = { files: ["docs/**/*.md"], match: "@next", versionOf: widgets };
+		const widgetFiles = {
+			manifest: "packages/widgets/package.json",
+			versions: "packages/widgets/versions",
+		};
+		const mutable = Release.make("widgets", {
+			...release.config,
+			packages: [
+				{ package: widgets, files: widgetFiles },
+				...release.config.packages.slice(1),
+			],
+			replacements: [rule],
+		});
+		const result = mutable.plan({
+			packages: [
+				{ package: widgets, previous: "1.5.2", changes: [retries, headers] },
+				{ package: react, previous: "1.5.2", changes: [headers] },
+			],
+		});
+		if (Result.isFailure(result)) throw new Error(result.failure.message);
+		rule.match = "since";
+		widgetFiles.versions = "elsewhere";
+		const { provide } = memoryFs(workspace());
+
+		return Effect.gen(function* () {
+			const prepared = yield* ReleaseFiles.prepare(result.success, options);
+			expect(prepared.edits.map((edit) => edit.path)).toContain(
+				"packages/widgets/versions/1.6.0.ts",
+			);
+			expect(prepared.replacements.map((report) => report.match)).toEqual(["@next"]);
+		}).pipe(provide);
+	});
+
+	it.effect("refuses pending modules with statements besides the declaration", () => {
+		const declaration = `import { ProjectChange } from "../src/changes.ts";\n\nexport const retries = ProjectChange.make("add-retries", { bump: "minor", area: "api" })\`Add \${"a; b"} retries.\``;
+		return Effect.gen(function* () {
+			expect(yield* reasons(`${declaration};\nconst previous = 42;\n`)).toEqual([
+				"UnsupportedRelocation",
+				"MissingSource",
+			]);
+			expect(yield* reasons(`${declaration}\nconst previous = 42\n`)).toEqual([
+				"UnsupportedRelocation",
+				"MissingSource",
+			]);
+			const accepted = yield* ReleaseFiles.prepare(plan, options).pipe(
+				trailing(`${declaration};\n// trailing comment\n`).provide,
+			);
+			expect(accepted.edits.length).toBeGreaterThan(0);
+		});
+	});
+});

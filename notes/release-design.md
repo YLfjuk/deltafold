@@ -94,6 +94,11 @@ history refuses with `NoPrevious`. Each planned and unchanged member reports
 used, noting when it is a prerelease. `Release.heads(pkg)` lists the heads. A
 planned version must be new to the whole package history (`ExistingVersion`).
 
+Releasing from a version that already has later versions forks beside them. It
+is allowed for now: it can be intentional, or come from a stale manifest or a
+bad merge. The plan's explanations note each such fork and the later versions.
+A refusal with an explicit acknowledgement was considered and deferred.
+
 Release.plan remains the one-off equivalent of a configured planner. Root
 version settings supply a shared calculation; per-package overrides supply
 independent versions or strategies. Only inheriting packages influence the
@@ -206,7 +211,10 @@ silently expand group membership. Cross-group orchestration is not initial scope
 
 Range edits keep the operator: `^1.5.0` becomes `^2.0.0`, `~` stays `~`, and an
 exact version is replaced. `workspace:` ranges are left to the package manager.
-Other ranges are refused when they need an edit. Both built-in policies take
+Whether a range is satisfied follows npm range semantics for any range SemVer
+can parse: a prerelease satisfies only a range with a prerelease on the same
+version, and build metadata is ignored. A satisfied range is left alone whatever
+its form; other forms are refused only when they need an edit. Both built-in policies take
 `updateRanges`: `"out-of-range"` (the default) edits a range only when the new
 version falls outside it, and `"always"` edits it whenever the dependency is
 released.
@@ -253,9 +261,12 @@ Build metadata (a `+...` suffix) is refused by `VersionStrategy.semver` and its
 `parse`, because it does not affect precedence. The planner, the file layer, and
 core treat version ids as written.
 
-Lockfile updates are left to the user for now: the release prints the install
-command to run. An opt-in `Lockfile.update` step, backed by package-manager
-adapters, may run after apply later. Copy selected declarations into each
+Lockfile updates are the user's responsibility for now: after apply, run the
+package manager's install command so the lockfile matches the edited manifests.
+The release CLI is intended to print that command. An opt-in `Lockfile.update`
+step, backed by package-manager adapters, may run after apply later.
+
+Copy selected declarations into each
 applicable version file, preserving stable change IDs. Shared copies represent
 release membership of the same logical change, not newly invented identities.
 
@@ -299,9 +310,14 @@ pending files, manifests, or replacement targets cause refusal and replanning;
 never recalculate an approved plan silently.
 
 Apply modifies local files only. Preserve release records before consuming
-pending inputs. On failure, attempt to restore files changed by this operation
-and report restoration failures. No crash-safe atomicity claim. Prototype safe
-reruns and interruption boundaries before prescribing persistence machinery.
+pending inputs. Apply checks each file's expected contents again right before
+writing it, and stops without overwriting a file that changed meanwhile
+(`ChangedDuringApply`). On failure, it restores files changed by this operation,
+including a file the failed write itself may have changed. A file that no longer
+holds this operation's contents is left as it is and reported in `unrestored`.
+Directories created for new files, such as a fresh versions directory, are kept.
+No crash-safe atomicity claim. Prototype safe reruns and interruption boundaries
+before prescribing persistence machinery.
 
 Git commits, tags, publishing, and publication metadata are separate explicit
 steps. Core migration execution/rollback behavior is not release apply policy.

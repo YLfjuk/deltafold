@@ -96,8 +96,8 @@ against the config file's directory.
 Status: wanted; opt-in.
 
 After apply, a `Lockfile.update` step backed by package-manager adapters could
-update the lockfile. Until then the release prints the install command for the
-user to run.
+update the lockfile. Until then, users run the install command themselves after
+apply; the release CLI is intended to print it.
 
 ## Out of scope: npm dist-tags
 

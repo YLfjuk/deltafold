@@ -86,9 +86,11 @@ export class StalePlan extends Data.TaggedError("StalePlan")<{
 }> {}
 
 /**
- * Applying failed part way. The files this operation had already changed were
- * restored where possible. `unrestored` lists the files that could not be restored.
- * Restoration is best effort and does not survive a crash.
+ * Applying failed part way. The files this operation changed, including a file its failed
+ * write may have changed, were restored where possible. A file that someone else changed
+ * meanwhile is left as it is and listed in `unrestored` with `ChangedDuringApply`.
+ * Directories created for new files are kept. Restoration is best effort and does not
+ * survive a crash.
  *
  * @since @next
  */
@@ -97,4 +99,13 @@ export class ApplyFailed extends Data.TaggedError("ApplyFailed")<{
 	readonly cause: unknown;
 	readonly restored: ReadonlyArray<string>;
 	readonly unrestored: ReadonlyArray<{ readonly path: string; readonly cause: unknown }>;
+}> {}
+
+/**
+ * A file changed while apply was running, so apply left it as it was.
+ *
+ * @since @next
+ */
+export class ChangedDuringApply extends Data.TaggedError("ChangedDuringApply")<{
+	readonly path: string;
 }> {}

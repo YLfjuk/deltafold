@@ -37,19 +37,14 @@ describe("ReleaseFiles.at", () => {
 
 describe("locations", () => {
 	const widgets = packageWith("@acme/widgets", ["1.5.2"]);
-	const configured = (manifest: string) =>
+	const configured = (manifest: string, versions = "../packages/widgets/.deltafold/versions") =>
 		Release.make("widgets", {
-			packages: [
-				{
-					package: widgets,
-					files: { manifest, versions: "../packages/widgets/.deltafold/versions" },
-				},
-			],
+			packages: [{ package: widgets, files: { manifest, versions } }],
 			change: ProjectChange,
 			version: VersionStrategy.semver({ bump: (change) => change.metadata.bump }),
 		});
-	const planFor = (manifest: string) => {
-		const result = configured(manifest).plan({
+	const planFor = (manifest: string, versions?: string) => {
+		const result = configured(manifest, versions).plan({
 			packages: [{ package: widgets, previous: "1.5.2", changes: [retries] }],
 		});
 		if (Result.isFailure(result)) throw new Error(result.failure.message);
@@ -90,6 +85,35 @@ describe("locations", () => {
 				);
 			}).pipe(provide);
 		},
+	);
+
+	it.effect("defaults the base to an absolute root on POSIX and Windows", () =>
+		Effect.gen(function* () {
+			for (const root of ["/ws", "C:/ws"]) {
+				const { files: written, provide } = memoryFs(
+					Object.fromEntries(
+						Object.entries(files).map(([path, text]) => [
+							path.replace("/ws", root).replace("../packages", "packages"),
+							text,
+						]),
+					),
+				);
+				const prepared = yield* ReleaseFiles.prepare(
+					planFor(
+						"packages/widgets/package.json",
+						"packages/widgets/.deltafold/versions",
+					),
+					{
+						root,
+						pending: ["release/changes/*.ts", "..cache/none/*.ts"],
+					},
+				).pipe(provide);
+				expect(prepared.edits.map((edit) => edit.path)).toContain(
+					"packages/widgets/package.json",
+				);
+				expect(written.size).toBeGreaterThan(0);
+			}
+		}),
 	);
 
 	it.effect("accepts absolute paths inside the workspace and refuses those outside", () => {

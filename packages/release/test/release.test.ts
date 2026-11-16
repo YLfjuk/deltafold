@@ -332,7 +332,7 @@ describe("custom factories and strategies", () => {
 		const custom = Release.make("app", {
 			packages: [
 				{
-					package: app,
+					...member(app),
 					// @ts-expect-error per-package group settings are strategies too.
 					version: "5.0.0",
 				},
@@ -646,7 +646,7 @@ describe("dependents", () => {
 				planWith({
 					widgetChanges: [timeout],
 					dependents: DependentsPolicy.propose(),
-					requirements: [requirement("@acme/widgets-react", "@acme/widgets", ">=1 <3")],
+					requirements: [requirement("@acme/widgets-react", "@acme/widgets", ">=1 <2")],
 				}),
 			),
 		).toMatchObject({
@@ -658,6 +658,63 @@ describe("dependents", () => {
 				"peerDependencies",
 			],
 		});
+	});
+
+	it("leaves a satisfied range alone whatever its form, with npm prerelease and build rules", () => {
+		const satisfied = success(
+			planWith({
+				widgetChanges: [timeout],
+				dependents: DependentsPolicy.propose(),
+				requirements: [requirement("@acme/widgets-react", "@acme/widgets", ">=1 <3")],
+			}),
+		);
+		expect(actions(satisfied)).toEqual(["@acme/widgets-react<@acme/widgets:satisfied"]);
+		// Build metadata does not affect range matching.
+		const built = success(
+			planWith({
+				widgetChanges: [retries],
+				version: "1.6.0+build.1",
+				dependents: DependentsPolicy.propose(),
+				requirements: [requirement("@acme/widgets-react", "@acme/widgets", "1.6.0")],
+			}),
+		);
+		expect(actions(built)).toEqual(["@acme/widgets-react<@acme/widgets:satisfied"]);
+
+		const prerelease = packageWith("@acme/pre-dep", ["2.0.0-beta.0"]);
+		const dependent = packageWith("@acme/pre-user", ["1.0.0"]);
+		const lines = Release.make("pre-dep", {
+			packages: [member(prerelease), member(dependent)],
+			change: ProjectChange,
+			version: VersionStrategy.semver({
+				bump: (change) => change.metadata.bump,
+				unchanged: "drift",
+			}),
+			dependents: DependentsPolicy.propose(),
+		});
+		const continued = (range: string) =>
+			success(
+				lines.plan({
+					pre: { tag: "beta", continue: true },
+					requirements: [requirement("@acme/pre-user", "@acme/pre-dep", range)],
+					packages: [{ package: prerelease, changes: [headers] }, dependent],
+				}),
+			);
+		// 2.0.0-beta.1 satisfies ^ and ~ ranges on the same prerelease version.
+		expect(actions(continued("^2.0.0-beta.0"))).toEqual([
+			"@acme/pre-user<@acme/pre-dep:satisfied",
+		]);
+		expect(actions(continued("~2.0.0-beta.0"))).toEqual([
+			"@acme/pre-user<@acme/pre-dep:satisfied",
+		]);
+		// A stable range never admits a prerelease. The dependent joins the line with its own
+		// counter, and records no changes.
+		const joined = continued("^1.0.0");
+		expect(actions(joined)).toEqual(["@acme/pre-user<@acme/pre-dep:edit"]);
+		expect(summary(joined)).toEqual([
+			"@acme/pre-dep@2.0.0-beta.1<2.0.0-beta.0",
+			"@acme/pre-user@2.0.0-beta.0<1.0.0",
+		]);
+		expect(joined.versions[1]?.version.changes).toEqual([]);
 	});
 });
 
@@ -988,5 +1045,44 @@ describe("previous versions in plan input", () => {
 				}),
 			),
 		).toMatchObject({ reason: "ExistingVersion", subjects: ["@acme/branched", "1.5.3"] });
+	});
+});
+
+describe("custom strategies and forks", () => {
+	it("keeps a custom strategy's version verbatim", () => {
+		const solo = packageWith("@acme/custom", ["1.5.2"]);
+		const custom = (version: string) =>
+			Release.make("custom", {
+				packages: [member(solo)],
+				change: ProjectChange,
+				version: () => ({ version, unchanged: "drift" }),
+			}).plan({ packages: [{ package: solo, changes: [headers] }] });
+
+		expect(summary(success(custom("2.0.0-beta.7")))).toEqual([
+			"@acme/custom@2.0.0-beta.7<1.5.2",
+		]);
+		expect(summary(success(custom("2.0.0-beta.7+build.9")))).toEqual([
+			"@acme/custom@2.0.0-beta.7+build.9<1.5.2",
+		]);
+	});
+
+	it("allows releasing beside later versions and notes the fork", () => {
+		const v152 = Version.make("1.5.2", { changes: [] });
+		const ahead = Package.make("@acme/ahead", {
+			history: History.make({
+				versions: [v152, Version.make("1.5.3", { previous: v152, changes: [] })],
+				migrations: [],
+			}),
+		});
+		const plan = success(
+			groupOf(ahead).plan({
+				packages: [{ package: ahead, previous: "1.5.2", changes: [retries] }],
+			}),
+		);
+
+		expect(summary(plan)).toEqual(["@acme/ahead@1.6.0<1.5.2"]);
+		expect(plan.explanations).toContain(
+			"Note: @acme/ahead@1.5.2 already has later versions (1.5.3); 1.6.0 forks beside them. Check the manifest or previous version if this is not intended.",
+		);
 	});
 });
