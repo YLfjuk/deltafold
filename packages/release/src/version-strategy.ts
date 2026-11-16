@@ -1,198 +1,148 @@
-import { SemVer } from "effect";
+import { Predicate } from "effect";
+import type { StandardSchemaV1 } from "effect/StandardSchema";
 
 import type { Change } from "deltafold";
-import { issue, PlanError } from "./error.ts";
-import {
-	bumpStable,
-	highest,
-	parse as parseVersion,
-	prerelease,
-	promote,
-	strongest,
-} from "./line.ts";
-import type { Bump } from "./release-change.ts";
+import type * as VersionScheme from "./version-scheme.ts";
+
+/** @since @next */
+export const TypeId: unique symbol = Symbol.for("@deltafold/release/VersionStrategy");
 
 /**
- * A prerelease line, derived from a version id and its ancestry and never recorded:
- * `2.0.0-beta.3` is on the line with target `2.0.0`, tag `beta`, and counter 3. Packages
- * share a line when its target and tag match.
+ * One package taking part in a calculation.
  *
  * @since @next
  */
-export type Line = {
-	/** The nearest stable ancestor, absent when the line starts at the root of the history. */
-	readonly baseline: string | undefined;
-	/** The stable version the line is preparing. */
-	readonly target: string;
-	readonly tag: string;
-	readonly counter: number;
-};
-
-/**
- * The prerelease choice of one plan. Omit it for a stable release.
- *
- * @since @next
- */
-export type Pre = {
-	readonly tag: string;
-	/** `false` starts a new line; `true` continues the line `previous` is on. */
-	readonly continue: boolean;
-};
-
-/**
- * One participant of a calculation.
- *
- * @since @next
- */
-export type Participant<M extends object> = {
+export type Participant<M extends object, V> = {
 	readonly package: string;
-	readonly previous: string;
+	readonly previous: V;
+	/** `previous`, then its own previous, and so on, following history links, not precedence. */
+	readonly ancestry: ReadonlyArray<V>;
 	readonly changes: ReadonlyArray<Change.Change<M>>;
-	/** The line `previous` is on, derived from its id and ancestry. */
-	readonly line: Line | undefined;
 	/**
 	 * Released dependencies whose range edits require this package to release. They are
-	 * patch intent; they are not changes.
+	 * intent to release; they are not changes.
 	 */
 	readonly dependencies: ReadonlyArray<string>;
 };
 
 /** @since @next */
-export type Context<M extends object> = {
-	readonly participants: ReadonlyArray<Participant<M>>;
-	readonly pre: Pre | undefined;
+export type Context<M extends object, V, I> = {
+	readonly participants: ReadonlyArray<Participant<M, V>>;
+	/** Per-plan options the strategy defines, such as SemVer's `{ pre }`. */
+	readonly input: I;
 };
+
+/**
+ * A strategy's result for one calculation.
+ *
+ * @since @next
+ */
+export type Calculation<V, D> = {
+	/** The version every participant receives, unless `versions` names it otherwise. */
+	readonly version: V;
+	/** Participants that receive another version, or their own details. */
+	readonly versions?: ReadonlyArray<{
+		readonly package: string;
+		readonly version: V;
+		readonly details?: D;
+	}>;
+	/** What participants without changes do when the version advances. Defaults to `"align"`. */
+	readonly unchanged?: "align" | "drift";
+	/** Strategy-specific facts, surfaced on each planned version. */
+	readonly details?: D;
+};
+
+/**
+ * Decides the next version for its participants. It must be pure and synchronous: the
+ * planner may call it several times for one plan. Build one with `VersionStrategy.make`;
+ * plain functions are not strategies.
+ *
+ * @since @next
+ */
+export interface VersionStrategy<M extends object, V, I = undefined, D = undefined> {
+	(context: Context<M, V, I>): Calculation<V, D>;
+	readonly [TypeId]: typeof TypeId;
+	readonly name: string;
+	readonly scheme: VersionScheme.VersionScheme<V>;
+	/** Validates per-plan input read from outside TypeScript, such as command-line options. */
+	readonly input: StandardSchemaV1<unknown, I> | undefined;
+}
+
+/**
+ * Any version strategy.
+ *
+ * @since @next
+ */
+export type Any = VersionStrategy<any, any, any, any>;
 
 /** @since @next */
-export type Calculation = {
-	/** A canonical SemVer version. */
-	readonly version: string;
-	/**
-	 * What happens to participants without changes when the version advances.
-	 * Defaults to `"align"`.
-	 */
-	readonly unchanged?: "align" | "drift";
-};
-
-/**
- * Calculates one version for its participants. It must return synchronously: resolve
- * external data before planning.
- *
- * @since @next
- */
-export type Strategy<M extends object> = (context: Context<M>) => Calculation;
-
-/**
- * How the version a calculation starts from is chosen.
- *
- * - `"highest"`: the participant version with the highest SemVer precedence, whole.
- * - `"require-matching"`: every participant must have the same version.
- * - `{ version }`: an explicit version, used for calculation only.
- *
- * @since @next
- */
-export type Baseline = "highest" | "require-matching" | { readonly version: string };
+export type InputOf<S> = S extends VersionStrategy<any, any, infer I, any> ? I : never;
 
 /** @since @next */
-export type SemverOptions<M extends object> = {
-	readonly bump: (change: Change.Change<M>) => Bump;
-	readonly baseline?: Baseline;
-	/** Participants without changes follow the new version by default. */
-	readonly unchanged?: "align" | "drift";
-};
+export type VersionOf<S> = S extends VersionStrategy<any, infer V, any, any> ? V : never;
+
+/** @since @next */
+export type DetailsOf<S> = S extends VersionStrategy<any, any, any, infer D> ? D : never;
 
 /**
- * Parses a canonical SemVer version for the SemVer strategy, failing with
- * `InvalidVersion`. Build metadata (a `+...` suffix) is refused: it does not affect
- * precedence, so the strategy cannot order or calculate with it.
- *
- * @since @next
- */
-export const parse = (version: string): SemVer.SemVer => {
-	const parsed = parseVersion(version);
-	if (parsed.build.length > 0) {
-		throw new PlanError(
-			issue(
-				"InvalidVersion",
-				`"${version}" has build metadata, which VersionStrategy.semver does not support.`,
-				[version],
-			),
-		);
-	}
-
-	return parsed;
-};
-
-/**
- * A SemVer strategy over consumer-defined change metadata.
- *
- * Stable plans bump the baseline by the strongest change. Prerelease plans keep a line:
- * `continue` keeps the line's target unless stronger intent raises it, and
- * the counter restarts at 0 whenever the tag or the target changes.
- *
- * A stable plan from a prerelease baseline promotes its line: the version is the
- * line's target, raised by stronger selected changes. The plan's changes are exactly the
- * ones the stable version records; `Release.prereleaseChanges` lists the line's changes
- * to choose from.
+ * Builds a version strategy. `input` is an optional Standard Schema for per-plan input,
+ * and its output type is the input type. Without it, the strategy takes no input.
  *
  * @example
  * ```ts
- * const strategy = VersionStrategy.semver({ bump: (change) => change.metadata.bump });
+ * const calendar = VersionStrategy.make({
+ * 	name: "calendar",
+ * 	scheme: SemVerStrategy.scheme,
+ * 	calculate: ({ participants }) => ({
+ * 		version: SemVer.make({ major: 2026, minor: participants.length, patch: 0 }),
+ * 	}),
+ * });
  * ```
  *
  * @since @next
  */
-export const semver =
-	<M extends object>(options: SemverOptions<M>): Strategy<M> =>
-	({ participants, pre }) => {
-		for (const participant of participants) parse(participant.previous);
-		const top = highest(participants);
-		const policy = options.baseline ?? "highest";
-		if (
-			policy === "require-matching" &&
-			new Set(participants.map((participant) => participant.previous)).size > 1
-		) {
-			throw new PlanError(
-				issue(
-					"BaselineMismatch",
-					"The baseline policy requires matching versions.",
-					participants.map(
-						(participant) => `${participant.package}@${participant.previous}`,
-					),
-				),
-			);
-		}
-		const baseline = typeof policy === "object" ? parse(policy.version) : top;
-		const unchanged = options.unchanged ?? "align";
+export const make = <M extends object = object, V = never, I = undefined, D = undefined>(options: {
+	readonly name: string;
+	readonly scheme: VersionScheme.VersionScheme<V>;
+	readonly input?: StandardSchemaV1<unknown, I>;
+	readonly calculate: (context: Context<M, V, I>) => Calculation<V, D>;
+}): VersionStrategy<M, V, I, D> => {
+	const strategy = (context: Context<M, V, I>) => options.calculate(context);
+	Object.defineProperty(strategy, "name", { value: options.name });
 
-		const bumps: Array<Bump> = participants.flatMap((participant) =>
-			participant.changes.map((change) => {
-				const bump: unknown = options.bump(change);
-				if (bump !== "major" && bump !== "minor" && bump !== "patch") {
-					throw new PlanError(
-						issue(
-							"InvalidBump",
-							`Change "${change.id}" has bump ${String(bump)}; use major, minor, or patch.`,
-							[change.id],
-						),
-					);
-				}
+	return Object.assign(strategy, {
+		[TypeId]: TypeId,
+		scheme: options.scheme,
+		input: options.input,
+	} as const);
+};
 
-				return bump;
-			}),
-		);
-		// A release required only by dependency updates is patch intent.
-		if (participants.some((participant) => participant.dependencies.length > 0))
-			bumps.push("patch");
+/** @since @next */
+export const isVersionStrategy = (value: unknown): value is Any =>
+	Predicate.isFunction(value) && TypeId in value;
 
-		if (pre !== undefined) return prerelease({ participants, pre, baseline, bumps, unchanged });
-		if (SemVer.isPrerelease(baseline)) {
-			return { version: SemVer.format(promote(participants, bumps)), unchanged };
-		}
-		const intent = strongest(bumps);
+/**
+ * A deliberate refusal by a strategy. The planner reports it as `StrategyRefused`, naming
+ * the strategy.
+ *
+ * @since @next
+ */
+export class StrategyRefusal extends Error {
+	readonly subjects: ReadonlyArray<string>;
 
-		return {
-			version: SemVer.format(intent === undefined ? baseline : bumpStable(baseline, intent)),
-			unchanged,
-		};
-	};
+	constructor(message: string, subjects: ReadonlyArray<string>) {
+		super(message);
+		this.name = "StrategyRefusal";
+		this.subjects = subjects;
+	}
+}
+
+/**
+ * Refuses the calculation with a reason. Use it instead of throwing other errors, which
+ * the planner reports as invalid strategy results.
+ *
+ * @since @next
+ */
+export const refuse = (message: string, subjects: ReadonlyArray<string> = []): never => {
+	throw new StrategyRefusal(message, subjects);
+};

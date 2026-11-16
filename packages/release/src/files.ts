@@ -15,7 +15,7 @@ import type { Snapshot } from "./resolve.ts";
 import { dirname, join, relative, render, scan, type Declaration } from "./source.ts";
 
 export { resolve } from "./resolve.ts";
-export type { ResolveOptions, Resolved, Snapshot, Unresolved } from "./resolve.ts";
+export type { ResolveOptions, Resolved, Snapshot, WithPrevious } from "./resolve.ts";
 
 /**
  * A version module that the plan's previous version can be imported from when it was

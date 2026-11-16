@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Effect, Result } from "effect";
 
-import { Release, ReleaseFiles, ReleaseSource, VersionStrategy } from "@deltafold/release";
+import { Release, ReleaseFiles, ReleaseSource, SemVerStrategy } from "@deltafold/release";
 import { memoryFs } from "./__fixtures__/memory-fs.ts";
 import { packageWith, ProjectChange, retries } from "./__fixtures__/packages.ts";
 
@@ -41,7 +41,7 @@ describe("locations", () => {
 		Release.make("widgets", {
 			packages: [{ package: widgets, files: { manifest, versions } }],
 			change: ProjectChange,
-			version: VersionStrategy.semver({ bump: (change) => change.metadata.bump }),
+			version: SemVerStrategy.make({ bump: (change) => change.metadata.bump }),
 		});
 	const planFor = (manifest: string, versions?: string) => {
 		const result = configured(manifest, versions).plan({

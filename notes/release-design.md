@@ -53,7 +53,7 @@ const release = Release.make("widgets", {
 		},
 	],
 	change: ProjectChange,
-	version: VersionStrategy.semver({
+	version: SemVerStrategy.make({
 		baseline: "highest",
 		bump: (change) => change.metadata.bump,
 	}),
@@ -74,7 +74,7 @@ const resolved = ReleaseFiles.resolve(release, {
 	root: workspaceRoot,
 	base: configDirectory,
 	packages: [{ package: widgets, changes: widgetChanges }, widgetsReact, tools],
-	pre: { tag: "beta", continue: true },
+	input: { pre: { tag: "beta", continue: true } },
 });
 ```
 
@@ -108,19 +108,42 @@ across releases, so a fixed version there would apply to every future release.
 
 Per-run options override configured defaults at the same level; per-package
 options override root settings. Arrays replace arrays rather than concatenate.
-Omitted defaults inherit; an empty list explicitly disables that list. Pre is
-an exception: it exists only on plan input and never on Release.make.
+Omitted defaults inherit; an empty list explicitly disables that list. Strategy
+input, such as SemVer's `pre`, is an exception: it exists only on plan input and
+never on Release.make. The plan's `input` goes to the shared calculation; a
+package entry takes `input` only with its own `version` strategy, and the type
+of each is its strategy's input type.
 
 ## Version strategies and baselines
 
-VersionStrategy.semver is optional. Consumers can supply their own synchronous
-strategy over their own metadata. External data is resolved before synchronous
-policy evaluation. Both built-in and custom strategies initially produce valid
-SemVer output; other ecosystems are deferred and may justify a breaking change.
+The planner does not know any version format. A `VersionScheme<V>` names a
+format and gives `decode`, `encode`, and an `order`. A `VersionStrategy` is a
+callable built only by `VersionStrategy.make({ name, scheme, input?, calculate })`;
+plain functions are refused (`NotAStrategy`). It receives `{ participants, input }`,
+where each participant has its decoded `previous`, its `ancestry`, changes, and
+dependency updates, and returns `{ version, versions?, unchanged?, details? }`.
+`versions` gives individual participants another version or their own details.
+`input` is an optional Standard Schema for per-plan input; without it the input
+type is `undefined`. Strategies must be pure and synchronous: the planner may
+call one several times for a plan. `VersionStrategy.refuse(message)` reports
+`StrategyRefused`, naming the strategy; any other thrown error is reported as
+`InvalidStrategyResult`. External data is resolved before planning.
+
+The planner decodes previous versions and literal targets, builds ancestry, runs
+strategies, checks downgrades with the scheme's order, and encodes results. A
+literal target is used exactly as written, with no strategy call.
+
+`SemVerStrategy` is the optional built-in strategy. Its versions are Effect's
+`SemVer.SemVer`, an unstable Effect module, so `effect` changes may need
+adjustments here; a type contract test pins the shape, and CI may later run
+against Effect's latest release. Its input is `{ pre?, target? }`, and each
+planned version's `details.line` is the prerelease line it lands on.
+`SemVerStrategy.encodeLine` turns a line into strings for output.
 
 The baseline policy supports highest (default), require-matching, and an explicit
 baseline version. A baseline is used for calculation, not assigned as ancestry.
-An explicit target bypasses calculation. Exact syntax for the richer baseline
+An explicit baseline ignores alignment checks. An explicit target bypasses
+calculation. Exact syntax for the richer baseline
 policy remains a prototype detail.
 
 Baseline policy also controls alignment. Align unchanged participants to an
@@ -133,7 +156,8 @@ that downgrade a participant.
 
 ## Prerelease behavior
 
-Omitting pre on a plan means stable output. A prerelease requires the full object
+These rules belong to `SemVerStrategy`. Omitting `pre` from its input means
+stable output. A prerelease requires the full object
 `pre: { tag: string, continue: boolean }`; both fields are required. No boolean
 or string shortcuts, inherited pre default, or configured-default-tag behavior.
 
@@ -156,12 +180,13 @@ otherwise increment it. No-downgrade checks still apply to tag transitions.
 Continuing from a stable version, or from a prerelease that is not shaped like a
 line, is a planning error.
 
-A literal target given with pre is the stable version the line prepares, not the
-prerelease itself: from 1.5.2, `version: "3.0.0"` with
-`pre: { tag: "beta", continue: false }` gives 3.0.0-beta.0, and continuing gives
-3.0.0-beta.1. Continuing never lowers a line's target, so a later calculated
-target below 3.0.0 keeps 3.0.0. A prerelease literal with pre is an error, and a
-literal below the line fails the no-downgrade check.
+A `target` given with `pre` is the stable version the line prepares, not the
+prerelease itself: from 1.5.2, `input: { pre: { tag: "beta", continue: false },
+target: "3.0.0" }` gives 3.0.0-beta.0, and continuing gives 3.0.0-beta.1.
+Continuing never lowers a line's target, so a later calculated target below
+3.0.0 keeps 3.0.0. A prerelease `target` with `pre` is an error, and a target
+below the line fails the no-downgrade check. A plan-level literal `version` is
+always the exact version.
 
 The plan's configured tag determines the output identifier even with mixed
 baselines. A shared calculation uses a consistent stage choice.
@@ -188,7 +213,7 @@ author chooses them; deltafold does not collect them automatically. A change may
 be left out because it was reverted on the line, or because it fixed a problem
 only a prerelease had.
 
-To help with the choice, `Release.prereleaseChanges(pkg, from)` lists the changes
+To help with the choice, `SemVerStrategy.prereleaseChanges(pkg, from)` lists the changes
 on the line since its last stable ancestor. It follows `previous` and reports, for
 each change, the prereleases that contain it and the changes on the line that
 revert it or that it reverts. It selects nothing. A release CLI command will
@@ -257,9 +282,10 @@ outside is refused with `OutsideWorkspace`. Reports, edits, and requirement
 manifests use workspace-relative paths. A `<root>/` prefix for workspace-relative
 configuration is future work.
 
-Build metadata (a `+...` suffix) is refused by `VersionStrategy.semver` and its
-`parse`, because it does not affect precedence. The planner, the file layer, and
-core treat version ids as written.
+Build metadata (a `+...` suffix) is refused by `SemVerStrategy` in previous
+versions, baselines, and targets, because it does not affect precedence. The
+planner, the file layer, and core treat version ids as written; a literal target
+that the scheme decodes passes through unchanged.
 
 Lockfile updates are the user's responsibility for now: after apply, run the
 package manager's install command so the lockfile matches the edited manifests.
@@ -326,9 +352,8 @@ steps. Core migration execution/rollback behavior is not release apply policy.
 
 - Source relocation: supported declaration/dependency patterns, factory import
   discovery and explicit reference fallback, collisions and diagnostics.
-- Exact VersionStrategy/DependentsPolicy callback contracts, rich baseline shape,
-  coherent prerelease-line bookkeeping with drifting/independent packages, and
-  handling no-change plans. Do not infer new product policy from syntax examples.
+- Exact DependentsPolicy callback contract, rich baseline shape, and handling
+  no-change plans. Do not infer new product policy from syntax examples.
 
 ## Deferred authoring tooling
 
@@ -359,8 +384,8 @@ These contracts worked as accepted:
 - The prerelease sequence above, from lines derived from version ids and
   ancestry. Continuing from a stable version and a tag change that lowers
   precedence fail with diagnostics.
-- Stable promotion with explicitly selected changes, and `Release.prereleaseChanges`
-  listing a line's changes with their reverts.
+- Stable promotion with explicitly selected changes, and
+  `SemVerStrategy.prereleaseChanges` listing a line's changes with their reverts.
 - Pending modules copied into one generated module per version without
   evaluation. Relative imports are re-pointed and a shared change is copied into
   each package's module with the same ID.
@@ -374,9 +399,10 @@ Interface choices made by the prototype, open to revision:
 - Plan input lists every member, so an aligned package always has a known
   previous version. A stated `previous` must exist in the package history.
 - Alignment is the strategy result's `unchanged: "align" | "drift"`, set by the
-  `unchanged` option of `VersionStrategy.semver`.
-- A shared calculation without changes produces no versions, with or without
-  `pre`.
+  `unchanged` option of `SemVerStrategy.make`.
+- A strategy over another scheme (a build number) plans end to end, including
+  downgrade checks with its order.
+- A shared calculation without changes produces no versions, whatever its input.
 - Generated modules export the version, and release metadata for dependency
   updates. The previous version is imported from its generated module or an
   explicit source.
