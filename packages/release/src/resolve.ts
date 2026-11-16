@@ -12,7 +12,7 @@ import { Package } from "deltafold";
 import type { Requirement } from "./dependents-policy.ts";
 import { issue, PrepareError, type Issue } from "./error.ts";
 import { paths, type Location } from "./paths.ts";
-import type { Entry, Input, Registration, Release } from "./release.ts";
+import type { Entry, Options, Packages, Registration, Release } from "./release.ts";
 
 /**
  * The files a resolution read, so that preparation and apply can refuse when any of them
@@ -44,11 +44,11 @@ export type Resolved<
 	V,
 	I,
 	D,
-	Rs extends ReadonlyArray<Registration<M>>,
+	_Rs extends ReadonlyArray<Registration<M>>,
 	Ps extends ReadonlyArray<unknown>,
 > = {
 	/** Every member with its manifest version as a stated `previous`. */
-	readonly input: Omit<Input<M, V, I, D, Rs, Ps>, "packages" | "requirements"> & {
+	readonly input: Options<M, V, I, D> & {
 		readonly packages: { readonly [K in keyof Ps]: WithPrevious<Ps[K]> };
 		readonly requirements: ReadonlyArray<Requirement>;
 	};
@@ -69,7 +69,8 @@ export type ResolveOptions<
 	Rs extends ReadonlyArray<Registration<M>>,
 	Ps extends ReadonlyArray<unknown>,
 > = Location &
-	Omit<Input<M, V, I, D, Rs, Ps>, "requirements"> & {
+	Options<M, V, I, D> & {
+		readonly packages: Packages<M, V, I, D, Rs, Ps>;
 		/**
 		 * Glob patterns of other manifests to scan for dependents outside the group. They are
 		 * reported as cross-group requirements, never added.

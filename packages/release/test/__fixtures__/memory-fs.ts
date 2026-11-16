@@ -39,6 +39,8 @@ export const memoryFs = (
 	initial: Record<string, string>,
 	options: {
 		readonly failWrite?: string;
+		/** A write that fails once without touching the file. */
+		readonly failWriteOnce?: string;
 		readonly partialWrite?: { readonly path: string; readonly contents: string };
 		readonly beforeWrite?: (path: string, files: Map<string, string>) => void;
 	} = {},
@@ -47,6 +49,7 @@ export const memoryFs = (
 	const directories: Array<string> = [];
 	// A partial write happens once, like a real interrupted write.
 	let partialWritten = false;
+	let failedOnce = false;
 	const fs = FileSystem.makeNoop({
 		exists: (path) => Effect.succeed(files.has(path)),
 		readFileString: (path) => {
@@ -64,6 +67,10 @@ export const memoryFs = (
 		writeFileString: (path, data) => {
 			options.beforeWrite?.(path, files);
 			if (path === options.failWrite) return Effect.fail(notFound("writeFileString", path));
+			if (path === options.failWriteOnce && !failedOnce) {
+				failedOnce = true;
+				return Effect.fail(notFound("writeFileString", path));
+			}
 			if (path === options.partialWrite?.path && !partialWritten) {
 				partialWritten = true;
 				files.set(path, options.partialWrite.contents);

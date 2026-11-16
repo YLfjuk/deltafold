@@ -1,7 +1,8 @@
 import { Array as Arr, Result, Schema, SemVer } from "effect";
 
 import type { Change, Package, Version as DeltafoldVersion } from "deltafold";
-import { issue, PlanError } from "./error.ts";
+import { diagnose } from "./diagnostic.ts";
+import { PlanError } from "./error.ts";
 import type { Bump } from "./release-change.ts";
 import * as VersionScheme from "./version-scheme.ts";
 import * as VersionStrategy from "./version-strategy.ts";
@@ -185,12 +186,20 @@ const label = (participant: Participant<object>) =>
 	`${participant.package}@${SemVer.format(participant.previous)}`;
 const subjects = (participants: ReadonlyArray<Participant<object>>) =>
 	participants.map((participant) => participant.package);
-const failWith = (...args: Parameters<typeof issue>): never => {
-	throw new PlanError(issue(...args));
-};
+const failWith = diagnose;
 
 const decode = (id: string): Version =>
 	Result.getOrElse(scheme.decode(id), (message) => failWith("InvalidVersion", message, [id]));
+
+/** A version the strategy calculates from or to; build metadata is refused. */
+const calculable = (version: Version, role: string): Version =>
+	SemVer.hasBuild(version)
+		? failWith(
+				"InvalidVersion",
+				`${role} ${SemVer.format(version)} has build metadata, which the SemVer strategy cannot calculate with.`,
+				[SemVer.format(version)],
+			)
+		: version;
 
 const ownLine = (participant: Participant<object>) =>
 	lineOf(participant.previous, participant.ancestry);
@@ -236,6 +245,24 @@ const sharedLine = (participants: ReadonlyArray<Participant<object>>, purpose: s
 	};
 };
 
+/**
+ * The line participants are on when a new line starts, if any. Lines with different
+ * targets or tags cannot share a calculation, here as when continuing.
+ */
+const startingLine = (participants: ReadonlyArray<Participant<object>>): Line | undefined => {
+	const lines = participants.flatMap((participant) => ownLine(participant) ?? []);
+	const [first] = lines;
+	if (first !== undefined && lines.some((line) => !sameLine(line, first))) {
+		failWith(
+			"PrereleaseContext",
+			"Starting a prerelease line needs participants on at most one prerelease line; lines with different targets or tags cannot share a calculation. Calculate independent lines separately.",
+			subjects(participants),
+		);
+	}
+
+	return first;
+};
+
 /** The line's target, raised when intent needs a stronger bump from its baseline. */
 const raise = (line: Line, bumps: ReadonlyArray<Bump>): Version => {
 	const intent = strongest(bumps);
@@ -266,7 +293,7 @@ const onLine = (target: Version, tag: string, counter: number): Version =>
  */
 export const make = <M extends object>(
 	options: Options<M>,
-): VersionStrategy.VersionStrategy<M, Version, Input, Details> => {
+): VersionStrategy.VersionStrategy<M, Version, Input | undefined, Details> => {
 	const unchanged = options.unchanged ?? "align";
 
 	const calculate = (participants: ReadonlyArray<Participant<M>>, input: Input): Version => {
@@ -290,17 +317,12 @@ export const make = <M extends object>(
 				participants.map(label),
 			);
 		}
-		const baseline =
+		const baseline = calculable(
 			typeof policy === "object"
 				? decode(policy.version)
-				: Arr.reduce(versions, versions[0], (a, b) => SemVer.max(a, b));
-		if (SemVer.hasBuild(baseline)) {
-			failWith(
-				"InvalidVersion",
-				`The baseline ${SemVer.format(baseline)} has build metadata, which the SemVer strategy cannot calculate from.`,
-				[SemVer.format(baseline)],
-			);
-		}
+				: Arr.reduce(versions, versions[0], (a, b) => SemVer.max(a, b)),
+			"The baseline",
+		);
 
 		const bumps: Array<Bump> = participants.flatMap((participant) =>
 			participant.changes.map((change) => {
@@ -319,7 +341,8 @@ export const make = <M extends object>(
 		if (participants.some((participant) => participant.dependencies.length > 0))
 			bumps.push("patch");
 
-		const target = input.target === undefined ? undefined : decode(input.target);
+		const target =
+			input.target === undefined ? undefined : calculable(decode(input.target), "The target");
 		const pre = input.pre;
 		if (pre === undefined) {
 			if (target !== undefined) return target;
@@ -350,7 +373,7 @@ export const make = <M extends object>(
 		}
 		const prior = pre.continue
 			? sharedLine(participants, "Continuing a prerelease line")
-			: participants.map(ownLine).find((line) => line !== undefined);
+			: startingLine(participants);
 		if (!pre.continue && SemVer.isPrerelease(baseline) && prior === undefined) {
 			failWith(
 				"PrereleaseContext",
@@ -398,10 +421,10 @@ export const make = <M extends object>(
 		line: lineOf(version, [version, ...participant.ancestry]),
 	});
 
-	return VersionStrategy.make<M, Version, Input, Details>({
+	return VersionStrategy.make<M, Version, Input | undefined, Details>({
 		name: options.name ?? "semver",
 		scheme,
-		input: Schema.toStandardSchemaV1(InputSchema),
+		input: Schema.toStandardSchemaV1(Schema.UndefinedOr(InputSchema)),
 		calculate: ({ participants, input }) => {
 			const settings = input ?? {};
 			const drift = unchanged === "drift";

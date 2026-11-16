@@ -1,7 +1,14 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Effect, Result } from "effect";
+import { Effect, Order, Result } from "effect";
 
-import { DependentsPolicy, Release, ReleaseFiles, SemVerStrategy } from "@deltafold/release";
+import {
+	DependentsPolicy,
+	Release,
+	ReleaseFiles,
+	SemVerStrategy,
+	VersionScheme,
+	VersionStrategy,
+} from "@deltafold/release";
 import { memoryFs } from "./__fixtures__/memory-fs.ts";
 import { headers, packageWith, ProjectChange, retries } from "./__fixtures__/packages.ts";
 
@@ -436,6 +443,62 @@ describe("generated version files", () => {
 			expect(generated).not.toContain("prerelease");
 		}).pipe(provide);
 	});
+
+	it.effect("refuses version ids that are not plain file names", () => {
+		const identity = VersionScheme.make<string>({
+			name: "identity",
+			decode: Result.succeed,
+			encode: (id) => id,
+			order: Order.String,
+		});
+		const odd = packageWith("@acme/odd", ["../up"]);
+		const group = Release.make("odd", {
+			packages: [
+				{
+					package: widgets,
+					files: ReleaseFiles.at("packages/widgets", { manifest: "package.json" }),
+				},
+				{
+					package: odd,
+					files: ReleaseFiles.at("packages/odd", { manifest: "package.json" }),
+				},
+			],
+			change: ProjectChange,
+			version: VersionStrategy.make<object, string>({
+				name: "identity",
+				scheme: identity,
+				calculate: () => ({ version: "9" }),
+			}),
+		});
+		const result = group.plan({
+			packages: [
+				{
+					package: widgets,
+					previous: "1.5.2",
+					changes: [retries],
+					version: "zz/../../../escape",
+				},
+				{ package: odd, changes: [headers], version: "9" },
+			],
+		});
+		if (Result.isFailure(result)) throw new Error(result.failure.message);
+		const { provide } = memoryFs({
+			...workspace(),
+			"packages/odd/package.json": `{ "version": "../up" }`,
+		});
+
+		return Effect.gen(function* () {
+			const error = yield* Effect.flip(ReleaseFiles.prepare(result.success, options));
+			expect(
+				error._tag === "PrepareError"
+					? error.issues.filter((entry) => entry.reason === "VersionFileName")
+					: [],
+			).toMatchObject([
+				{ subjects: ["@acme/widgets", "zz/../../../escape"] },
+				{ subjects: ["@acme/odd", "../up"] },
+			]);
+		}).pipe(provide);
+	});
 });
 
 describe("bare packages in resolve input", () => {
@@ -519,11 +582,10 @@ describe("apply safety", () => {
 		}).pipe(provide);
 	});
 
-	it.effect("repairs a file its own failed write left partly written", () => {
+	it.effect("reports a partly written file instead of guessing who wrote it", () => {
 		const { files, provide } = memoryFs(workspace(), {
 			partialWrite: { path: "packages/react/package.json", contents: '{"name":' },
 		});
-		const before = new Map(files);
 
 		return Effect.gen(function* () {
 			const prepared = yield* ReleaseFiles.prepare(plan, options);
@@ -533,13 +595,64 @@ describe("apply safety", () => {
 				_tag: "ApplyFailed",
 				path: "packages/react/package.json",
 				restored: [
-					"packages/react/package.json",
 					"packages/widgets/package.json",
 					"packages/react/versions/1.6.0.ts",
 					"packages/widgets/versions/1.6.0.ts",
 				],
-				unrestored: [],
+				unrestored: [
+					{ path: "packages/react/package.json", cause: { _tag: "ChangedDuringApply" } },
+				],
 			});
+			expect(files.get("packages/react/package.json")).toBe('{"name":');
+		}).pipe(provide);
+	});
+
+	it.effect("keeps an external edit to the file whose write failed", () => {
+		let edited = false;
+		const { files, provide } = memoryFs(workspace(), {
+			failWriteOnce: "packages/react/package.json",
+			// Another writer edits the file while its write fails, once.
+			beforeWrite: (path, current) => {
+				if (path === "packages/react/package.json" && !edited) {
+					edited = true;
+					current.set(path, "EXTERNAL EDIT\n");
+				}
+			},
+		});
+
+		return Effect.gen(function* () {
+			const prepared = yield* ReleaseFiles.prepare(plan, options);
+			const error = yield* Effect.flip(ReleaseFiles.apply(prepared));
+
+			expect(error).toMatchObject({
+				_tag: "ApplyFailed",
+				path: "packages/react/package.json",
+				unrestored: [
+					{ path: "packages/react/package.json", cause: { _tag: "ChangedDuringApply" } },
+				],
+			});
+			expect(files.get("packages/react/package.json")).toBe("EXTERNAL EDIT\n");
+		}).pipe(provide);
+	});
+
+	it.effect("restores the failed edit's file when its write completed before failing", () => {
+		const { files, provide } = memoryFs(workspace(), {
+			partialWrite: {
+				path: "packages/react/package.json",
+				contents: `{
+	"name": "@acme/widgets-react",
+	"version": "1.6.0"
+}
+`,
+			},
+		});
+		const before = new Map(files);
+
+		return Effect.gen(function* () {
+			const prepared = yield* ReleaseFiles.prepare(plan, options);
+			const error = yield* Effect.flip(ReleaseFiles.apply(prepared));
+
+			expect(error).toMatchObject({ _tag: "ApplyFailed", unrestored: [] });
 			expect(new Map(files)).toEqual(before);
 		}).pipe(provide);
 	});
@@ -648,10 +761,30 @@ describe("preparation details", () => {
 				"UnsupportedRelocation",
 				"MissingSource",
 			]);
+			expect(yield* reasons(`${declaration}, previous = 42;\n`)).toEqual([
+				"UnsupportedRelocation",
+				"MissingSource",
+			]);
 			const accepted = yield* ReleaseFiles.prepare(plan, options).pipe(
 				trailing(`${declaration};\n// trailing comment\n`).provide,
 			);
 			expect(accepted.edits.length).toBeGreaterThan(0);
 		});
 	});
+
+	it.effect("refuses extensionless imports of pending modules the release removes", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(ReleaseFiles.prepare(plan, options));
+			expect(error._tag === "PrepareError" ? error.issues : []).toMatchObject([
+				{
+					reason: "UnsupportedRelocation",
+					subjects: [".changes/retries.ts", ".changes/headers"],
+				},
+			]);
+		}).pipe(
+			trailing(
+				`import { ProjectChange } from "../src/changes.ts";\nimport { headers } from "./headers";\n\nexport const retries = ProjectChange.make("add-retries", { bump: "minor", area: "api" })\`See \${headers.id}.\`;\n`,
+			).provide,
+		),
+	);
 });
