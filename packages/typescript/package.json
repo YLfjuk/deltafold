@@ -1,0 +1,70 @@
+{
+	"name": "@deltafold/typescript",
+	"version": "0.0.0",
+	"description": "deltafold handlers that edit TypeScript and JSON files with the TypeScript compiler API.",
+	"keywords": [
+		"codemod",
+		"deltafold",
+		"effect",
+		"migration",
+		"typescript"
+	],
+	"homepage": "https://github.com/YLfjuk/deltafold/tree/main/packages/typescript#readme",
+	"bugs": {
+		"url": "https://github.com/YLfjuk/deltafold/issues"
+	},
+	"license": "MIT",
+	"author": "YLfjuk (https://github.com/YLfjuk)",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/YLfjuk/deltafold.git",
+		"directory": "packages/typescript"
+	},
+	"files": [
+		"dist",
+		"src"
+	],
+	"type": "module",
+	"sideEffects": false,
+	"exports": {
+		".": {
+			"@deltafold/dev.src": "./src/index.ts",
+			"default": "./dist/index.js"
+		},
+		"./node": {
+			"@deltafold/dev.src": "./src/node.ts",
+			"default": "./dist/node.js"
+		},
+		"./package.json": "./package.json"
+	},
+	"publishConfig": {
+		"exports": {
+			".": "./dist/index.js",
+			"./node": "./dist/node.js",
+			"./package.json": "./package.json"
+		},
+		"access": "public"
+	},
+	"scripts": {
+		"build": "vp pack",
+		"typecheck": "tsc --noEmit",
+		"test": "vp test run"
+	},
+	"dependencies": {
+		"@effect/platform-node-shared": "catalog:",
+		"typescript-7.1": "npm:typescript@7.1.0-beta"
+	},
+	"devDependencies": {
+		"@arethetypeswrong/core": "catalog:",
+		"@effect/vitest": "catalog:",
+		"deltafold": "workspace:^",
+		"effect": "catalog:",
+		"publint": "catalog:",
+		"typescript": "catalog:",
+		"vite-plus": "catalog:"
+	},
+	"peerDependencies": {
+		"deltafold": "workspace:^",
+		"effect": "catalog:"
+	}
+}

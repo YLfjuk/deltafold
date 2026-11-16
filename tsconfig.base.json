@@ -30,7 +30,16 @@
 				"diagnostics": false,
 				"noExternal": true,
 				"importAliases": { "Array": "Arr" },
-				"allowedUnstableApis": ["@effect/vitest#it", "effect/Graph", "effect/SemVer"]
+				"allowedUnstableApis": [
+					"@effect/platform-node-shared/NodeFileSystem",
+					"@effect/platform-node-shared/NodePath",
+					"@effect/vitest#it",
+					"@effect/vitest#layer",
+					"effect/FileSystem",
+					"effect/Graph",
+					"effect/Path",
+					"effect/SemVer"
+				]
 			}
 		]
 	}
