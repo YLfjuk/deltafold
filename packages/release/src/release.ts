@@ -1,7 +1,9 @@
 import { Array as Arr, Order, Result } from "effect";
+import type { StandardSchemaV1 } from "effect/StandardSchema";
 
 import { Package, Version, type Change } from "deltafold";
 import type { Policy, Proposal, Requirement } from "./dependents-policy.ts";
+import { isDiagnostic } from "./diagnostic.ts";
 import { issue, PlanError } from "./error.ts";
 import { form, rewrite } from "./ranges.ts";
 import * as VersionStrategy from "./version-strategy.ts";
@@ -70,19 +72,39 @@ export type Config<
 	readonly exportName?: string;
 };
 
-type StrategyOf<R, Shared> = R extends { readonly version: infer S extends VersionStrategy.Any }
-	? S
-	: Shared;
+// An unmatched registration, `never`, falls back to the shared strategy.
+type StrategyOf<R, Shared> = [R] extends [never]
+	? Shared
+	: R extends { readonly version: infer S extends VersionStrategy.Any }
+		? S
+		: Shared;
 type RegistrationFor<Rs extends ReadonlyArray<unknown>, P> = Extract<
 	Rs[number],
 	{ readonly package: P }
 >;
 type PackageOf<E> = E extends { readonly package: infer P } ? P : E;
 type NameOf<P> = P extends Package.Package<any, infer N> ? N : string;
-type OwnsStrategy<R, E> = R extends { readonly version: VersionStrategy.Any }
+type OwnsStrategy<R, E> = [E] extends [{ readonly version: VersionStrategy.Any }]
 	? true
-	: E extends { readonly version: VersionStrategy.Any }
-		? true
+	: [R] extends [never]
+		? false
+		: [R] extends [{ readonly version: VersionStrategy.Any }]
+			? true
+			: false;
+
+/**
+ * An `input` field: required when the strategy's input type does not accept `undefined`.
+ *
+ * @since @next
+ */
+export type InputField<I> = undefined extends I ? { readonly input?: I } : { readonly input: I };
+
+type RequiresInput<S> = [S] extends [never]
+	? false
+	: S extends VersionStrategy.Any
+		? undefined extends VersionStrategy.InputOf<S>
+			? false
+			: true
 		: false;
 
 /**
@@ -98,8 +120,17 @@ export type SharedInputError<N extends string> =
  *
  * @since @next
  */
-export type Selection<M extends object, R, Shared, E> = {
-	readonly package: PackageOf<E>;
+export type Selection<M extends object, R, Shared, E> = SelectionFields<M, R, Shared, E> &
+	(OwnsStrategy<R, E> extends true
+		? InputField<VersionStrategy.InputOf<StrategyOf<R, Shared>>>
+		: {
+				/** Shared packages take the plan's `input`. */
+				readonly input?: SharedInputError<NameOf<PackageOf<E>>>;
+			});
+
+type SelectionFields<M extends object, R, Shared, E> = {
+	// Inference reads the whole entry, not its package.
+	readonly package: PackageOf<NoInfer<E>>;
 	/**
 	 * The released version this release descends from. It must be in the package history.
 	 * Omitted, it is the history's single head, the one version nothing descends from;
@@ -120,10 +151,6 @@ export type Selection<M extends object, R, Shared, E> = {
 				VersionStrategy.InputOf<StrategyOf<R, Shared>>,
 				VersionStrategy.DetailsOf<StrategyOf<R, Shared>>
 		  >;
-	/** Input for the package's own strategy. Shared packages take the plan's `input`. */
-	readonly input?: OwnsStrategy<R, E> extends true
-		? VersionStrategy.InputOf<StrategyOf<R, Shared>>
-		: SharedInputError<NameOf<PackageOf<E>>>;
 };
 
 /**
@@ -140,7 +167,49 @@ type Checked<
 	Rs extends ReadonlyArray<Registration<M>>,
 	Shared,
 	E,
-> = E extends AnyPackage ? E : Selection<M, RegistrationFor<Rs, PackageOf<E>>, Shared, E>;
+> = E extends AnyPackage
+	? // A bare package cannot carry the input its own strategy requires.
+		RequiresInput<StrategyOf<RegistrationFor<Rs, E>, undefined>> extends true
+		? Selection<M, RegistrationFor<Rs, E>, Shared, { readonly package: NoInfer<E> }>
+		: E
+	: Selection<M, RegistrationFor<Rs, PackageOf<E>>, Shared, E>;
+
+/**
+ * A plan's `packages`: every registered package, each bare or as a selection checked
+ * against its registration. A bare Package stands for a member with no changes and no
+ * overrides, descending from the single head of its history.
+ *
+ * @since @next
+ */
+export type Packages<
+	M extends object,
+	V,
+	I,
+	D,
+	Rs extends ReadonlyArray<Registration<M>>,
+	Ps extends ReadonlyArray<unknown>,
+> = {
+	readonly [K in keyof Ps]: Checked<M, Rs, VersionStrategy.VersionStrategy<M, V, I, D>, Ps[K]>;
+};
+
+/**
+ * The plan options besides `packages` and `requirements`.
+ *
+ * @since @next
+ */
+export type Options<M extends object, V, I, D> = {
+	/**
+	 * An exact version for every shared package, decoded by the shared scheme, or a strategy
+	 * replacing the shared one for this run.
+	 */
+	readonly version?: string | VersionStrategy.VersionStrategy<M, V, I, D>;
+	readonly dependents?: Policy;
+	readonly replacements?: ReadonlyArray<Replacement>;
+	/**
+	 * Input for the shared strategy, such as SemVer's `{ pre }`, validated by its schema.
+	 * Required when the strategy's input type does not accept `undefined`.
+	 */
+} & InputField<I>;
 
 /**
  * Plan input. Options replace the configured value at the same level; arrays replace,
@@ -155,28 +224,8 @@ export type Input<
 	D,
 	Rs extends ReadonlyArray<Registration<M>>,
 	Ps extends ReadonlyArray<unknown>,
-> = {
-	/**
-	 * Every registered package. A bare Package stands for a member with no changes and no
-	 * overrides, descending from the single head of its history.
-	 */
-	readonly packages: {
-		readonly [K in keyof Ps]: Checked<
-			M,
-			Rs,
-			VersionStrategy.VersionStrategy<M, V, I, D>,
-			Ps[K]
-		>;
-	};
-	/**
-	 * An exact version for every shared package, decoded by the shared scheme, or a strategy
-	 * replacing the shared one for this run.
-	 */
-	readonly version?: string | VersionStrategy.VersionStrategy<M, V, I, D>;
-	/** Input for the shared strategy, such as SemVer's `{ pre }`. */
-	readonly input?: I;
-	readonly dependents?: Policy;
-	readonly replacements?: ReadonlyArray<Replacement>;
+> = Options<M, V, I, D> & {
+	readonly packages: Packages<M, V, I, D, Rs, Ps>;
 	readonly requirements?: ReadonlyArray<Requirement>;
 };
 
@@ -432,6 +481,60 @@ const ancestryOf = (strategy: LooseStrategy, version: Version.Version, name: str
 	return ancestry;
 };
 
+const describeIssue = (entry: StandardSchemaV1.Issue) => {
+	const path = (entry.path ?? []).map((segment) =>
+		String(typeof segment === "object" ? segment.key : segment),
+	);
+	return path.length === 0 ? entry.message : `${path.join(".")}: ${entry.message}`;
+};
+
+/**
+ * Validates strategy input with its schema, synchronously, and returns the schema's
+ * output. A strategy without a schema takes no input.
+ */
+const validateInput = (strategy: LooseStrategy, value: unknown, where: string): unknown => {
+	const schema = strategy.input;
+	if (schema === undefined) {
+		if (value !== undefined) {
+			fail("InvalidInput", `${strategy.name} takes no input, but ${where} is set.`, [
+				strategy.name,
+			]);
+		}
+		return undefined;
+	}
+	let result: unknown;
+	try {
+		result = schema["~standard"].validate(value);
+	} catch (error) {
+		return fail(
+			"InvalidInput",
+			`${strategy.name}'s input schema threw: ${error instanceof Error ? error.message : String(error)}`,
+			[strategy.name],
+		);
+	}
+	if (result instanceof Promise) {
+		// Planning is synchronous; the result is never awaited.
+		result.catch(() => undefined);
+		return fail(
+			"InvalidInput",
+			`${strategy.name}'s input schema validates asynchronously; planning needs synchronous validation.`,
+			[strategy.name],
+		);
+	}
+	// A synchronous Standard Schema result.
+	// oxlint-disable-next-line typescript/no-unsafe-type-assertion
+	const outcome = result as StandardSchemaV1.Result<unknown>;
+	if (outcome.issues !== undefined) {
+		return fail(
+			"InvalidInput",
+			`${where} is not valid input for ${strategy.name}: ${outcome.issues.map(describeIssue).join("; ")}`,
+			[strategy.name],
+		);
+	}
+
+	return outcome.value;
+};
+
 /** Runs a strategy, turning refusals and foreign throws into plan errors. */
 const run = (
 	strategy: LooseStrategy,
@@ -441,7 +544,7 @@ const run = (
 	try {
 		result = strategy(context);
 	} catch (error) {
-		if (error instanceof PlanError) throw error;
+		if (isDiagnostic(error)) throw error;
 		if (error instanceof VersionStrategy.StrategyRefusal) {
 			return fail("StrategyRefused", `${strategy.name}: ${error.message}`, [
 				strategy.name,
@@ -549,6 +652,17 @@ const buildPlan = (release: LooseRelease, input: LooseInput, owner: Release): Pl
 			source: PlannedVersion["source"],
 		) => {
 			if (group.length === 0) return;
+			// A literal is the exact version; no strategy runs, so its input is not read.
+			const validated =
+				literal === undefined
+					? validateInput(
+							strategy,
+							strategyInput,
+							source === "shared"
+								? "The plan's input"
+								: `${group[0]?.selection.package.name}'s input`,
+						)
+					: undefined;
 			const hasIntent = group.some(
 				(entry) =>
 					entry.selection.changes.length > 0 ||
@@ -585,7 +699,7 @@ const buildPlan = (release: LooseRelease, input: LooseInput, owner: Release): Pl
 								changes: entry.selection.changes,
 								dependencies: dependenciesOf(entry.selection.package.name),
 							})),
-							input: strategyInput,
+							input: validated,
 						});
 			const names = new Set(group.map((entry) => entry.selection.package.name));
 			const stray = (calculation.versions ?? []).filter((item) => !names.has(item.package));
@@ -603,7 +717,8 @@ const buildPlan = (release: LooseRelease, input: LooseInput, owner: Release): Pl
 				const target = own === undefined ? calculation.version : own.version;
 				const details =
 					own === undefined ? calculation.details : (own.details ?? calculation.details);
-				const placement = strategy.scheme.encode(target);
+				// A literal keeps its spelling; calculated versions are encoded by the scheme.
+				const placement = literal ?? strategy.scheme.encode(target);
 				const fromDependencies = dependenciesOf(name).length > 0;
 				const intent = selection.changes.length > 0 || fromDependencies;
 				if (strategy.scheme.order(target, previous) < 0) {

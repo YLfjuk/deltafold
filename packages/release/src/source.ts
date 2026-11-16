@@ -68,10 +68,14 @@ const statementStart =
  * The end of the first top-level statement: just after a `;` outside brackets, strings,
  * template literals, and comments, or the end of the text. A line that starts another
  * statement at the top level ends it too, so a missing semicolon cannot hide a second
- * statement. Returns `undefined` for unbalanced text.
+ * statement. `comma` reports a top-level comma, which declares another binding in the
+ * same statement. Returns `undefined` for unbalanced text.
  */
-const statementEnd = (text: string): number | undefined => {
+const statementEnd = (
+	text: string,
+): { readonly end: number; readonly comma: boolean } | undefined => {
 	let depth = 0;
+	let comma = false;
 	// Each entry is the bracket depth at which a template's `${` was opened.
 	const templates: Array<number> = [];
 	let inTemplate = false;
@@ -110,14 +114,15 @@ const statementEnd = (text: string): number | undefined => {
 				templates.pop();
 				inTemplate = true;
 			}
-		} else if (char === ";" && depth === 0) return index + 1;
+		} else if (char === ";" && depth === 0) return { end: index + 1, comma };
+		else if (char === "," && depth === 0) comma = true;
 		else if (char === "\n" && depth === 0 && index > 0) {
 			const next = text.slice(index + 1).replace(/^[ \t]*/, "");
-			if (statementStart.test(next)) return index;
+			if (statementStart.test(next)) return { end: index, comma };
 		}
 	}
 
-	return depth === 0 && !inTemplate ? text.length : undefined;
+	return depth === 0 && !inTemplate ? { end: text.length, comma } : undefined;
 };
 
 const unsupported = (path: string, detail: string): Issue =>
@@ -170,13 +175,20 @@ export const scan = (source: PendingSource): Declaration | Issue => {
 		);
 	}
 
-	const end = statementEnd(rest);
-	if (end === undefined || rest.slice(end).replace(leading, "") !== "") {
+	const statement = statementEnd(rest);
+	if (statement === undefined || rest.slice(statement.end).replace(leading, "") !== "") {
 		return unsupported(
 			source.path,
 			"only the exported change declaration may follow the imports; other statements would be copied into the version module.",
 		);
 	}
+	if (statement.comma) {
+		return unsupported(
+			source.path,
+			"the declaration statement binds more than one name; the other bindings would be copied into the version module.",
+		);
+	}
+	const end = statement.end;
 
 	return {
 		path: source.path,
@@ -207,6 +219,21 @@ export const join: (...parts: ReadonlyArray<string>) => string = paths.join;
  * @since @next
  */
 export const relative: (fromDirectory: string, to: string) => string = paths.relative;
+
+/** The files a relative import may resolve to, with or without an extension. */
+const resolutions = (target: string): ReadonlyArray<string> => {
+	const emitted = /\.([mc]?)js$/.exec(target);
+
+	return [
+		target,
+		...(emitted === null
+			? []
+			: [`${target.slice(0, -emitted[0].length)}.${emitted[1] ?? ""}ts`]),
+		...[".ts", ".tsx", ".mts", ".cts", "/index.ts", "/index.tsx"].map(
+			(suffix) => `${target}${suffix}`,
+		),
+	];
+};
 
 /** @since @next */
 export type RenderInput = {
@@ -260,7 +287,7 @@ export const render = (
 			let text = entry.text;
 			if (entry.specifier.startsWith(".")) {
 				const target = join(dirname(declaration.path), entry.specifier);
-				if (input.consumed.includes(target)) {
+				if (resolutions(target).some((candidate) => input.consumed.includes(candidate))) {
 					issues.push(
 						issue(
 							"UnsupportedRelocation",

@@ -64,7 +64,10 @@ export interface VersionStrategy<M extends object, V, I = undefined, D = undefin
 	readonly [TypeId]: typeof TypeId;
 	readonly name: string;
 	readonly scheme: VersionScheme.VersionScheme<V>;
-	/** Validates per-plan input read from outside TypeScript, such as command-line options. */
+	/**
+	 * Validates per-plan input. The planner runs it synchronously before calculating and
+	 * passes its output to the strategy; asynchronous validation is refused.
+	 */
 	readonly input: StandardSchemaV1<unknown, I> | undefined;
 }
 
@@ -85,8 +88,19 @@ export type VersionOf<S> = S extends VersionStrategy<any, infer V, any, any> ? V
 export type DetailsOf<S> = S extends VersionStrategy<any, any, any, infer D> ? D : never;
 
 /**
- * Builds a version strategy. `input` is an optional Standard Schema for per-plan input,
- * and its output type is the input type. Without it, the strategy takes no input.
+ * The input schema option: required when the strategy declares an input type, and absent
+ * when it takes none, so an input type always has a schema behind it.
+ *
+ * @since @next
+ */
+export type InputOption<I> = [I] extends [undefined]
+	? { readonly input?: undefined }
+	: { readonly input: StandardSchemaV1<unknown, I> };
+
+/**
+ * Builds a version strategy. `input` is a Standard Schema for per-plan input, and its
+ * output type is the input type. Without it, the strategy takes no input. The planner
+ * validates input with it synchronously before each calculation and passes the output on.
  *
  * @example
  * ```ts
@@ -101,12 +115,13 @@ export type DetailsOf<S> = S extends VersionStrategy<any, any, any, infer D> ? D
  *
  * @since @next
  */
-export const make = <M extends object = object, V = never, I = undefined, D = undefined>(options: {
-	readonly name: string;
-	readonly scheme: VersionScheme.VersionScheme<V>;
-	readonly input?: StandardSchemaV1<unknown, I>;
-	readonly calculate: (context: Context<M, V, I>) => Calculation<V, D>;
-}): VersionStrategy<M, V, I, D> => {
+export const make = <M extends object = object, V = never, I = undefined, D = undefined>(
+	options: {
+		readonly name: string;
+		readonly scheme: VersionScheme.VersionScheme<V>;
+		readonly calculate: (context: Context<M, V, I>) => Calculation<V, D>;
+	} & InputOption<I>,
+): VersionStrategy<M, V, I, D> => {
 	const strategy = (context: Context<M, V, I>) => options.calculate(context);
 	Object.defineProperty(strategy, "name", { value: options.name });
 

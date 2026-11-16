@@ -16,6 +16,7 @@ export type Reason =
 	| "InvalidVersion"
 	| "InvalidBump"
 	| "InvalidPre"
+	| "InvalidInput"
 	| "InvalidStrategyResult"
 	| "StrategyRefused"
 	| "NotAStrategy"
@@ -37,6 +38,7 @@ export type Reason =
 	| "NameCollision"
 	| "MissingPreviousSource"
 	| "VersionFileExists"
+	| "VersionFileName"
 	| "ManifestMismatch"
 	| "OutsideWorkspace"
 	| "ReplacementConflict";
@@ -88,9 +90,10 @@ export class StalePlan extends Data.TaggedError("StalePlan")<{
 }> {}
 
 /**
- * Applying failed part way. The files this operation changed, including a file its failed
- * write may have changed, were restored where possible. A file that someone else changed
- * meanwhile is left as it is and listed in `unrestored` with `ChangedDuringApply`.
+ * Applying failed part way. The files this operation changed were restored where they
+ * still held its contents. A file holding anything else, which may be another writer's
+ * change or a partial write by the failed operation, is left as it is and listed in
+ * `unrestored` with `ChangedDuringApply`.
  * Directories created for new files are kept. Restoration is best effort and does not
  * survive a crash.
  *

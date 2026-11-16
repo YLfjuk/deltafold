@@ -211,6 +211,9 @@ const locate = (text: string, path: ReadonlyArray<string>) => {
 	return undefined;
 };
 
+// A file name with no directory part, drive, or stream suffix.
+const plainFileName = /^(?!\.{1,2}$)[^/\\:\0]+$/;
+
 /** Finds a dependency's range string inside one top-level dependency field. */
 const findRange = (text: string, field: string, dependency: string) => {
 	const found = locate(text, [field, dependency]);
@@ -345,13 +348,24 @@ export const prepare = (
 			const versionsDir =
 				configured === undefined ? undefined : fromBase(configured.versions);
 			if (versionsDir === undefined) continue;
-			// The file name is the version id, verbatim.
+			// The file name is the version id, verbatim, so an id must be a plain file name.
+			const previousId = entry.version.previous?.id ?? "";
+			const unusable = [entry.version.id, previousId].filter((id) => !plainFileName.test(id));
+			if (unusable.length > 0) {
+				issues.push(
+					issue(
+						"VersionFileName",
+						`${entry.package}: ${unusable.map((id) => `"${id}"`).join(", ")} cannot name a file in ${versionsDir}; version ids used as file names cannot contain path separators or ":".`,
+						[entry.package, ...unusable],
+					),
+				);
+				continue;
+			}
 			const target = join(versionsDir, `${entry.version.id}.ts`);
 			if ((yield* read(target)) !== null) {
 				issues.push(issue("VersionFileExists", `${target} already exists.`, [target]));
 				continue;
 			}
-			const previousId = entry.version.previous?.id ?? "";
 			const generated = join(versionsDir, `${previousId}.ts`);
 			const explicit = options.previous?.find(
 				(source) => source.package === entry.package && source.version === previousId,
@@ -619,19 +633,17 @@ export const apply = (
 			});
 
 		/**
-		 * Restores files this operation changed, newest first. A file that no longer holds
-		 * this operation's contents was changed by someone else: it is left as it is and
-		 * reported. The failed edit is restored only when its own write changed the file.
+		 * Restores files this operation changed, newest first, while they still hold this
+		 * operation's contents. Any other contents may be another writer's, so the file is left
+		 * as it is and reported. That includes the failed edit's file when it holds neither its
+		 * old nor its new contents: a partial write and an external edit look the same.
 		 */
 		const recover = (failed: Edit | undefined) =>
 			Effect.gen(function* () {
 				const restored: Array<string> = [];
 				const unrestored: Array<{ path: string; cause: unknown }> = [];
-				const attempts: ReadonlyArray<{ edit: Edit; expected: string | null }> = [
-					...(failed === undefined ? [] : [{ edit: failed, expected: null }]),
-					...Arr.reverse(done).map((edit) => ({ edit, expected: edit.after })),
-				];
-				for (const { edit, expected } of attempts) {
+				const attempts = [...(failed === undefined ? [] : [failed]), ...Arr.reverse(done)];
+				for (const edit of attempts) {
 					const now = yield* Effect.result(contents(edit.path));
 					if (now._tag === "Failure") {
 						unrestored.push({ path: edit.path, cause: now.failure });
@@ -641,7 +653,7 @@ export const apply = (
 						if (edit !== failed) restored.push(edit.path);
 						continue;
 					}
-					if (edit !== failed && now.success !== expected) {
+					if (now.success !== edit.after) {
 						unrestored.push({
 							path: edit.path,
 							cause: new ChangedDuringApply({ path: edit.path }),

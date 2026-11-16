@@ -54,18 +54,18 @@ Effect compiler versions before adoption.
 
 Reference: [TypeScript 7.1 API](https://devblogs.microsoft.com/typescript/announcing-typescript-7-1-beta/#typescript-7.1-api).
 
-## Version formats beyond SemVer
+## Ecosystem support beyond SemVer
 
 Status: wanted; deferred until usage provides concrete ecosystem requirements.
 
-Initially, all built-in and custom VersionStrategy implementations produce valid
-SemVer versions. Custom strategies may use different calculation rules; they are
-not required to use the built-in bump algorithm.
+Custom version formats are available: a `VersionScheme` gives decoding, encoding,
+and ordering, and a strategy built on it plans end to end. The built-in strategy
+and dependency handling remain SemVer and npm specific.
 
-Future calendar versions or arbitrary labels may require explicit contracts for
-validation, canonical identity, serialization, and optional capabilities such as
-ordering or dependency ranges. Do not generalize these contracts in advance.
-A later breaking API change is acceptable when supported by real usage.
+Still wanted: built-in schemes and strategies for other ecosystems, such as
+calendar versions, and dependency-range policies for schemes other than SemVer.
+Do not generalize these in advance. A later breaking API change is acceptable
+when supported by real usage.
 
 ## Release CLI init
 

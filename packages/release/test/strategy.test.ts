@@ -1,5 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "@effect/vitest";
-import { Order, Result, SemVer } from "effect";
+import { Effect, Order, Result, SemVer } from "effect";
+import type { StandardSchemaV1 } from "effect/StandardSchema";
 
 import {
 	Release,
@@ -7,7 +8,7 @@ import {
 	SemVerStrategy,
 	VersionScheme,
 	VersionStrategy,
-	type PlanError,
+	PlanError,
 } from "@deltafold/release";
 import { History, Package, Version } from "deltafold";
 import {
@@ -17,6 +18,34 @@ import {
 	timeout,
 	type ProjectMetadata,
 } from "./__fixtures__/packages.ts";
+
+const schemaOf = <I>(
+	validate: (value: unknown) => StandardSchemaV1.Result<I> | Promise<StandardSchemaV1.Result<I>>,
+): StandardSchemaV1<unknown, I> => ({ "~standard": { version: 1, vendor: "test", validate } });
+
+type Step = { readonly step?: number } | undefined;
+
+const stepOf = (value: unknown): number | undefined =>
+	typeof value === "object" && value !== null && "step" in value && typeof value.step === "number"
+		? value.step
+		: undefined;
+
+const stepInput = (value: unknown): Step => {
+	const step = stepOf(value);
+	return step === undefined ? undefined : { step };
+};
+
+const buildNumber = VersionScheme.make<number>({
+	name: "build-number",
+	decode: (id) =>
+		/^\d+$/.test(id)
+			? Result.succeed(Number(id))
+			: Result.fail(`"${id}" is not a build number.`),
+	encode: String,
+	order: Order.Number,
+});
+
+const ids = (plan: Release.Plan) => plan.versions.map((planned) => planned.version.id);
 
 const success = <A>(result: Result.Result<A, PlanError>): A => {
 	if (Result.isFailure(result))
@@ -31,9 +60,9 @@ const failure = <A>(result: Result.Result<A, PlanError>): PlanError => {
 	return result.failure;
 };
 
-const historyOf = (ids: ReadonlyArray<string>) => {
+const historyOf = (history: ReadonlyArray<string>) => {
 	const versions: Array<Version.Version> = [];
-	for (const id of ids)
+	for (const id of history)
 		versions.push(Version.make(id, { previous: versions.at(-1), changes: [] }));
 
 	return History.make({ versions, migrations: [] });
@@ -161,8 +190,18 @@ describe("plan input types", () => {
 				},
 			],
 		});
-		// @ts-expect-error an object literal is not undefined.
-		solo.plan({ input: {}, packages: [site] });
+		expect(
+			// @ts-expect-error an object literal is not undefined.
+			failure(solo.plan({ input: {}, packages: [{ package: site, changes: [headers] }] })),
+		).toMatchObject({ reason: "InvalidInput", subjects: ["calendar"] });
+		expect(() =>
+			// @ts-expect-error an input type needs a schema behind it.
+			VersionStrategy.make<ProjectMetadata, number, { readonly step: number }>({
+				name: "unchecked",
+				scheme: buildNumber,
+				calculate: () => ({ version: 1 }),
+			}),
+		).not.toThrow();
 	});
 });
 
@@ -185,6 +224,7 @@ describe("schemes beyond SemVer", () => {
 		>({
 			name: "next-build",
 			scheme: build,
+			input: schemaOf((value) => ({ value: stepInput(value) })),
 			calculate: ({ participants, input }) => ({
 				version:
 					Math.max(...participants.map((participant) => participant.previous)) +
@@ -210,6 +250,11 @@ describe("schemes beyond SemVer", () => {
 			failure(builds.plan({ version: "3", packages: [{ package: app, changes: [headers] }] }))
 				.reason,
 		).toBe("Downgrade");
+		// A literal keeps its spelling even when the scheme would encode it differently.
+		const literal = success(
+			builds.plan({ version: "08", packages: [{ package: app, changes: [headers] }] }),
+		);
+		expect(literal.versions.map((planned) => planned.version.id)).toEqual(["08"]);
 		expect(
 			failure(
 				builds.plan({ version: "v9", packages: [{ package: app, changes: [headers] }] }),
@@ -267,5 +312,281 @@ describe("the SemVer strategy", () => {
 		expect(line && JSON.stringify(SemVerStrategy.encodeLine(line))).toBe(
 			'{"baseline":"1.5.2","target":"2.0.0","tag":"beta","counter":3}',
 		);
+	});
+});
+
+// Type-checked only; never run.
+const resolveTyped = () =>
+	Effect.gen(function* () {
+		const resolved = yield* ReleaseFiles.resolve(group, {
+			input: { pre: { tag: "beta", continue: false } },
+			packages: [
+				{
+					package: widgets,
+					version: semver,
+					input: { target: "3.0.0" },
+					changes: [retries],
+				},
+				react,
+				site,
+			],
+		});
+		const [first] = resolved.input.packages;
+		expectTypeOf(first.input).toEqualTypeOf<{ readonly target: "3.0.0" }>();
+		expectTypeOf(first.changes).toEqualTypeOf<readonly [typeof retries]>();
+		return resolved;
+	});
+
+describe("resolve keeps selection fields", () => {
+	it("types each entry's own fields after resolution", () => {
+		expect(typeof resolveTyped).toBe("function");
+	});
+});
+
+describe("strategy input validation", () => {
+	const app = Package.make("app", { history: historyOf(["7"]) });
+	const files = ReleaseFiles.at("apps/app", { manifest: "package.json" });
+	// Rejects steps below 1 and fills in a default step of 2.
+	const positive = schemaOf<Step>((value) => {
+		const step = stepOf(value) ?? 2;
+		return step < 1
+			? { issues: [{ message: "must be at least 1", path: ["step"] }] }
+			: { value: { step } };
+	});
+	const stepper = (input: StandardSchemaV1<unknown, Step>) =>
+		VersionStrategy.make<ProjectMetadata, number, Step>({
+			name: "stepper",
+			scheme: VersionScheme.make<number>({
+				name: "build-number",
+				decode: (id) => Result.succeed(Number(id)),
+				encode: String,
+				order: Order.Number,
+			}),
+			input,
+			calculate: ({ participants, input: given }) => ({
+				version: (participants[0]?.previous ?? 0) + (given?.step ?? 100),
+			}),
+		});
+	const shared = (input: StandardSchemaV1<unknown, Step>) =>
+		Release.make("app", {
+			change: ProjectChange,
+			version: stepper(input),
+			packages: [{ package: app, files }],
+		});
+	const own = (input: StandardSchemaV1<unknown, Step>) =>
+		Release.make("app", {
+			change: ProjectChange,
+			version: calendar,
+			packages: [{ package: app, files, version: stepper(input) }],
+		});
+
+	it("passes the schema's output to the strategy", () => {
+		expect(
+			ids(
+				success(
+					shared(positive).plan({ packages: [{ package: app, changes: [headers] }] }),
+				),
+			),
+		).toEqual(["9"]);
+		expect(
+			ids(success(own(positive).plan({ packages: [{ package: app, changes: [headers] }] }))),
+		).toEqual(["9"]);
+	});
+
+	it("refuses input the schema rejects, at the plan and per package", () => {
+		expect(
+			failure(
+				shared(positive).plan({
+					input: { step: 0 },
+					packages: [{ package: app, changes: [headers] }],
+				}),
+			),
+		).toMatchObject({
+			reason: "InvalidInput",
+			message: "The plan's input is not valid input for stepper: step: must be at least 1",
+			subjects: ["stepper"],
+		});
+		expect(
+			failure(
+				own(positive).plan({
+					packages: [{ package: app, changes: [headers], input: { step: 0 } }],
+				}),
+			),
+		).toMatchObject({
+			reason: "InvalidInput",
+			message: "app's input is not valid input for stepper: step: must be at least 1",
+		});
+	});
+
+	it("refuses asynchronous validation", () => {
+		const later = schemaOf<Step>(async (value) => ({ value: stepInput(value) }));
+		for (const release of [shared(later), own(later)]) {
+			expect(
+				failure(release.plan({ packages: [{ package: app, changes: [headers] }] })),
+			).toMatchObject({ reason: "InvalidInput", subjects: ["stepper"] });
+		}
+	});
+
+	it("does not read input for a literal version", () => {
+		expect(
+			ids(
+				success(
+					shared(positive).plan({
+						version: "20",
+						input: { step: 0 },
+						packages: [{ package: app, changes: [headers] }],
+					}),
+				),
+			),
+		).toEqual(["20"]);
+	});
+
+	it("requires input when the strategy's input type does not accept undefined", () => {
+		const required = VersionStrategy.make<ProjectMetadata, number, { readonly step: number }>({
+			name: "required",
+			scheme: VersionScheme.make<number>({
+				name: "build-number",
+				decode: (id) => Result.succeed(Number(id)),
+				encode: String,
+				order: Order.Number,
+			}),
+			input: schemaOf<{ readonly step: number }>((value) => {
+				const step = stepOf(value);
+				return step === undefined
+					? { issues: [{ message: "step is required" }] }
+					: { value: { step } };
+			}),
+			calculate: ({ participants, input }) => ({
+				version: (participants[0]?.previous ?? 0) + input.step,
+			}),
+		});
+		const sharedRequired = Release.make("app", {
+			change: ProjectChange,
+			version: required,
+			packages: [{ package: app, files }],
+		});
+		expect(
+			// @ts-expect-error the shared strategy requires input.
+			failure(sharedRequired.plan({ packages: [{ package: app, changes: [headers] }] }))
+				.reason,
+		).toBe("InvalidInput");
+		expect(
+			ids(
+				success(
+					sharedRequired.plan({
+						input: { step: 3 },
+						packages: [{ package: app, changes: [headers] }],
+					}),
+				),
+			),
+		).toEqual(["10"]);
+
+		const ownRequired = Release.make("app", {
+			change: ProjectChange,
+			version: calendar,
+			packages: [{ package: app, files, version: required }],
+		});
+		// @ts-expect-error a bare package cannot carry the input its strategy requires.
+		expect(failure(ownRequired.plan({ packages: [app] })).reason).toBe("InvalidInput");
+		expect(
+			// @ts-expect-error the package's own strategy requires input.
+			failure(ownRequired.plan({ packages: [{ package: app, changes: [headers] }] })).reason,
+		).toBe("InvalidInput");
+	});
+});
+
+describe("strategy boundaries", () => {
+	const onLine = Package.make("@acme/beta-two", {
+		history: historyOf(["1.0.0", "2.0.0-beta.1"]),
+	});
+	const otherLine = Package.make("@acme/beta-three", {
+		history: historyOf(["1.0.0", "3.0.0-beta.1"]),
+	});
+	const lines = Release.make("lines", {
+		change: ProjectChange,
+		version: semver,
+		packages: [
+			{
+				package: onLine,
+				files: ReleaseFiles.at("packages/two", { manifest: "package.json" }),
+			},
+			{
+				package: otherLine,
+				files: ReleaseFiles.at("packages/three", { manifest: "package.json" }),
+			},
+		],
+	});
+	const changed = [
+		{ package: onLine, changes: [headers] },
+		{ package: otherLine, changes: [headers] },
+	] as const;
+
+	it("refuses to start one line from participants on different lines", () => {
+		expect(
+			failure(
+				lines.plan({
+					input: { pre: { tag: "rc", continue: false }, target: "4.0.0" },
+					packages: changed,
+				}),
+			),
+		).toMatchObject({
+			reason: "PrereleaseContext",
+			subjects: ["@acme/beta-two", "@acme/beta-three"],
+		});
+	});
+
+	it("refuses a SemVer target with build metadata, but keeps literal versions exact", () => {
+		const solo = Release.make("solo", {
+			change: ProjectChange,
+			version: semver,
+			packages: [
+				{
+					package: widgets,
+					files: ReleaseFiles.at("packages/widgets", { manifest: "package.json" }),
+				},
+			],
+		});
+		expect(
+			failure(
+				solo.plan({
+					input: { target: "2.0.0+build.1" },
+					packages: [{ package: widgets, changes: [timeout] }],
+				}),
+			),
+		).toMatchObject({ reason: "InvalidVersion", subjects: ["2.0.0+build.1"] });
+		const literal = success(
+			solo.plan({
+				version: "2.0.0+build.1",
+				packages: [{ package: widgets, changes: [timeout] }],
+			}),
+		);
+		expect(literal.versions.map((planned) => planned.version.id)).toEqual(["2.0.0+build.1"]);
+	});
+
+	it("reports a PlanError thrown by a custom strategy as an invalid result", () => {
+		const forged = VersionStrategy.make<ProjectMetadata, SemVerStrategy.Version>({
+			name: "forged",
+			scheme: SemVerStrategy.scheme,
+			calculate: () => {
+				throw new PlanError({ reason: "Downgrade", message: "fake", subjects: [] });
+			},
+		});
+		const solo = Release.make("solo", {
+			change: ProjectChange,
+			version: forged,
+			packages: [
+				{
+					package: widgets,
+					files: ReleaseFiles.at("packages/widgets", { manifest: "package.json" }),
+				},
+			],
+		});
+		expect(
+			failure(solo.plan({ packages: [{ package: widgets, changes: [timeout] }] })),
+		).toMatchObject({
+			reason: "InvalidStrategyResult",
+			message: "forged threw instead of refusing: fake",
+			subjects: ["forged"],
+		});
 	});
 });

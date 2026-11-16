@@ -123,15 +123,21 @@ plain functions are refused (`NotAStrategy`). It receives `{ participants, input
 where each participant has its decoded `previous`, its `ancestry`, changes, and
 dependency updates, and returns `{ version, versions?, unchanged?, details? }`.
 `versions` gives individual participants another version or their own details.
-`input` is an optional Standard Schema for per-plan input; without it the input
-type is `undefined`. Strategies must be pure and synchronous: the planner may
+`input` is a Standard Schema for per-plan input, required when the strategy
+declares an input type; without it the input type is `undefined`. The planner
+runs the schema synchronously before each calculation, refuses its issues and
+asynchronous validation with `InvalidInput`, and passes the schema's output to
+the strategy. Input is required in plan types when its type does not accept
+`undefined`. Strategies must be pure and synchronous: the planner may
 call one several times for a plan. `VersionStrategy.refuse(message)` reports
-`StrategyRefused`, naming the strategy; any other thrown error is reported as
-`InvalidStrategyResult`. External data is resolved before planning.
+`StrategyRefused`, naming the strategy; any other thrown error, including a
+`PlanError`, is reported as `InvalidStrategyResult`. Only the built-in SemVer
+strategy's own diagnostics pass through as they are. External data is resolved before planning.
 
 The planner decodes previous versions and literal targets, builds ancestry, runs
 strategies, checks downgrades with the scheme's order, and encodes results. A
-literal target is used exactly as written, with no strategy call.
+literal target is used exactly as written, with no strategy call: the scheme
+decodes it for checks, and its spelling is kept.
 
 `SemVerStrategy` is the optional built-in strategy. Its versions are Effect's
 `SemVer.SemVer`, an unstable Effect module, so `effect` changes may need
@@ -263,6 +269,8 @@ deferred. Do not introduce a per-package pending-consumption ledger initially.
 
 Generate one file per version, with configurable directory and stable export
 name. The file name is the version id verbatim, such as `1.6.0-beta.0.ts`.
+Preparation refuses ids that cannot be a plain file name, with path separators
+or `:`, for the new version and its previous one (`VersionFileName`).
 Generated modules export the version and, when dependencies were updated, its
 release metadata; they record no prerelease state. Custom output layouts are
 deferred.
@@ -338,9 +346,11 @@ never recalculate an approved plan silently.
 Apply modifies local files only. Preserve release records before consuming
 pending inputs. Apply checks each file's expected contents again right before
 writing it, and stops without overwriting a file that changed meanwhile
-(`ChangedDuringApply`). On failure, it restores files changed by this operation,
-including a file the failed write itself may have changed. A file that no longer
-holds this operation's contents is left as it is and reported in `unrestored`.
+(`ChangedDuringApply`). On failure, it restores files changed by this operation
+while they still hold its contents. Any other contents may be another writer's,
+so the file is left as it is and reported in `unrestored`. That includes the
+failed write's own file when it holds neither its old nor its new contents: a
+partial write and an external edit cannot be told apart.
 Directories created for new files, such as a fresh versions directory, are kept.
 No crash-safe atomicity claim. Prototype safe reruns and interruption boundaries
 before prescribing persistence machinery.
@@ -408,7 +418,8 @@ Interface choices made by the prototype, open to revision:
   explicit source.
 - Source relocation accepts imports followed by exactly one
   `export const name = factory.make("id", ...)`. Dynamic imports, `import.meta`,
-  re-exports, imports between pending modules, and name collisions are reported.
+  re-exports, further bindings in the same statement, imports between pending
+  modules (with or without an extension), and name collisions are reported.
   The scanner reads text; it is not a TypeScript parser.
 
 Product gaps that need a decision:

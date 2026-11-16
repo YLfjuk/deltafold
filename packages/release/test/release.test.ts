@@ -59,7 +59,7 @@ const selectBaseline = (
 		| VersionStrategy.VersionStrategy<
 				ProjectMetadata,
 				SemVerStrategy.Version,
-				SemVerStrategy.Input,
+				SemVerStrategy.Input | undefined,
 				SemVerStrategy.Details
 		  >,
 ) =>
@@ -559,8 +559,8 @@ describe("prerelease lines", () => {
 			input: { pre: true },
 		});
 
-		expect(failure(missingContinue).reason).toBe("InvalidPre");
-		expect(failure(shortcut).reason).toBe("InvalidPre");
+		expect(failure(missingContinue).reason).toBe("InvalidInput");
+		expect(failure(shortcut).reason).toBe("InvalidInput");
 	});
 });
 
@@ -597,7 +597,7 @@ describe("dependents", () => {
 			| VersionStrategy.VersionStrategy<
 					ProjectMetadata,
 					SemVerStrategy.Version,
-					SemVerStrategy.Input,
+					SemVerStrategy.Input | undefined,
 					SemVerStrategy.Details
 			  >;
 	}) =>
