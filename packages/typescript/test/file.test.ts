@@ -315,6 +315,84 @@ layer(NodeFileSystem.layer)("TypeScript.File", (it) => {
 		}),
 	);
 
+	it.effect("refuses JSON that keeps only a comma in an emptied object", () =>
+		Effect.gen(function* () {
+			const config = '{"timeout": 1000,}\n';
+			const root = yield* fixture({ "config.json": config });
+			const emptying = TypeScript.File.promise(
+				renameTimeout,
+				async ({ sourceFile, edit, payload }) =>
+					jsonKeys(sourceFile, payload.from).map((key) => edit.remove(key.parent)),
+				{ include: () => ["*.json"] },
+			);
+			const outcome = yield* outcomeOf(root, emptying);
+
+			expect(transformFailed(outcome).failures.map((failure) => failure.cause._tag)).toEqual([
+				"EditRejected",
+			]);
+			expect(yield* readFiles(root, ["config.json"])).toEqual({ "config.json": config });
+		}),
+	);
+
+	it.effect("opens a .jsonc file under a name that no matched file has", () =>
+		Effect.gen(function* () {
+			// The real JSON file has the hidden name that an earlier release derived for config.jsonc.
+			const jsonFiles = {
+				"config.jsonc": '{\n\t// c\n\t"timeout": 1,\n}\n',
+				".config.jsonc.deltafold.json": '{ "timeout": 2 }\n',
+			};
+			const renamed = {
+				"config.jsonc": '{\n\t// c\n\t"requestTimeout": 1,\n}\n',
+				".config.jsonc.deltafold.json": '{ "requestTimeout": 2 }\n',
+			};
+			const root = yield* fixture(jsonFiles);
+			const rename = TypeScript.File.promise(
+				renameTimeout,
+				async ({ sourceFile, edit, payload }) =>
+					jsonKeys(sourceFile, payload.from).map((key) => edit.rename(key, payload.to)),
+				{ include: () => ["*.jsonc", ".*.json"] },
+			);
+
+			expect(yield* outcomeOf(root, rename)).toEqual({
+				_tag: "Completed",
+				performer: "automated",
+			});
+			expect(yield* readFiles(root, Object.keys(jsonFiles))).toEqual(renamed);
+		}),
+	);
+
+	it.effect("keeps a .jsonc file and a real file with the same text apart in a project", () =>
+		Effect.gen(function* () {
+			const text = '{ "timeout": 1 }\n';
+			const jsonFiles = { "config.jsonc": text, ".config.jsonc.deltafold.json": text };
+			const root = yield* fixture(jsonFiles);
+			const rename = TypeScript.Project.promise(
+				renameTimeout,
+				async (context) => {
+					const edits: Array<TypeScript.FileEdit> = [];
+					for (const path of context.files) {
+						const sourceFile = await context.sourceFile(path);
+						for (const key of jsonKeys(sourceFile, context.payload.from)) {
+							edits.push(context.edit.rename(key, context.payload.to));
+						}
+					}
+
+					return edits;
+				},
+				{ include: () => ["*.jsonc", ".*.json"] },
+			);
+
+			expect(yield* outcomeOf(root, rename)).toEqual({
+				_tag: "Completed",
+				performer: "automated",
+			});
+			expect(yield* readFiles(root, Object.keys(jsonFiles))).toEqual({
+				"config.jsonc": '{ "requestTimeout": 1 }\n',
+				".config.jsonc.deltafold.json": '{ "requestTimeout": 1 }\n',
+			});
+		}),
+	);
+
 	it.effect("refuses JSON whose tokens only a removed comment separated", () =>
 		Effect.gen(function* () {
 			const config = '{\n\t"timeout": 1000,\n}\n';

@@ -46,7 +46,11 @@ const stripComments = (text: string) => {
 	return output;
 };
 
-/** Removes commas outside strings that only whitespace separates from `}` or `]`. */
+/**
+ * Removes commas outside strings that only whitespace separates from `}` or `]`,
+ * when a property or element comes before them. `{,}`, `[,]`, and `[1,,]` keep their
+ * commas, so they still fail to parse.
+ */
 const stripTrailingCommas = (text: string) => {
 	let output = "";
 	let index = 0;
@@ -61,7 +65,9 @@ const stripTrailingCommas = (text: string) => {
 		if (char === ",") {
 			let next = index + 1;
 			while (next < text.length && /\s/.test(text[next]!)) next++;
-			if (text[next] === "}" || text[next] === "]") {
+			const previous = output.trimEnd().at(-1);
+			const afterValue = previous !== undefined && !"{[,".includes(previous);
+			if (afterValue && (text[next] === "}" || text[next] === "]")) {
 				index++;
 				continue;
 			}

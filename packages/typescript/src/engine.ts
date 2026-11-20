@@ -100,12 +100,23 @@ const loadUnits = (
 	Effect.gen(function* () {
 		const { snapshot } = opened;
 		const compilerPath = (path: string) => opened.compilerPath(workspace.absolute(path));
-		const byCanonical = new Map(
-			paths.flatMap((path) => [
-				[workspace.canonical(workspace.absolute(path)), path] as const,
-				[workspace.canonical(compilerPath(path)), path] as const,
-			]),
-		);
+		const byCanonical = new Map<string, string>();
+		for (const path of paths) {
+			for (const name of [workspace.absolute(path), compilerPath(path)]) {
+				const key = workspace.canonical(name);
+				const owner = byCanonical.get(key);
+				// Two matched files must never share a compiler name.
+				if (owner !== undefined && owner !== path) {
+					return yield* new CompilerFailed({
+						actionId,
+						root,
+						stage: "snapshot",
+						cause: new Error(`${path} and ${owner} share the compiler name ${name}`),
+					});
+				}
+				byCanonical.set(key, path);
+			}
+		}
 		const pathOf = (fileName: string) => byCanonical.get(workspace.canonical(fileName));
 		const groups = new Map<string, { project: CompilerProject; files: Array<string> }>();
 		for (const path of paths) {

@@ -89,7 +89,8 @@ Observed behavior of 7.1.0-beta that the design depends on:
 - A `.jsonc` file in `openFiles` fails the snapshot with "no project found". The
   Node compiler therefore opens it as a hidden `.json` name next to it, whose text
   the snapshot's file-system layer supplies, and maps that name back to the file.
-  Nothing is written under that name.
+  Each snapshot chooses a name that is free on disk and differs, ignoring case,
+  from every opened file. Nothing is written under that name.
 
 ## Handlers
 
