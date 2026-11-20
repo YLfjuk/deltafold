@@ -1,11 +1,7 @@
 import { Change } from "deltafold";
+import type { Bump } from "./semver-strategy.ts";
 
-/**
- * Release magnitudes. A prerelease stage is chosen per plan, never per change.
- *
- * @since @next
- */
-export type Bump = "major" | "minor" | "patch";
+export type { Bump } from "./semver-strategy.ts";
 
 /**
  * The metadata `ReleaseChange` requires.

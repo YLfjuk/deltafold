@@ -256,7 +256,7 @@ shared version, and a drifting group gives it its own patch. Planning repeats
 until no new dependent release appears, so dependents of dependents are
 included. The generated version module records the range edits as release
 metadata, `Version.withMetadata(version, { dependencies })`, and
-`ReleaseChangelog.dependencies` renders them as "Updated dependencies".
+`ReleaseChangelog.dependencies` renders them as "Updated Dependencies".
 Preparation refuses when a manifest's range no longer matches the edge the plan
 used, or when `explicit` reports a missing selection.
 

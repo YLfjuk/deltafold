@@ -260,14 +260,13 @@ importers:
         version: 1.5.0(@arethetypeswrong/core@0.18.5)(@vitest/ui@5.1.0)(publint@0.3.25)(typescript@7.0.2)(yaml@2.9.1)
 
   packages/release:
-    dependencies:
-      deltafold:
-        specifier: workspace:*
-        version: link:../deltafold
     devDependencies:
       '@effect/vitest':
         specifier: 'catalog:'
         version: 4.1.2(effect@4.1.2)(vitest@5.1.0)
+      deltafold:
+        specifier: workspace:*
+        version: link:../deltafold
       effect:
         specifier: 'catalog:'
         version: 4.1.2

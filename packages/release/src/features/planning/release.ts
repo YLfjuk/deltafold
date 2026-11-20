@@ -2,11 +2,11 @@ import { Array as Arr, Order, Predicate, Result } from "effect";
 import type { StandardSchemaV1 } from "effect/StandardSchema";
 
 import { Package, Version, type Change } from "deltafold";
+import { isDiagnostic } from "../../foundation/diagnostic.ts";
+import { issue, PlanError } from "../../foundation/error.ts";
+import { form, rewrite } from "../../foundation/npm/ranges.ts";
+import * as VersionStrategy from "../../foundation/version-strategy.ts";
 import type { Policy, Proposal, Requirement } from "./dependents-policy.ts";
-import { isDiagnostic } from "./diagnostic.ts";
-import { issue, PlanError } from "./error.ts";
-import { form, rewrite } from "./ranges.ts";
-import * as VersionStrategy from "./version-strategy.ts";
 
 type AnyPackage = Package.Package<any>;
 

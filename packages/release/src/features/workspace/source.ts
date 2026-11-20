@@ -1,7 +1,7 @@
 import type { Version } from "deltafold";
-import { issue, type Issue } from "./error.ts";
+import { issue, type Issue } from "../../foundation/error.ts";
+import type { DependencyUpdate } from "../planning/release.ts";
 import * as paths from "./paths.ts";
-import type { DependencyUpdate } from "./release.ts";
 
 /**
  * A pending change module: its workspace-relative path, and its text.

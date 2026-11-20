@@ -1,18 +1,11 @@
-import {
-	Array as Arr,
-	Effect,
-	FileSystem,
-	Order,
-	Predicate,
-	Struct,
-	type PlatformError,
-} from "effect";
+import { Array as Arr, Effect, FileSystem, Order, Struct, type PlatformError } from "effect";
 
 import { Package } from "deltafold";
-import type { Requirement } from "./dependents-policy.ts";
-import { issue, PrepareError, type Issue } from "./error.ts";
+import { issue, PrepareError, type Issue } from "../../foundation/error.ts";
+import { readManifest, type Manifest } from "../../foundation/npm/manifest.ts";
+import type { Requirement } from "../planning/dependents-policy.ts";
+import type { Entry, Options, Packages, Registration, Release } from "../planning/release.ts";
 import { paths, type Location } from "./paths.ts";
-import type { Entry, Options, Packages, Registration, Release } from "./release.ts";
 
 /**
  * The files a resolution read, so that preparation and apply can refuse when any of them
@@ -77,50 +70,6 @@ export type ResolveOptions<
 		 */
 		readonly manifests?: ReadonlyArray<string>;
 	};
-
-const fields = [
-	"dependencies",
-	"peerDependencies",
-	"optionalDependencies",
-	"devDependencies",
-] as const;
-
-type Manifest = {
-	readonly name: string | undefined;
-	readonly version: string | undefined;
-	readonly private: boolean;
-	readonly ranges: ReadonlyArray<{
-		readonly field: string;
-		readonly dependency: string;
-		readonly range: string;
-	}>;
-};
-
-const readManifest = (text: string): Manifest | undefined => {
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(text);
-	} catch {
-		return undefined;
-	}
-	if (!Predicate.isObject(parsed)) return undefined;
-	const record: { readonly [key: string]: unknown } = parsed;
-	const ranges = fields.flatMap((field) => {
-		const value = record[field];
-		if (!Predicate.isObject(value)) return [];
-
-		return Object.entries(value).flatMap(([dependency, range]) =>
-			typeof range === "string" ? [{ field, dependency, range }] : [],
-		);
-	});
-
-	return {
-		name: typeof record.name === "string" ? record.name : undefined,
-		version: typeof record.version === "string" ? record.version : undefined,
-		private: record.private === true,
-		ranges,
-	};
-};
 
 /**
  * Resolves plan input from manifests. Each member's previous version is its manifest's

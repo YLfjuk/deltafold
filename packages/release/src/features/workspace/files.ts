@@ -7,12 +7,13 @@ import {
 	PrepareError,
 	StalePlan,
 	type Issue,
-} from "./error.ts";
-import { paths, type Location, type Paths } from "./paths.ts";
-import type { Plan, PlannedVersion, Replacement } from "./release.ts";
-import type { Files } from "./release.ts";
+} from "../../foundation/error.ts";
+import { findRange, jsonContent, locate } from "../../foundation/npm/manifest.ts";
+import type { Plan, PlannedVersion, Replacement } from "../planning/release.ts";
+import type { Files } from "../planning/release.ts";
+import { dirname, join, paths, relative, type Location, type Paths } from "./paths.ts";
 import type { Snapshot } from "./resolve.ts";
-import { dirname, join, relative, render, scan, type Declaration } from "./source.ts";
+import { render, scan, type Declaration } from "./source.ts";
 
 export { resolve } from "./resolve.ts";
 export type { ResolveOptions, Resolved, Snapshot, WithPrevious } from "./resolve.ts";
@@ -151,79 +152,8 @@ const occurrences = (text: string, token: string): ReadonlyArray<number> => {
 	return found;
 };
 
-type Frame = {
-	readonly object: boolean;
-	readonly path: ReadonlyArray<string>;
-	key: string | undefined;
-	expectKey: boolean;
-};
-
-/** A string as JSON string content, without the surrounding quotes. */
-const jsonContent = (value: string) => JSON.stringify(value).slice(1, -1);
-
-/**
- * Finds the string value at a key path in JSON text, such as `["version"]` or
- * `["dependencies", "@acme/widgets"]`, counting from the top-level object. Nested
- * properties with the same name are never matched. Returns the span inside the quotes.
- */
-const locate = (text: string, path: ReadonlyArray<string>) => {
-	const stack: Array<Frame> = [];
-	const here = (): ReadonlyArray<string> => {
-		const top = stack.at(-1);
-		if (top === undefined) return [];
-		return top.key === undefined ? top.path : [...top.path, top.key];
-	};
-	for (let index = 0; index < text.length; index++) {
-		const char = text[index];
-		if (char === '"') {
-			let end = index + 1;
-			while (end < text.length && text[end] !== '"') end += text[end] === "\\" ? 2 : 1;
-			const value: unknown = JSON.parse(text.slice(index, end + 1));
-			const top = stack.at(-1);
-			if (typeof value === "string" && top?.object === true && top.expectKey) {
-				top.key = value;
-				top.expectKey = false;
-			} else if (typeof value === "string") {
-				const keys = here();
-				if (
-					keys.length === path.length &&
-					keys.every((key, position) => key === path[position])
-				) {
-					return { value, start: index + 1, end };
-				}
-			}
-			index = end;
-		} else if (char === "{" || char === "[") {
-			stack.push({
-				object: char === "{",
-				path: char === "{" ? here() : [...here(), "[]"],
-				key: undefined,
-				expectKey: char === "{",
-			});
-		} else if (char === "}" || char === "]") {
-			stack.pop();
-		} else if (char === ",") {
-			const top = stack.at(-1);
-			if (top?.object === true) {
-				top.key = undefined;
-				top.expectKey = true;
-			}
-		}
-	}
-
-	return undefined;
-};
-
 // A file name with no directory part, drive, or stream suffix.
 const plainFileName = /^(?!\.{1,2}$)[^/\\:\0]+$/;
-
-/** Finds a dependency's range string inside one top-level dependency field. */
-const findRange = (text: string, field: string, dependency: string) => {
-	const found = locate(text, [field, dependency]);
-	return found === undefined
-		? undefined
-		: { range: found.value, start: found.start, end: found.end };
-};
 
 /**
  * Reads pending modules, manifests, and replacement targets, and prepares every file
