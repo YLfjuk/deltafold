@@ -240,7 +240,10 @@ const sharedLine = (participants: ReadonlyArray<Participant<object>>, purpose: s
 	return {
 		...lines.reduce((best, line) => (line.counter > best.counter ? line : best), first),
 		baseline: Arr.isReadonlyArrayNonEmpty(baselines)
-			? Arr.reduce(baselines, baselines[0], (a, b) => SemVer.max(a, b))
+			? calculable(
+					Arr.reduce(baselines, baselines[0], (a, b) => SemVer.max(a, b)),
+					"The line's baseline",
+				)
 			: undefined,
 	};
 };
@@ -260,7 +263,9 @@ const startingLine = (participants: ReadonlyArray<Participant<object>>): Line | 
 		);
 	}
 
-	return first;
+	return first?.baseline === undefined
+		? first
+		: { ...first, baseline: calculable(first.baseline, "The line's baseline") };
 };
 
 /** The line's target, raised when intent needs a stronger bump from its baseline. */

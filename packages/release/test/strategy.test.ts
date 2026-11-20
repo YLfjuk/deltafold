@@ -427,6 +427,22 @@ describe("strategy input validation", () => {
 		}
 	});
 
+	it("refuses any thenable result, such as a Promise from another realm", () => {
+		// A Promise from another realm has that realm's prototype, so `instanceof` misses it.
+		const foreignPromise = () => {
+			const promise = Promise.resolve<StandardSchemaV1.Result<Step>>({ value: { step: 4 } });
+			// The stand-in prototype is a thenable on purpose: it plays the other realm's Promise.
+			// oxlint-disable-next-line unicorn/no-thenable, typescript/unbound-method
+			Object.setPrototypeOf(promise, { then: Promise.prototype.then });
+			return promise;
+		};
+		expect(foreignPromise()).not.toBeInstanceOf(Promise);
+		const foreign = schemaOf<Step>(foreignPromise);
+		expect(
+			failure(shared(foreign).plan({ packages: [{ package: app, changes: [headers] }] })),
+		).toMatchObject({ reason: "InvalidInput", subjects: ["stepper"] });
+	});
+
 	it("does not read input for a literal version", () => {
 		expect(
 			ids(
@@ -561,6 +577,30 @@ describe("strategy boundaries", () => {
 			}),
 		);
 		expect(literal.versions.map((planned) => planned.version.id)).toEqual(["2.0.0+build.1"]);
+	});
+
+	it("refuses a derived line baseline with build metadata", () => {
+		const built = Package.make("@acme/built", {
+			history: historyOf(["1.0.0+build", "2.0.0-beta.0"]),
+		});
+		const solo = Release.make("built", {
+			change: ProjectChange,
+			version: semver,
+			packages: [
+				{
+					package: built,
+					files: ReleaseFiles.at("packages/built", { manifest: "package.json" }),
+				},
+			],
+		});
+		expect(
+			failure(
+				solo.plan({
+					input: { pre: { tag: "beta", continue: true } },
+					packages: [{ package: built, changes: [headers] }],
+				}),
+			),
+		).toMatchObject({ reason: "InvalidVersion", subjects: ["1.0.0+build"] });
 	});
 
 	it("reports a PlanError thrown by a custom strategy as an invalid result", () => {

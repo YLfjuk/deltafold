@@ -1,4 +1,4 @@
-import { Array as Arr, Order, Result } from "effect";
+import { Array as Arr, Order, Predicate, Result } from "effect";
 import type { StandardSchemaV1 } from "effect/StandardSchema";
 
 import { Package, Version, type Change } from "deltafold";
@@ -512,9 +512,10 @@ const validateInput = (strategy: LooseStrategy, value: unknown, where: string): 
 			[strategy.name],
 		);
 	}
-	if (result instanceof Promise) {
+	// Any thenable counts, including a Promise from another realm.
+	if (Predicate.isPromiseLike(result)) {
 		// Planning is synchronous; the result is never awaited.
-		result.catch(() => undefined);
+		result.then(undefined, () => undefined);
 		return fail(
 			"InvalidInput",
 			`${strategy.name}'s input schema validates asynchronously; planning needs synchronous validation.`,
