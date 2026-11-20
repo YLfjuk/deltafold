@@ -3,9 +3,9 @@ import { Array as Arr, Result, Schema, SemVer } from "effect";
 import type { Change, Package, Version as DeltafoldVersion } from "deltafold";
 import { diagnose } from "../foundation/diagnostic.ts";
 import { PlanError } from "../foundation/error.ts";
-import type { ValueOf } from "../foundation/types.ts";
 import * as VersionScheme from "../foundation/version-scheme.ts";
 import * as VersionStrategy from "../foundation/version-strategy.ts";
+import type { ValueOf } from "../types.ts";
 
 /**
  * Release magnitudes. A prerelease stage is chosen per plan, never per change.
@@ -21,8 +21,7 @@ export const Bump = {
 /** @since @next */
 export type Bump = ValueOf<typeof Bump>;
 
-const Bumps: ReadonlyArray<unknown> = Object.values(Bump);
-const isBump = (value: unknown): value is Bump => Bumps.includes(value);
+const isBump = Schema.is(Schema.Enum(Bump));
 
 /**
  * The SemVer value type, from Effect. Effect marks its SemVer module unstable, so this
