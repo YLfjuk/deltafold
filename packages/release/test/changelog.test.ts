@@ -43,7 +43,7 @@ describe("ReleaseChangelog.dependencies", () => {
 	});
 });
 
-describe("ReleaseChangelog.byBump", () => {
+describe("ReleaseChangelog.bySignificance", () => {
 	it("groups changes by bump, strongest first, before dependency updates", () => {
 		const v100 = Version.make("1.0.0", { changes: [] });
 		const v200 = Version.make("2.0.0", {
@@ -54,7 +54,7 @@ describe("ReleaseChangelog.byBump", () => {
 			history: History.make({ versions: [v100, v200], migrations: [] }),
 		});
 		const changelog = Changelog.make<ReleaseChangelog.DependencyMetadata>({
-			sections: ReleaseChangelog.byBump,
+			sections: ReleaseChangelog.bySignificance,
 			plugins: [ReleaseChangelog.dependencies],
 		});
 		const markdown = Markdown.render(

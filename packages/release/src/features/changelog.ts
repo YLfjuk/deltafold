@@ -75,14 +75,14 @@ const bumpSection = (bump: Bump, title: string) =>
  * @example
  * ```ts
  * const changelog = Changelog.make<ReleaseChange.Metadata & ReleaseChangelog.DependencyMetadata>({
- * 	sections: ReleaseChangelog.byBump,
+ * 	sections: ReleaseChangelog.bySignificance,
  * 	plugins: [ReleaseChangelog.dependencies],
  * });
  * ```
  *
  * @since @next
  */
-export const byBump: ReadonlyArray<Changelog.SectionDefinition> = [
+export const bySignificance: ReadonlyArray<Changelog.SectionDefinition> = [
 	bumpSection(Bump.Major, "Major Changes"),
 	bumpSection(Bump.Minor, "Minor Changes"),
 	bumpSection(Bump.Patch, "Patch Changes"),
