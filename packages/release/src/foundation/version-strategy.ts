@@ -5,7 +5,7 @@ import type { Change } from "deltafold";
 import type * as VersionScheme from "./version-scheme.ts";
 
 /** @since @next */
-export const TypeId: unique symbol = Symbol.for("@deltafold/release/VersionStrategy");
+export const TypeId = "~@deltafold/release/VersionStrategy";
 
 /**
  * One package taking part in a calculation.
