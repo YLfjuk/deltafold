@@ -103,6 +103,14 @@ A `<root>/` prefix would let configuration name a workspace-relative path
 regardless of where the release config file lives. Today relative paths resolve
 against the config file's directory.
 
+## Changelog plugins that register sections
+
+Status: wanted; needs a core change.
+
+Core changelog plugins can add blocks but cannot register the sections that
+changes are grouped into. When they can, `ReleaseChangelog.byBump` can become
+a plugin with the same output, so one plugin entry gives a bump-grouped layout.
+
 ## Lockfile updates
 
 Status: wanted; opt-in.

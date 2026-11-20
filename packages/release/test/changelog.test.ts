@@ -4,6 +4,7 @@ import { ReleaseChangelog } from "@deltafold/release/changelog";
 import { History, Package, Version } from "deltafold";
 import { Changelog } from "deltafold/changelog";
 import * as Markdown from "deltafold/markdown";
+import { headers, retries, timeout } from "./__fixtures__/packages.ts";
 
 describe("ReleaseChangelog.dependencies", () => {
 	const v140 = Version.make("1.4.0", { changes: [] });
@@ -39,5 +40,49 @@ describe("ReleaseChangelog.dependencies", () => {
 			"### Updated Dependencies\n\n- `@acme/widgets@2.0.0` (peerDependencies: ^1.5.0 to ^2.0.0)",
 		);
 		expect(markdown.match(/Updated Dependencies/g)).toHaveLength(1);
+	});
+});
+
+describe("ReleaseChangelog.byBump", () => {
+	it("groups changes by bump, strongest first, before dependency updates", () => {
+		const v100 = Version.make("1.0.0", { changes: [] });
+		const v200 = Version.make("2.0.0", {
+			previous: v100,
+			changes: [headers, retries, timeout],
+		});
+		const widgets = Package.make("@acme/widgets", {
+			history: History.make({ versions: [v100, v200], migrations: [] }),
+		});
+		const changelog = Changelog.make<ReleaseChangelog.DependencyMetadata>({
+			sections: ReleaseChangelog.byBump,
+			plugins: [ReleaseChangelog.dependencies],
+		});
+		const markdown = Markdown.render(
+			changelog.history(widgets, {
+				releases: [
+					Version.withMetadata(v100, {}),
+					Version.withMetadata(v200, {
+						dependencies: [
+							{
+								dependency: "@acme/core",
+								field: "dependencies",
+								from: "^1.0.0",
+								to: "^1.1.0",
+								version: "1.1.0",
+							},
+						],
+					}),
+				],
+			}),
+		);
+		const headings = [...markdown.matchAll(/^### (.+)$/gm)].map((match) => match[1]);
+
+		expect(headings).toEqual([
+			"Major Changes",
+			"Minor Changes",
+			"Patch Changes",
+			"Updated Dependencies",
+		]);
+		expect(markdown).toContain("Rename the timeout option to requestTimeout.");
 	});
 });
