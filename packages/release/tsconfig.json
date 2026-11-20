@@ -1,22 +1,4 @@
 {
 	"extends": "../../tsconfig.base.json",
-	"compilerOptions": {
-		"plugins": [
-			{
-				"name": "@effect/language-service",
-				"diagnostics": false,
-				"noExternal": true,
-				"importAliases": { "Array": "Arr" },
-				"allowedUnstableApis": [
-					"@effect/vitest#it",
-					"effect/Graph",
-					"effect/SemVer",
-					"effect/SemVerRange",
-					"effect/FileSystem",
-					"effect/PlatformError"
-				]
-			}
-		]
-	},
 	"include": ["src", "test", "vite.config.ts", "../deltafold/@types"]
 }

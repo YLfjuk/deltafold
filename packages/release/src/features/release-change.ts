@@ -1,7 +1,7 @@
 import { Change } from "deltafold";
 import type { Bump } from "./semver-strategy.ts";
 
-export type { Bump } from "./semver-strategy.ts";
+export { Bump } from "./semver-strategy.ts";
 
 /**
  * The metadata `ReleaseChange` requires.

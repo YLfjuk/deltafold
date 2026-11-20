@@ -3,6 +3,7 @@ import { Array as Arr, Result, Schema, SemVer } from "effect";
 import type { Change, Package, Version as DeltafoldVersion } from "deltafold";
 import { diagnose } from "../foundation/diagnostic.ts";
 import { PlanError } from "../foundation/error.ts";
+import type { ValueOf } from "../foundation/types.ts";
 import * as VersionScheme from "../foundation/version-scheme.ts";
 import * as VersionStrategy from "../foundation/version-strategy.ts";
 
@@ -11,7 +12,17 @@ import * as VersionStrategy from "../foundation/version-strategy.ts";
  *
  * @since @next
  */
-export type Bump = "major" | "minor" | "patch";
+export const Bump = {
+	Major: "major",
+	Minor: "minor",
+	Patch: "patch",
+} as const;
+
+/** @since @next */
+export type Bump = ValueOf<typeof Bump>;
+
+const Bumps: ReadonlyArray<unknown> = Object.values(Bump);
+const isBump = (value: unknown): value is Bump => Bumps.includes(value);
 
 /**
  * The SemVer value type, from Effect. Effect marks its SemVer module unstable, so this
@@ -170,18 +181,23 @@ type Participant<M extends object> = VersionStrategy.Participant<M, Version>;
 const dependencyOnly = (participant: Participant<object>) =>
 	participant.changes.length === 0 && participant.dependencies.length > 0;
 
-const magnitude: Record<Bump, number> = { patch: 1, minor: 2, major: 3 };
+const magnitudeByBump = {
+	[Bump.Patch]: 1,
+	[Bump.Minor]: 2,
+	[Bump.Major]: 3,
+} as const satisfies Record<Bump, number>;
 
 const strongest = (bumps: ReadonlyArray<Bump>): Bump | undefined =>
 	bumps.reduce<Bump | undefined>(
-		(best, bump) => (best === undefined || magnitude[bump] > magnitude[best] ? bump : best),
+		(best, bump) =>
+			best === undefined || magnitudeByBump[bump] > magnitudeByBump[best] ? bump : best,
 		undefined,
 	);
 
 const bumpStable = (version: Version, bump: Bump): Version =>
-	bump === "major"
+	bump === Bump.Major
 		? SemVer.bumpMajor(version)
-		: bump === "minor"
+		: bump === Bump.Minor
 			? SemVer.bumpMinor(version)
 			: SemVer.bumpPatch(version);
 
@@ -336,7 +352,7 @@ export const make = <M extends object>(
 		const bumps: Array<Bump> = participants.flatMap((participant) =>
 			participant.changes.map((change) => {
 				const bump: unknown = options.bump(change);
-				if (bump !== "major" && bump !== "minor" && bump !== "patch") {
+				if (!isBump(bump)) {
 					return failWith(
 						"InvalidBump",
 						`Change "${change.id}" has bump ${String(bump)}; use major, minor, or patch.`,
@@ -348,7 +364,7 @@ export const make = <M extends object>(
 		);
 		// A release required only by dependency updates is patch intent.
 		if (participants.some((participant) => participant.dependencies.length > 0))
-			bumps.push("patch");
+			bumps.push(Bump.Patch);
 
 		const target =
 			input.target === undefined ? undefined : calculable(decode(input.target), "The target");
