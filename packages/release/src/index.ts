@@ -5,8 +5,6 @@ export * as Release from "./features/planning/release.ts";
 /** @since @next */
 export * as ReleaseChange from "./features/release-change.ts";
 /** @since @next */
-export * as ReleaseChangelog from "./features/changelog.ts";
-/** @since @next */
 export * as ReleaseFiles from "./features/workspace/files.ts";
 /** @since @next */
 export * as ReleaseSource from "./features/workspace/source.ts";
