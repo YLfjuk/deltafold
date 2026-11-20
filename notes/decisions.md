@@ -392,6 +392,14 @@ with version 4.1.2 type-checked `@example` blocks with TypeScript 7 and wrote
 Markdown docs. It requires `@since` on every export, which is why exports carry
 `@since @next` until the first release version is known.
 
+## Integrations
+
+**Codemod packages.** Codemod integrations ship as separate packages, one per
+engine, and return ordinary handlers. The first is `@deltafold/typescript`, on the
+TypeScript 7.1 compiler API; its design is in
+[codemod-typescript](codemod-typescript.md). An engine-agnostic package can follow
+once several packages repeat the same plumbing.
+
 ## Provisional choices
 
 These work today but need confirmation before 1.0:
@@ -450,9 +458,11 @@ These work today but need confirmation before 1.0:
 - A versioned JSON report format and a plan fingerprint.
 - A preview mode for integration engines, distinct from dry runs.
 - Branch labels in histories and an optional metadata schema.
-- A TypeScript codemod that migrates handlers from the removed `when` and
-  `skipReason` options to `{ prepare, apply }`. The breaking release that removes
-  those options needs it.
+- A TypeScript codemod, built with `@deltafold/typescript`, that migrates
+  handlers written for 0.0.1 to the prepare and apply phases of 0.1, including the
+  removed `when` and `skipReason` options and the API changes between those
+  releases. The breaking release that removes those options needs it. Its scope
+  is to be agreed.
 
 ## Open questions
 
@@ -471,7 +481,5 @@ These work today but need confirmation before 1.0:
 - CLI packaging: a separate `@deltafold/cli` package, or `deltafold/cli` with
   `deltafold/cli/node`. TypeScript entry loading, option spellings, and the
   exit-code taxonomy.
-- Whether codemod integrations ship as an official submodule, separate packages,
-  or third-party packages.
 - Which runtime versions the published library supports.
 - Whether generated API docs are committed or only produced in CI.
