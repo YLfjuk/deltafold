@@ -105,6 +105,10 @@ const statementEnd = (
 				close += text[close] === "\\" ? 2 : 1;
 			if (close >= text.length) return undefined;
 			index = close;
+		} else if (char === "/") {
+			// A lone slash starts a regular expression or a division. Telling them apart needs
+			// a parser, and a regular expression can hide a comma or a comment, so refuse both.
+			return undefined;
 		} else if (char === "`") inTemplate = true;
 		else if (char === "(" || char === "[" || char === "{") depth++;
 		else if (char === ")" || char === "]" || char === "}") {
@@ -179,7 +183,7 @@ export const scan = (source: PendingSource): Declaration | Issue => {
 	if (statement === undefined || rest.slice(statement.end).replace(leading, "") !== "") {
 		return unsupported(
 			source.path,
-			"only the exported change declaration may follow the imports; other statements would be copied into the version module.",
+			"only the exported change declaration may follow the imports, and it cannot contain regular expressions or division; other statements would be copied into the version module.",
 		);
 	}
 	if (statement.comma) {
@@ -222,13 +226,21 @@ export const relative: (fromDirectory: string, to: string) => string = paths.rel
 
 /** The files a relative import may resolve to, with or without an extension. */
 const resolutions = (target: string): ReadonlyArray<string> => {
-	const emitted = /\.([mc]?)js$/.exec(target);
+	// An emitted extension names its source: .js is .ts or .tsx, .jsx is .tsx, .mjs is .mts.
+	const emitted = /\.(js|jsx|mjs|cjs)$/.exec(target);
+	const stem = emitted === null ? target : target.slice(0, -emitted[0].length);
+	const sources: Record<string, ReadonlyArray<string>> = {
+		js: [".ts", ".tsx"],
+		jsx: [".tsx"],
+		mjs: [".mts"],
+		cjs: [".cts"],
+	};
 
 	return [
 		target,
-		...(emitted === null
+		...(emitted?.[1] === undefined
 			? []
-			: [`${target.slice(0, -emitted[0].length)}.${emitted[1] ?? ""}ts`]),
+			: (sources[emitted[1]] ?? []).map((extension) => `${stem}${extension}`)),
 		...[".ts", ".tsx", ".mts", ".cts", "/index.ts", "/index.tsx"].map(
 			(suffix) => `${target}${suffix}`,
 		),

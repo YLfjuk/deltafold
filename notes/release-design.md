@@ -286,7 +286,8 @@ replace it when other ecosystems arrive.
 Relative paths in configuration and options resolve against the release config
 file's directory, passed to the file layer as `base`; the release CLI will supply
 it. Absolute paths are accepted only inside the workspace `root`, and anything
-outside is refused with `OutsideWorkspace`. Reports, edits, and requirement
+outside is refused with `OutsideWorkspace`, as are drive-relative Windows paths
+such as `C:dir`. Manifest edits write version ids as JSON string content. Reports, edits, and requirement
 manifests use workspace-relative paths. A `<root>/` prefix for workspace-relative
 configuration is future work.
 
@@ -418,9 +419,10 @@ Interface choices made by the prototype, open to revision:
   explicit source.
 - Source relocation accepts imports followed by exactly one
   `export const name = factory.make("id", ...)`. Dynamic imports, `import.meta`,
-  re-exports, further bindings in the same statement, imports between pending
-  modules (with or without an extension), and name collisions are reported.
-  The scanner reads text; it is not a TypeScript parser.
+  re-exports, further bindings in the same statement, regular expressions and
+  division in the declaration, imports between pending modules (however their
+  extension is spelled), and name collisions are reported. The scanner reads
+  text; it is not a TypeScript parser.
 
 Product gaps that need a decision:
 

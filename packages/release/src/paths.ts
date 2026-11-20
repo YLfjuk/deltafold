@@ -13,6 +13,8 @@ const prefixOf = (path: string): string => {
 	return "";
 };
 
+const driveRelative = (path: string) => /^[A-Za-z]:(?![\\/])/.test(path);
+
 /** Whether a path is absolute on POSIX or Windows. */
 export const isAbsolute = (path: string): boolean => prefixOf(path) !== "";
 
@@ -151,6 +153,14 @@ export const paths = (location: Location = {}): Paths => {
 			[path],
 		);
 	const inWorkspace = (given: string, path: string): string | Issue => {
+		// "C:dir" is relative to drive C's current directory, not to the workspace.
+		if (driveRelative(given)) {
+			return issue(
+				"OutsideWorkspace",
+				`${given} is relative to a drive's current directory; use a workspace-relative or absolute path.`,
+				[given],
+			);
+		}
 		if (isAbsolute(path)) {
 			if (!isAbsolute(root) || !sameDrive(root, path)) return outside(given);
 			const rel = within(root, path);

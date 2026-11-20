@@ -149,3 +149,36 @@ describe("locations", () => {
 		}).pipe(provide);
 	});
 });
+
+describe("drive-relative paths", () => {
+	const widgets = packageWith("@acme/widgets", ["1.5.2"]);
+	const planned = (manifest: string) => {
+		const result = Release.make("widgets", {
+			packages: [{ package: widgets, files: { manifest, versions: "versions" } }],
+			change: ProjectChange,
+			version: SemVerStrategy.make({ bump: (change) => change.metadata.bump }),
+		}).plan({ packages: [{ package: widgets, previous: "1.5.2", changes: [retries] }] });
+		if (Result.isFailure(result)) throw new Error(result.failure.message);
+		return result.success;
+	};
+
+	it.effect("are refused with default and explicit locations", () =>
+		Effect.gen(function* () {
+			for (const location of [{}, { root: "C:/ws", base: "release" }]) {
+				const { provide } = memoryFs({});
+				const error = yield* Effect.flip(
+					ReleaseFiles.prepare(planned("C:../escape.json"), {
+						...location,
+						pending: [],
+					}),
+				).pipe(provide);
+				expect(error._tag === "PrepareError" ? error.issues : []).toContainEqual(
+					expect.objectContaining({
+						reason: "OutsideWorkspace",
+						subjects: ["C:../escape.json"],
+					}),
+				);
+			}
+		}),
+	);
+});

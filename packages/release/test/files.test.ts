@@ -761,6 +761,11 @@ describe("preparation details", () => {
 				"UnsupportedRelocation",
 				"MissingSource",
 			]);
+			// A regular expression can hide a comma from the scanner, so it is refused.
+			expect(yield* reasons(`${declaration} || /\\// as never, previous = 42;\n`)).toEqual([
+				"UnsupportedRelocation",
+				"MissingSource",
+			]);
 			expect(yield* reasons(`${declaration}, previous = 42;\n`)).toEqual([
 				"UnsupportedRelocation",
 				"MissingSource",
@@ -787,4 +792,67 @@ describe("preparation details", () => {
 			).provide,
 		),
 	);
+
+	it.effect("refuses emitted-extension imports of consumed TSX pending modules", () => {
+		const { provide } = memoryFs({
+			...workspace(),
+			".changes/headers.tsx": pendingHeaders,
+			".changes/retries.ts": `import { ProjectChange } from "../src/changes.ts";\nimport { headers } from "./headers.js";\n\nexport const retries = ProjectChange.make("add-retries", { bump: "minor", area: "api" })\`See \${headers.id}.\`;\n`,
+		});
+
+		return Effect.gen(function* () {
+			const error = yield* Effect.flip(
+				ReleaseFiles.prepare(plan, {
+					...options,
+					pending: [".changes/retries.ts", ".changes/*.tsx"],
+				}),
+			);
+			expect(error._tag === "PrepareError" ? error.issues : []).toContainEqual(
+				expect.objectContaining({
+					reason: "UnsupportedRelocation",
+					subjects: [".changes/retries.ts", ".changes/headers.js"],
+				}),
+			);
+		}).pipe(provide);
+	});
+});
+
+describe("manifest edits", () => {
+	it.effect("write version ids as JSON string content", () => {
+		const identity = VersionScheme.make<string>({
+			name: "identity",
+			decode: Result.succeed,
+			encode: (id) => id,
+			order: Order.String,
+		});
+		const group = Release.make("widgets", {
+			packages: [
+				{
+					package: widgets,
+					files: {
+						manifest: "packages/widgets/package.json",
+						versions: "packages/widgets/versions",
+					},
+				},
+			],
+			change: ProjectChange,
+			version: VersionStrategy.make<object, string>({
+				name: "identity",
+				scheme: identity,
+				calculate: () => ({ version: "9" }),
+			}),
+		});
+		const result = group.plan({
+			version: '2"quoted',
+			packages: [{ package: widgets, previous: "1.5.2", changes: [retries, headers] }],
+		});
+		if (Result.isFailure(result)) throw new Error(result.failure.message);
+		const { files, provide } = memoryFs(workspace());
+
+		return Effect.gen(function* () {
+			yield* ReleaseFiles.apply(yield* ReleaseFiles.prepare(result.success, options));
+			const manifest: unknown = JSON.parse(files.get("packages/widgets/package.json") ?? "");
+			expect(manifest).toMatchObject({ version: '2"quoted' });
+		}).pipe(provide);
+	});
 });

@@ -158,6 +158,9 @@ type Frame = {
 	expectKey: boolean;
 };
 
+/** A string as JSON string content, without the surrounding quotes. */
+const jsonContent = (value: string) => JSON.stringify(value).slice(1, -1);
+
 /**
  * Finds the string value at a key path in JSON text, such as `["version"]` or
  * `["dependencies", "@acme/widgets"]`, counting from the top-level object. Nested
@@ -434,7 +437,10 @@ export const prepare = (
 				);
 				continue;
 			}
-			stage(path, `${text.slice(0, field.start)}${entry.version.id}${text.slice(field.end)}`);
+			stage(
+				path,
+				`${text.slice(0, field.start)}${jsonContent(entry.version.id)}${text.slice(field.end)}`,
+			);
 		}
 
 		// Dependency ranges. Every edge the plan used must still match its manifest.
@@ -473,7 +479,10 @@ export const prepare = (
 			const found =
 				text === null ? undefined : findRange(text, update.field, update.dependency);
 			if (text === null || found === undefined || found.range !== update.from) continue;
-			stage(path, `${text.slice(0, found.start)}${update.to}${text.slice(found.end)}`);
+			stage(
+				path,
+				`${text.slice(0, found.start)}${jsonContent(update.to)}${text.slice(found.end)}`,
+			);
 		}
 
 		// Literal replacements.
