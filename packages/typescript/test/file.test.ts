@@ -81,6 +81,10 @@ const files = {
 		'import { createClient } from "redis";\nexport const other = createClient;\n',
 };
 
+type RenameKey = { readonly from: string; readonly to: string };
+const RenameKey = Action.define<RenameKey>("json.rename-key");
+const renameTimeout = RenameKey.make("rename-timeout", { from: "timeout", to: "requestTimeout" });
+
 /** The string-literal names of JSON properties called `name`. */
 const jsonKeys = (node: Node, name: string): Array<Node> => {
 	const found: Array<Node> = [];
@@ -254,12 +258,6 @@ layer(NodeFileSystem.layer)("TypeScript.File", (it) => {
 
 	it.effect("edits JSON with comments and refuses edits that break it", () =>
 		Effect.gen(function* () {
-			type RenameKey = { readonly from: string; readonly to: string };
-			const RenameKey = Action.define<RenameKey>("json.rename-key");
-			const renameTimeout = RenameKey.make("rename-timeout", {
-				from: "timeout",
-				to: "requestTimeout",
-			});
 			const config = '{\n\t// Milliseconds.\n\t"timeout": 1000,\n\t"retries": 2,\n}\n';
 			const root = yield* fixture({ "widgets.config.json": config });
 
@@ -287,6 +285,54 @@ layer(NodeFileSystem.layer)("TypeScript.File", (it) => {
 			const outcome = yield* outcomeOf(root, breaking);
 			const error = transformFailed(outcome);
 			expect(error.failures.map((failure) => failure.cause._tag)).toEqual(["EditRejected"]);
+		}),
+	);
+
+	it.effect("edits .jsonc files", () =>
+		Effect.gen(function* () {
+			const config = '{\n\t// Milliseconds.\n\t"timeout": 1000,\n}\n';
+			const root = yield* fixture({ "config.jsonc": config });
+			const rename = TypeScript.File.promise(
+				renameTimeout,
+				async ({ sourceFile, edit, project, payload }) => {
+					expect(project.kind).toBe("inferred");
+
+					return jsonKeys(sourceFile, payload.from).map((key) =>
+						edit.rename(key, payload.to),
+					);
+				},
+				{ include: () => ["*.jsonc"] },
+			);
+
+			expect(yield* outcomeOf(root, rename)).toEqual({
+				_tag: "Completed",
+				performer: "automated",
+			});
+			expect(yield* readFiles(root, ["config.jsonc"])).toEqual({
+				"config.jsonc": '{\n\t// Milliseconds.\n\t"requestTimeout": 1000,\n}\n',
+			});
+			expect(yield* listFiles(root)).toEqual(["config.jsonc"]);
+		}),
+	);
+
+	it.effect("refuses JSON whose tokens only a removed comment separated", () =>
+		Effect.gen(function* () {
+			const config = '{\n\t"timeout": 1000,\n}\n';
+			const root = yield* fixture({ "config.json": config });
+			const joining = TypeScript.File.promise(
+				renameTimeout,
+				async ({ sourceFile, edit, payload }) =>
+					jsonKeys(sourceFile, payload.from).map((key) =>
+						edit.insertAfter(key.parent, "/* c */2"),
+					),
+				{ include: () => ["*.json"] },
+			);
+			const outcome = yield* outcomeOf(root, joining);
+
+			expect(transformFailed(outcome).failures.map((failure) => failure.cause._tag)).toEqual([
+				"EditRejected",
+			]);
+			expect(yield* readFiles(root, ["config.json"])).toEqual({ "config.json": config });
 		}),
 	);
 

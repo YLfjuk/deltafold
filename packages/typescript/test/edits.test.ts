@@ -112,4 +112,11 @@ describe("checkJson", () => {
 			"The edited JSON with comments does not parse",
 		);
 	});
+
+	it("keeps tokens apart where a block comment separated them", () => {
+		expect(checkJson('{"a":1,}', '{"a":1/*c*/2,}')).toBe(
+			"The edited JSON with comments does not parse",
+		);
+		expect(checkJson('{"a":1,}', '{"a":/*c*/1,}')).toBeUndefined();
+	});
 });

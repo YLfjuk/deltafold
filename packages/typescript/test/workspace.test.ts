@@ -21,6 +21,44 @@ const withWorkspace = <A, E>(
 		Effect.provide(TypeScriptNode.layer({ root })),
 	);
 
+/** Lets forked fibers run until they block. */
+const settle = Effect.gen(function* () {
+	for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
+});
+
+/** Holds a lock in a forked scope until `release` runs. */
+const holdLock = (workspace: TypeScript.Workspace, path: string) =>
+	Effect.gen(function* () {
+		const held = yield* Deferred.make<void>();
+		const release = yield* Deferred.make<void>();
+		const holder = yield* Effect.forkChild(
+			Effect.scoped(
+				workspace
+					.lock([path])
+					.pipe(
+						Effect.andThen(Deferred.succeed(held, undefined)),
+						Effect.andThen(Deferred.await(release)),
+					),
+			),
+		);
+		yield* Deferred.await(held);
+
+		return {
+			release: Deferred.succeed(release, undefined).pipe(Effect.andThen(Fiber.join(holder))),
+		};
+	});
+
+/** Whether taking a lock is still waiting after other fibers have run. */
+const stillWaiting = (lock: Effect.Effect<void, never, Scope.Scope>) =>
+	Effect.gen(function* () {
+		const attempt = yield* Effect.forkChild(Effect.scoped(lock));
+		yield* settle;
+		const waiting = attempt.pollUnsafe() === undefined;
+		yield* Fiber.interrupt(attempt);
+
+		return waiting;
+	});
+
 layer(NodeFileSystem.layer)("TypeScript.Workspace", (it) => {
 	it.effect("matches files under the root, sorted, never inside node_modules", () =>
 		Effect.gen(function* () {
@@ -36,6 +74,21 @@ layer(NodeFileSystem.layer)("TypeScript.Workspace", (it) => {
 			);
 
 			expect(matched).toEqual(["src/a.ts", "src/b.ts", "src/nested/c.ts"]);
+		}),
+	);
+
+	it.effect("never matches the write step's temporary files", () =>
+		Effect.gen(function* () {
+			const root = yield* fixture({
+				".a.ts.k3j2.deltafold-tmp": "",
+				"src/.b.ts.x9.deltafold-tmp": "",
+				".eslintrc.json": "{}",
+			});
+			const matched = yield* withWorkspace(root, (workspace) =>
+				internals(workspace).match("test", [".*", "**/.*", "**/*"]),
+			);
+
+			expect(matched).toEqual([".eslintrc.json"]);
 		}),
 	);
 
@@ -117,7 +170,7 @@ layer(NodeFileSystem.layer)("TypeScript.Workspace", (it) => {
 						status: "not-written",
 						reason: "The file changed after it was read",
 					},
-					pendingPaths: ["c.ts"],
+					pendingPaths: ["a.ts", "c.ts"],
 				}),
 			);
 			expect(yield* readFiles(root, ["a.ts", "b.ts", "c.ts"])).toEqual({
@@ -172,6 +225,48 @@ layer(NodeFileSystem.layer)("TypeScript.Workspace", (it) => {
 						"first released",
 						"second locked",
 					]);
+				}),
+			);
+		}),
+	);
+
+	it.effect("gives aliases of one path the same lock", () =>
+		Effect.gen(function* () {
+			const root = yield* fixture({ "src/a.ts": "" });
+			yield* withWorkspace(root, (workspace) =>
+				Effect.gen(function* () {
+					const { release } = yield* holdLock(workspace, "src/a.ts");
+					for (const alias of ["./src/a.ts", "src/./a.ts", "src/../src/a.ts"]) {
+						expect({
+							alias,
+							waiting: yield* stillWaiting(workspace.lock([alias])),
+						}).toEqual({
+							alias,
+							waiting: true,
+						});
+					}
+					yield* release;
+				}),
+			);
+		}),
+	);
+
+	it.effect("lets a fiber waiting for a lock be interrupted while another scope holds it", () =>
+		Effect.gen(function* () {
+			const root = yield* fixture({ "a.ts": "" });
+			yield* withWorkspace(root, (workspace) =>
+				Effect.gen(function* () {
+					const { release } = yield* holdLock(workspace, "a.ts");
+					const waiter = yield* Effect.forkChild(Effect.scoped(workspace.lock(["a.ts"])));
+					yield* settle;
+
+					// Interrupting the waiter finishes while the holder still has the lock.
+					yield* Fiber.interrupt(waiter);
+					expect(yield* stillWaiting(workspace.lock(["a.ts"]))).toBe(true);
+
+					// The interrupted waiter took no permit: the lock is free once released.
+					yield* release;
+					expect(yield* stillWaiting(workspace.lock(["a.ts"]))).toBe(false);
 				}),
 			);
 		}),

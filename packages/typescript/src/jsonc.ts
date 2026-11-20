@@ -34,6 +34,8 @@ const stripComments = (text: string) => {
 		} else if (char === "/" && text[index + 1] === "*") {
 			const end = text.indexOf("*/", index + 2);
 			if (end === -1) return undefined;
+			// A comment separates tokens, so `1/* c */2` must not become `12`.
+			output += " ";
 			index = end + 2;
 		} else {
 			output += char;

@@ -86,6 +86,10 @@ Observed behavior of 7.1.0-beta that the design depends on:
   diagnostics. A JSON file opened in a snapshot gets an inferred project, and its
   program reports syntax errors for it.
 - A new snapshot reads current file contents even without file notifications.
+- A `.jsonc` file in `openFiles` fails the snapshot with "no project found". The
+  Node compiler therefore opens it as a hidden `.json` name next to it, whose text
+  the snapshot's file-system layer supplies, and maps that name back to the file.
+  Nothing is written under that name.
 
 ## Handlers
 
@@ -257,7 +261,8 @@ by canonical path, case-folded on case-insensitive file systems. They are taken
 in the prepare phase and held in the occurrence's scope until the occurrence
 ends, so no other handler of this package changes the files between the prepare
 and apply phases. They coordinate handlers of this package, and custom handlers
-can opt in with `workspace.lock(paths)`. Locks are not reentrant. `Action.parallel` stays the author's assertion that
+can opt in with `workspace.lock(paths)`. Paths are normalized before they become
+keys, waiting for a lock can be interrupted, and locks are not reentrant. `Action.parallel` stays the author's assertion that
 branches are independent, because rules and dry runs depend on it. The locks only
 narrow concurrency.
 
@@ -306,7 +311,8 @@ disagree. It can be revisited if the core gains a signal for step boundaries.
   `SyntaxErrors` for a matched file that does not parse, which fails by default,
   and `EditRejected` for edits the adapter refuses.
 - `WriteFailed` lists the written paths, the failed path with a status of
-  `"not-written"` or `"unknown"`, and the pending paths. A content conflict at
+  `"not-written"` or `"unknown"`, and the pending paths. A failure before the
+  first rename lists every other file as pending. A content conflict at
   write time is a `WriteFailed`.
 - `ReadFailed` covers matching and reading before any transform runs: a pattern
   that is absolute or leaves the root, a symbolic link or junction, an unreadable

@@ -142,9 +142,6 @@ type Operations = {
 
 const operations = (unit: Unit): Operations => {
 	const allowed = new Set(unit.files);
-	const byCanonical = new Map(
-		unit.files.map((path) => [unit.workspace.canonical(unit.workspace.absolute(path)), path]),
-	);
 
 	return {
 		sourceFile: async (path) => {
@@ -177,8 +174,8 @@ const operations = (unit: Unit): Operations => {
 			const references: Array<Reference> = [];
 			for (const entry of entries) {
 				for (const handle of entry.references) {
-					const path = byCanonical.get(unit.workspace.canonical(String(handle.path)));
-					if (path === undefined) continue;
+					const path = unit.pathOf(String(handle.path));
+					if (path === undefined || !allowed.has(path)) continue;
 					const resolved = await handle.resolve(unit.project);
 					if (resolved === undefined) continue;
 					const key = `${path}:${resolved.pos}:${resolved.end}`;
