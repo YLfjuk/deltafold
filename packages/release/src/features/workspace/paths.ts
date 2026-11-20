@@ -114,8 +114,6 @@ export type Paths = {
 	readonly fromRoot: (path: string) => string | Issue;
 	/** The path the file system receives for a workspace-relative path. */
 	readonly toFs: (path: string) => string;
-	/** A path the file system returned, as a workspace-relative path. */
-	readonly fromFs: (path: string) => string | Issue;
 };
 
 const sameDrive = (a: string, b: string) => prefixOf(a) === prefixOf(b);
@@ -184,13 +182,5 @@ export const paths = (location: Location = {}): Paths => {
 		},
 		fromRoot: (path) => inWorkspace(path, path),
 		toFs: (path) => (root === "" ? normalize(path) : join(root, path)),
-		// The file system returns absolute paths for absolute patterns, and paths relative to
-		// the working directory otherwise.
-		fromFs: (path) => {
-			if (isAbsolute(path) || root === "" || isAbsolute(root)) return inWorkspace(path, path);
-
-			const rel = within(root, path);
-			return rel === undefined ? outside(path) : rel;
-		},
 	};
 };

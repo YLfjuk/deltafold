@@ -116,6 +116,26 @@ describe("locations", () => {
 		}),
 	);
 
+	it.effect("globs under a root whose name contains glob syntax", () =>
+		Effect.gen(function* () {
+			const root = "/repos/[acme] {ws}";
+			const { provide } = memoryFs(
+				Object.fromEntries(
+					Object.entries(files).map(([path, text]) => [path.replace("/ws", root), text]),
+				),
+			);
+			const prepared = yield* ReleaseFiles.prepare(
+				planFor("../packages/widgets/package.json"),
+				{
+					root,
+					base: "release",
+					pending: ["changes/*.ts"],
+				},
+			).pipe(provide);
+			expect(prepared.edits.map((edit) => edit.path)).toContain("release/changes/retries.ts");
+		}),
+	);
+
 	it.effect("accepts absolute paths inside the workspace and refuses those outside", () => {
 		const { provide } = memoryFs(files);
 
