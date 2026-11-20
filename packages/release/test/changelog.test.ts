@@ -36,8 +36,8 @@ describe("ReleaseChangelog.dependencies", () => {
 		);
 
 		expect(markdown).toContain(
-			"### Updated dependencies\n\n- `@acme/widgets@2.0.0` (peerDependencies: ^1.5.0 to ^2.0.0)",
+			"### Updated Dependencies\n\n- `@acme/widgets@2.0.0` (peerDependencies: ^1.5.0 to ^2.0.0)",
 		);
-		expect(markdown.match(/Updated dependencies/g)).toHaveLength(1);
+		expect(markdown.match(/Updated Dependencies/g)).toHaveLength(1);
 	});
 });

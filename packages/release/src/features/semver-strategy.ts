@@ -1,13 +1,17 @@
 import { Array as Arr, Result, Schema, SemVer } from "effect";
 
 import type { Change, Package, Version as DeltafoldVersion } from "deltafold";
-import { diagnose } from "./diagnostic.ts";
-import { PlanError } from "./error.ts";
-import type { Bump } from "./release-change.ts";
-import * as VersionScheme from "./version-scheme.ts";
-import * as VersionStrategy from "./version-strategy.ts";
+import { diagnose } from "../foundation/diagnostic.ts";
+import { PlanError } from "../foundation/error.ts";
+import * as VersionScheme from "../foundation/version-scheme.ts";
+import * as VersionStrategy from "../foundation/version-strategy.ts";
 
-export type { Bump } from "./release-change.ts";
+/**
+ * Release magnitudes. A prerelease stage is chosen per plan, never per change.
+ *
+ * @since @next
+ */
+export type Bump = "major" | "minor" | "patch";
 
 /**
  * The SemVer value type, from Effect. Effect marks its SemVer module unstable, so this

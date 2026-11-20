@@ -1,4 +1,4 @@
-import { form, satisfies } from "./ranges.ts";
+import { form, satisfies } from "../../foundation/npm/ranges.ts";
 
 /**
  * A dependency between workspace packages, resolved from manifests before planning.

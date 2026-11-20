@@ -21,7 +21,7 @@ export type DependencyRecord = {
 export type DependencyMetadata = { readonly dependencies?: ReadonlyArray<DependencyRecord> };
 
 /**
- * Renders an "Updated dependencies" section at the end of each release that recorded
+ * Renders an "Updated Dependencies" section at the end of each release that recorded
  * dependency updates. Releases without them get nothing.
  *
  * @example
@@ -42,7 +42,7 @@ export const dependencies: Document.Plugin<DependencyMetadata> =
 			if (records.length === 0) return null;
 
 			return Document.Section("updated-dependencies", {
-				title: "Updated dependencies",
+				title: "Updated Dependencies",
 				children: [
 					Document.List(
 						records.map((record) =>
