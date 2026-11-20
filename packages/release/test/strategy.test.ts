@@ -304,6 +304,22 @@ describe("the SemVer strategy", () => {
 		expect(validate({ pre: { tag: "beta" } })).toHaveProperty("issues");
 	});
 
+	it("refuses a bump that is not major, minor, or patch", () => {
+		const loose = Release.make("widgets", {
+			change: ProjectChange,
+			version: SemVerStrategy.make<ProjectMetadata>({ bump: () => JSON.parse('"huge"') }),
+			packages: [
+				{
+					package: widgets,
+					files: ReleaseFiles.at("packages/widgets", { manifest: "package.json" }),
+				},
+			],
+		});
+		expect(
+			failure(loose.plan({ packages: [{ package: widgets, changes: [retries] }] })),
+		).toMatchObject({ reason: "InvalidBump", subjects: ["add-retries"] });
+	});
+
 	it("encodes lines as strings for output", () => {
 		const line = SemVerStrategy.lineOf(SemVer.parseUnsafe("2.0.0-beta.3"), [
 			SemVer.parseUnsafe("2.0.0-beta.3"),
