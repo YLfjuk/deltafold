@@ -1,4 +1,4 @@
-import type { Command } from "effect/cli";
+import type { Command, GlobalFlag } from "effect/cli";
 
 import type * as Action from "../../foundation/action.ts";
 import type { Release } from "../../foundation/version.ts";
@@ -22,8 +22,26 @@ export type Handlers<H> =
 	| ReadonlyArray<H>
 	| (() => ReadonlyArray<H> | PromiseLike<ReadonlyArray<H>>);
 
+/**
+ * Observers for the `migrate` command: an array, or a function that loads one. Like
+ * handlers, a function is called only when `migrate` runs.
+ *
+ * @since @next
+ */
+export type Observers<O> =
+	| ReadonlyArray<O>
+	| (() => ReadonlyArray<O> | PromiseLike<ReadonlyArray<O>>);
+
+/** The shared settings that `Cli.run` or another root command installs. */
+type Settings = GlobalFlag.Setting.Identifier<"json"> | GlobalFlag.Setting.Identifier<"no-color">;
+
 /** @since @next */
-export type Options<A extends Action.Any, H extends Handler.Handler<A, any, any>, M> = {
+export type Options<
+	A extends Action.Any,
+	H extends Handler.Handler<A, any, any>,
+	O extends Observer.Any,
+	M,
+> = {
 	/**
 	 * The command name shown in help and suggested commands: the bin name, or the
 	 * subcommand name when the command is mounted under another one. Defaults to the
@@ -34,11 +52,24 @@ export type Options<A extends Action.Any, H extends Handler.Handler<A, any, any>
 	readonly description?: string;
 	/** Enables the `migrate` command. Coverage is checked at run time, before any action. */
 	readonly handlers?: Handlers<H>;
+	/**
+	 * Receive `migrate`'s execution events, before the CLI's own progress observer. Their
+	 * Effect services join the command's requirements.
+	 */
+	readonly observers?: Observers<O>;
 	/** Configures change sections and plugins for `guide` and `changelog`. */
 	readonly changelog?: Changelog<M>;
 	/** Release metadata for every released version. Enables the `changelog` command. */
 	readonly releases?: ReadonlyArray<Release<M>> | (() => ReadonlyArray<Release<M>>);
 };
+
+/** Defers an array or loader until a command needs it. */
+const loader = <T>(
+	value: ReadonlyArray<T> | (() => ReadonlyArray<T> | PromiseLike<ReadonlyArray<T>>) | undefined,
+) =>
+	value === undefined
+		? undefined
+		: async () => (typeof value === "function" ? await value() : value);
 
 /**
  * Builds a package's migrator command: `validate`, `plan`, `upgrades`, `downgrades`, and
@@ -47,12 +78,15 @@ export type Options<A extends Action.Any, H extends Handler.Handler<A, any, any>
  *
  * The result is an ordinary `effect/cli` command. Run it with `Cli.run`, or mount it
  * as a subcommand of another command, for example one command per package in a tool that
- * migrates several packages. Its Effect requirements include the handlers' services.
+ * migrates several packages. Its Effect requirements include the services of the handlers
+ * and observers, and the shared `--json` and `--no-color` settings, which the root command
+ * installs: `Cli.run` does that, and another root installs `Cli.Json` and `Cli.NoColor`
+ * with `Command.withGlobalFlags`.
  * `effect/cli` is marked unstable in Effect 4, so the command's type may change with
  * Effect releases.
  *
- * `migrate` forwards the package's observers to the executor, in attachment order, and
- * then adds its own observer that prints progress on stderr (none with `--json`).
+ * `migrate` passes `observers` to the executor, in order, and then adds its own observer
+ * that prints progress on stderr (none with `--json`).
  *
  * Building the command and showing help never load handlers, run prepare phases, or touch
  * consumer files. Importing the module that declares the package still runs that module's
@@ -79,37 +113,36 @@ export type Options<A extends Action.Any, H extends Handler.Handler<A, any, any>
  */
 export const make = <
 	A extends Action.Any,
-	O extends Observer.Any = never,
 	H extends Handler.Handler<A, any, any> = never,
+	O extends Observer.Any = never,
 	M = never,
 >(
-	pkg: Package<A, O>,
-	options: Options<A, H, M> = {},
+	pkg: Package<A>,
+	options: Options<A, H, O, M> = {},
 ): Command.Command<
 	string,
 	any,
 	any,
 	CliFailure,
-	Handler.Services<H> | Observer.Services<O> | Command.Environment
+	Handler.Services<H> | Observer.Services<O> | Settings | Command.Environment
 > => {
-	const { handlers, releases } = options;
-	const command: Command.Command<string, any, any, CliFailure, Command.Environment> = commands({
-		name: options.name ?? pkg.name,
-		description:
-			options.description ?? `Plan and run migrations between versions of ${pkg.name}`,
-		package: pkg,
-		changelog: options.changelog ?? makeChangelog(),
-		releases:
-			releases === undefined
-				? undefined
-				: typeof releases === "function"
-					? releases
-					: () => releases,
-		handlers:
-			handlers === undefined
-				? undefined
-				: async () => (typeof handlers === "function" ? await handlers() : handlers),
-	});
+	const { handlers, observers, releases } = options;
+	const command: Command.Command<string, any, any, CliFailure, Settings | Command.Environment> =
+		commands({
+			name: options.name ?? pkg.name,
+			description:
+				options.description ?? `Plan and run migrations between versions of ${pkg.name}`,
+			package: pkg,
+			changelog: options.changelog ?? makeChangelog(),
+			releases:
+				releases === undefined
+					? undefined
+					: typeof releases === "function"
+						? releases
+						: () => releases,
+			handlers: loader(handlers),
+			observers: loader(observers),
+		});
 
 	return command;
 };

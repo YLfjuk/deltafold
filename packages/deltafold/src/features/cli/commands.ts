@@ -15,7 +15,7 @@ import {
 } from "../execution/executor.ts";
 import type * as Handler from "../execution/handler.ts";
 import * as Observer from "../execution/observer.ts";
-import type * as Package from "../package.ts";
+import type { Package } from "../package.ts";
 import * as History from "../planning/history.ts";
 import type { RoutePolicy } from "../planning/resolve.ts";
 import * as Encode from "./encode.ts";
@@ -28,7 +28,7 @@ import {
 	resolveProblem,
 	schemaVersion,
 } from "./failure.ts";
-import { Json, make as makeOutput, NoColor, Output, stringify } from "./output.ts";
+import { make as makeOutput, Output, stringify } from "./output.ts";
 import * as Prompt from "./prompt.ts";
 import * as Render from "./render.ts";
 
@@ -36,10 +36,11 @@ import * as Render from "./render.ts";
 export type Definition = {
 	readonly name: string;
 	readonly description: string;
-	readonly package: Package.Any;
+	readonly package: Package;
 	readonly changelog: Changelog<any>;
 	readonly releases: (() => ReadonlyArray<Release<any>>) | undefined;
 	readonly handlers: (() => Promise<ReadonlyArray<Handler.Any>>) | undefined;
+	readonly observers: (() => Promise<ReadonlyArray<Observer.Any>>) | undefined;
 };
 
 /** Gives a command handler its output service and keeps Effect logs off stdout. */
@@ -570,6 +571,25 @@ const migrateCommand = (
 							}),
 						),
 					);
+					const loadObservers = definition.observers;
+					const supplied =
+						loadObservers === undefined
+							? []
+							: yield* Effect.tryPromise({
+									try: loadObservers,
+									catch: Encode.error,
+								}).pipe(
+									Effect.catch((error) =>
+										fail(name, {
+											reason: "observers_load_failed",
+											message: "Couldn't load the migration observers",
+											status: "error",
+											exitCode: 1,
+											details: [error.message],
+											data: { error },
+										}),
+									),
+								);
 
 					const actions = `${Render.plural(plan.occurrences.length, "action")} in ${Render.plural(plan.steps.length, "migration")}`;
 					yield* output.diagnostic(
@@ -592,7 +612,7 @@ const migrateCommand = (
 						output.interactive && !input.dryRun
 							? { interaction: terminal.interaction }
 							: {};
-					// The package's observers run first, in attachment order; the CLI's progress
+					// The supplied observers run first, in order; the CLI's progress
 					// observer runs last, waits while a prompt is open, and is left out with --json.
 					const progress = Observer.effect((event) => {
 						const lines = Render.progress(event, output.err);
@@ -602,9 +622,7 @@ const migrateCommand = (
 							lines.length === 0 ? Effect.void : terminal.progress(lines),
 						);
 					});
-					const observers = output.json
-						? definition.package.observers
-						: [...definition.package.observers, progress];
+					const observers = output.json ? supplied : [...supplied, progress];
 					const execute = (): Promise<Settled> =>
 						runPromise(Plan.withRuntimeCoverage(plan), {
 							handlers,
@@ -810,6 +828,5 @@ export const commands = (definition: Definition) => {
 			guideCommand(definition),
 			...(releases === undefined ? [] : [changelogCommand(definition, releases)]),
 		]),
-		Command.withGlobalFlags([Json, NoColor]),
 	);
 };

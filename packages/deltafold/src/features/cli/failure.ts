@@ -27,6 +27,7 @@ export type Reason =
 	| "invalid_history"
 	| "invalid_release_metadata"
 	| "handlers_load_failed"
+	| "observers_load_failed"
 	| "handler_coverage"
 	| "interaction_required"
 	| "manual_work_declined"

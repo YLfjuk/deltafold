@@ -321,10 +321,18 @@ uses `effect/cli` from `effect`. The author's bin supplies the platform layer an
 main runner. `@deltafold/cli` ships the `deltafold` bin, which is deltafold's
 own migrator built with the toolkit; its Node.js code lives in
 `src/domains/node`. It uses `@effect/platform-node`, whose required `redis` peer
-is installed with it.
+is installed with it. The bin is declared in the package's `vite.config.ts` as
+`pack.exports.bin`, which writes `bin` (source) and `publishConfig.bin` (built
+output); the bin entry is excluded from `exports`, so importing the package never
+runs the CLI.
 
 **An ordinary command.** `Command.make` returns an `effect/cli` command whose
-requirements include the handlers' services. `Cli.run` runs any command as the
+requirements include the services of its handlers and observers, and the shared
+`--json` and `--no-color` settings. The root command installs those settings
+once with `Command.withGlobalFlags`: `Cli.run` does it, and another root installs
+`Cli.Json` and `Cli.NoColor`. Mounted commands only read them. Effect recognizes
+global flags by object identity, so the same objects must be used everywhere;
+the Release CLI's commands will share them when they are mounted. `Cli.run` runs any command as the
 program, with the version it prints: it adds usage-error reporting and removes
 the interactive wizard. `run` belongs to `Cli` because it applies to any
 top-level command, and so that no deltafold function shares a name with
@@ -369,7 +377,8 @@ unknown versions or routes, and ambiguous routes (`action_required`), and 130 fo
 interruption. `NodeRuntime` reports SIGTERM as 130 as well. `validate` prints its
 issues as the result and exits 1.
 
-**Progress.** `migrate` passes the package's observers to the executor and appends
+**Progress.** `migrate` passes the `observers` given to `Command.make` (an array
+or a loader called only by `migrate`, like `handlers`) to the executor and appends
 an observer that writes step and action progress to stderr through the CLI's
 output, so it follows `--log-level` and is left out with `--json`. It prints
 steps that have actions, unnumbered, because the event step total also counts

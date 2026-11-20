@@ -4,6 +4,11 @@ import { CliConfig, CliError, CliOutput, Command, GlobalFlag } from "effect/cli"
 import { CliFailure, fail, type Reason } from "./failure.ts";
 import { Json, make as makeOutput, NoColor, Output } from "./output.ts";
 
+export { Json, NoColor };
+
+/** The shared settings that `run` installs at the root. */
+type Settings = GlobalFlag.Setting.Identifier<"json"> | GlobalFlag.Setting.Identifier<"no-color">;
+
 const reasonByTag: Record<CliError.CliError["_tag"], Reason> = {
 	UnrecognizedOption: "unknown_option",
 	DuplicateOption: "invalid_arguments",
@@ -70,9 +75,11 @@ const usageFailure = (error: CliError.ShowHelp, argv: ReadonlyArray<string>) => 
  * service. The command can be a package's migrator command or another command that mounts
  * migrator commands. Usage errors are reported on stderr, or as one JSON document with
  * `--json`, instead of printing the full help, and the interactive wizard is turned off.
+ * It installs the shared `--json` and `--no-color` settings (`Json`, `NoColor`) at the
+ * root, so the commands under it only read them.
  *
- * Provide the platform services (for example `NodeServices.layer`) and the handlers'
- * services, and run it with the platform's main runner, which turns failures into exit
+ * Provide the platform services (for example `NodeServices.layer`) and the services of
+ * the handlers and observers, and run it with the platform's main runner, which turns failures into exit
  * codes: 0 on success, 1 for operational failures, 2 for usage errors and choices the
  * caller must make, and 130 when interrupted.
  *
@@ -88,12 +95,15 @@ export const run = <Name extends string, Input, ContextInput, E, R>(
 ): Effect.Effect<
 	void,
 	Exclude<Exclude<E, Terminal.QuitError>, CliError.CliError> | CliFailure,
-	R | Command.Environment
+	Exclude<R, Settings> | Command.Environment
 > =>
 	Effect.gen(function* () {
 		const args = options.argv ?? (yield* (yield* Stdio.Stdio).args);
+		// Installed once, at the root. A root that already installs them keeps one copy,
+		// because Effect recognizes global flags by object identity.
+		const root = Command.withGlobalFlags(command, [Json, NoColor]);
 
-		return yield* Command.runWith(command, { version: options.version })(args).pipe(
+		return yield* Command.runWith(root, { version: options.version })(args).pipe(
 			Effect.catchIf(CliError.isCliError, (error) => {
 				if (error._tag === "ShowHelp") {
 					return error.errors.length === 0 ? Effect.void : usageFailure(error, args);

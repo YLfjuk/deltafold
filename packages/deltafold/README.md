@@ -442,10 +442,10 @@ Outcome statuses and phases use the executor's names, for example
 `preparation-failed` and the `prepare`, `apply`, `confirmation`, and
 `verification` phases.
 
-`migrate` passes the observers attached to your package with
-`Package.withObserver` to the executor, in attachment order, and then adds
-its own observer that prints each step and action outcome on stderr. With
-`--json` it adds none. An observer failure never changes the outcome: it is
+Pass `observers` beside `handlers`, as an array or a function that loads one;
+like handlers, they are loaded only when `migrate` runs. `migrate` passes them
+to the executor, in order, and then adds its own observer that prints each step
+and action outcome on stderr. With `--json` it adds none. An observer failure never changes the outcome: it is
 printed as a warning, and the JSON report lists it under `observation`.
 
 Actions with a manual handler (`Handler.manual`) need a person to confirm the
@@ -475,7 +475,11 @@ person.
 To ship one tool that migrates several related packages, build one command per
 package and mount them as subcommands of your own `effect/cli` command, then run
 that with `Cli.run`. Import `effect/cli` under another name, such as `EffectCli`,
-so that its `Command` does not hide deltafold's. deltafold does not order
+so that its `Command` does not hide deltafold's. `--json` and `--no-color` are
+shared settings that the root installs once: `Cli.run` does it for you. A root
+that you run with `effect/cli` itself installs the same objects with
+`EffectCli.Command.withGlobalFlags([Cli.Json, Cli.NoColor])`; Effect recognizes
+global flags by object identity, so never define flags with those names yourself. deltafold does not order
 migrations across packages; your command decides that order. `effect/cli` is
 marked unstable in Effect 4, so the command type can change with Effect releases.
 

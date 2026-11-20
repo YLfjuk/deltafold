@@ -744,16 +744,15 @@ describe("migrate", () => {
 			])}`;
 			const pkg = Package.make("@acme/parallel", {
 				history: History.make({ versions: [v1, v2], migrations: [both] }),
-			}).pipe(
-				Package.withObserver(
+			});
+			const command = Command.make(pkg, {
+				observers: [
 					Observer.effect((event) =>
 						event._tag === "ActionSettled" && event.outcome._tag === "Failed"
 							? Deferred.succeed(failed, undefined)
 							: Effect.void,
 					),
-				),
-			);
-			const command = Command.make(pkg, {
+				],
 				handlers: [
 					Handler.effect(renameTimeout, () => Effect.never),
 					Handler.promise(addRetryLimit, async () => {
@@ -1046,24 +1045,19 @@ describe("queued manual prompts", () => {
 			const asked = new Set<string>();
 			const bothAsked = yield* Deferred.make<void>();
 			const failed = yield* Deferred.make<void>();
-			const observed = parallel([renameTimeout, addRetryLimit, addBoth]).pipe(
-				Package.withObserver(
-					Observer.effect((event) => {
-						if (event._tag === "ActionPhaseStarted" && event.phase === "confirmation") {
-							asked.add(event.action.occurrence);
+			const signals = Observer.effect((event) => {
+				if (event._tag === "ActionPhaseStarted" && event.phase === "confirmation") {
+					asked.add(event.action.occurrence);
 
-							return asked.size === 2
-								? Deferred.succeed(bothAsked, undefined)
-								: Effect.void;
-						}
+					return asked.size === 2 ? Deferred.succeed(bothAsked, undefined) : Effect.void;
+				}
 
-						return event._tag === "ActionSettled" && event.outcome._tag === "Failed"
-							? Deferred.succeed(failed, undefined)
-							: Effect.void;
-					}),
-				),
-			);
-			const command = Command.make(observed, {
+				return event._tag === "ActionSettled" && event.outcome._tag === "Failed"
+					? Deferred.succeed(failed, undefined)
+					: Effect.void;
+			});
+			const command = Command.make(parallel([renameTimeout, addRetryLimit, addBoth]), {
+				observers: [signals],
 				handlers: [
 					Handler.manual(renameTimeout),
 					Handler.manual(addRetryLimit),
@@ -1095,15 +1089,13 @@ describe("queued manual prompts", () => {
 });
 
 describe("observers", () => {
-	it.effect("forwards the package's observers and prints progress on stderr", () =>
+	it.effect("passes the supplied observers to the run and prints progress on stderr", () =>
 		Effect.gen(function* () {
 			const seen: Array<string> = [];
-			const observed = widgets.pipe(
-				Package.withObserver(Observer.sync((event) => void seen.push(event._tag))),
-			);
-			const command = Command.make(observed, {
+			const command = Command.make(widgets, {
 				name: "widgets-migrate",
 				handlers: () => handlersFor([]),
+				observers: () => [Observer.sync((event) => void seen.push(event._tag))],
 			});
 			const argv = ["migrate", "--from", "1.0.0", "--to", "2.0.0"];
 			const machine = yield* capture(start(command, [...argv, "--json"]));
@@ -1126,16 +1118,65 @@ describe("observers", () => {
 		}),
 	);
 
+	it.effect("loads observers only when migrate runs", () =>
+		Effect.gen(function* () {
+			let loads = 0;
+			const command = Command.make(widgets, {
+				handlers: () => handlersFor([]),
+				observers: () => {
+					loads += 1;
+
+					return [];
+				},
+			});
+			for (const argv of [
+				["--help"],
+				["plan", "--from", "1.0.0", "--to", "2.0.0"],
+				["guide", "--from", "1.0.0", "--to", "2.0.0"],
+			]) {
+				expect((yield* capture(start(command, argv))).code).toBe(0);
+			}
+			const loadsBeforeMigrate = loads;
+			const migrated = yield* capture(
+				start(command, ["migrate", "--from", "1.0.0", "--to", "2.0.0", "--json"]),
+			);
+
+			expect(loadsBeforeMigrate).toBe(0);
+			expect(migrated.code).toBe(0);
+			expect(loads).toBe(1);
+		}),
+	);
+
+	it.effect("reports observers that fail to load before running anything", () =>
+		Effect.gen(function* () {
+			const calls: Calls = [];
+			const command = Command.make(widgets, {
+				handlers: () => handlersFor(calls),
+				observers: () => Promise.reject(new Error("telemetry module missing")),
+			});
+			const result = yield* capture(
+				start(command, ["migrate", "--from", "1.0.0", "--to", "2.0.0", "--json"]),
+			);
+
+			expect(result.code).toBe(1);
+			expect(calls).toEqual([]);
+			expect(json(result.stderr)).toMatchObject({
+				reason: "observers_load_failed",
+				data: { error: { message: "telemetry module missing" } },
+			});
+		}),
+	);
+
 	it.effect("reports observer failures without changing the outcome", () =>
 		Effect.gen(function* () {
-			const observed = widgets.pipe(
-				Package.withObserver(
+			const command = Command.make(widgets, {
+				handlers: () => handlersFor([]),
+				observers: [
 					Observer.sync((event) => {
 						if (event._tag === "RunStarted") throw new Error("dashboard offline");
 					}),
-				),
-			);
-			const command = Command.make(observed, { handlers: () => handlersFor([]) });
+				],
+			});
 			const argv = ["migrate", "--from", "1.0.0", "--to", "2.0.0"];
 			const machine = yield* capture(start(command, [...argv, "--json"]));
 			const human = yield* capture(start(command, argv));
@@ -1168,11 +1209,13 @@ describe("observers", () => {
 			};
 			loop.cause = loop;
 			const unprintable: object = Object.create(null);
-			const observed = widgets.pipe(
-				Package.withObserver(Observer.effect(() => Effect.fail(unprintable))),
-				Package.withObserver(Observer.effect(() => Effect.fail(loop))),
-			);
-			const command = Command.make(observed, { handlers: () => handlersFor([]) });
+			const command = Command.make(widgets, {
+				handlers: () => handlersFor([]),
+				observers: [
+					Observer.effect(() => Effect.fail(unprintable)),
+					Observer.effect(() => Effect.fail(loop)),
+				],
+			});
 			const argv = ["migrate", "--from", "1.0.0", "--to", "2.0.0"];
 			const machine = yield* capture(start(command, [...argv, "--json"]));
 			const human = yield* capture(start(command, argv));
@@ -1349,6 +1392,29 @@ describe("composition", () => {
 			expect(json(unknown.stderr).reason).toBe("unknown_option");
 		}),
 	);
+
+	it.effect("reads the shared settings that another root installs", () =>
+		Effect.gen(function* () {
+			const acme = EffectCli.Command.make("acme").pipe(
+				EffectCli.Command.withSubcommands([Command.make(widgets, { name: "widgets" })]),
+				EffectCli.Command.withGlobalFlags([Cli.Json, Cli.NoColor]),
+			);
+			const plan = yield* capture(
+				EffectCli.Command.runWith(acme, { version: "1.0.0" })([
+					"widgets",
+					"plan",
+					"--from",
+					"1.0.0",
+					"--to",
+					"2.0.0",
+					"--json",
+				]),
+			);
+
+			expect(plan.code).toBe(0);
+			expect(json(plan.stdout).plan.route).toBe("1.0.0>2.0.0");
+		}),
+	);
 });
 
 describe("types", () => {
@@ -1384,22 +1450,19 @@ describe("types", () => {
 		>();
 	});
 
-	it("requires the services of the package's observers", () => {
+	it("requires the services of the supplied observers", () => {
 		const Telemetry = Context.Service<{ readonly send: (tag: string) => Effect.Effect<void> }>(
 			"test/Telemetry",
 		);
-		const observed = widgets.pipe(
-			Package.withObserver(
-				Observer.effect((event) =>
-					Effect.gen(function* () {
-						const telemetry = yield* Telemetry;
-						yield* telemetry.send(event._tag);
-					}),
-				),
-			),
+		const telemetry = Observer.effect((event) =>
+			Effect.gen(function* () {
+				const service = yield* Telemetry;
+				yield* service.send(event._tag);
+			}),
 		);
+		const command = Command.make(widgets, { observers: [telemetry] });
 
-		expectTypeOf(Cli.run(Command.make(observed), { version: "0" })).toEqualTypeOf<
+		expectTypeOf(Cli.run(command, { version: "0" })).toEqualTypeOf<
 			Effect.Effect<
 				void,
 				Command.CliFailure,

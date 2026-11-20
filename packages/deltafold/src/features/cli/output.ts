@@ -1,7 +1,13 @@
 import { Config, Context, Effect, LogLevel, Option, References, Stdio, Stream } from "effect";
 import { Flag, GlobalFlag } from "effect/cli";
 
-/** `--json`: print one versioned JSON document instead of human output. */
+/**
+ * `--json`: print one versioned JSON document instead of human output. A root command
+ * installs it once with `Command.withGlobalFlags`; mounted commands read it. Effect
+ * recognizes a global flag by object identity, so every command must use this object.
+ *
+ * @since @next
+ */
 export const Json = GlobalFlag.Setting("json")({
 	flag: Flag.Boolean("json").pipe(
 		Flag.withDefault(false),
@@ -9,7 +15,11 @@ export const Json = GlobalFlag.Setting("json")({
 	),
 });
 
-/** `--no-color`: disable color in human output. */
+/**
+ * `--no-color`: disable color in human output. Installed once at the root, like `Json`.
+ *
+ * @since @next
+ */
 export const NoColor = GlobalFlag.Setting("no-color")({
 	flag: Flag.Boolean("no-color").pipe(
 		Flag.withDefault(false),
