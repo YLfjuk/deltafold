@@ -1,10 +1,11 @@
-import { Array as Arr, Effect, FileSystem, Order, Struct, type PlatformError } from "effect";
+import { Effect, FileSystem, Struct, type PlatformError } from "effect";
 
 import { Package } from "deltafold";
 import { issue, PrepareError, type Issue } from "../../foundation/error.ts";
 import { readManifest, type Manifest } from "../../foundation/npm/manifest.ts";
 import type { Requirement } from "../planning/dependents-policy.ts";
 import type { Entry, Options, Packages, Registration, Release } from "../planning/release.ts";
+import { globAll } from "./glob.ts";
 import { paths, type Location } from "./paths.ts";
 
 /**
@@ -158,20 +159,7 @@ export const resolve = <
 				const path = fromBase(pattern);
 				return path === undefined ? [] : [path];
 			});
-			const found = yield* Effect.forEach(patterns, (pattern) =>
-				fs.glob(location.toFs(pattern)),
-			);
-			const matched = Arr.sort(
-				[
-					...new Set(
-						found.flat().flatMap((path) => {
-							const rel = location.fromFs(path);
-							return typeof rel === "string" ? [rel] : [];
-						}),
-					),
-				],
-				Order.String,
-			);
+			const matched = yield* globAll(fs, location, patterns, []);
 			globs.push({ pattern: patterns, matched });
 			for (const path of matched) {
 				if (manifests.some((entry) => entry.path === path)) continue;

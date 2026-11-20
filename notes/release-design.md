@@ -320,7 +320,9 @@ Root-level replacement rules select files by globs/exclusions, literal tokens,
 and an explicit package whose resolved version supplies the replacement. Targets
 can include private packages, docs, examples, and files outside group membership.
 Include edits in the plan. Zero files/token matches are allowed and reported.
-Reject conflicting replacements of the same occurrence. Broad regex or semantic
+All release globs (replacements, pending modules, `manifests`) use Effect `Glob`
+syntax through `FileSystem.glob`, walked from the workspace root, so the root's
+name is never read as a pattern. Reject conflicting replacements of the same occurrence. Broad regex or semantic
 symbol replacement is not required for the initial literal-token implementation.
 
 ## Flow and failure behavior
