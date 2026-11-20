@@ -443,7 +443,7 @@ const previousVersions = (members: ReadonlyArray<Member>) => {
 	if (empty.length > 0) {
 		fail(
 			"NoPrevious",
-			`${empty.join(", ")} ${empty.length === 1 ? "has" : "have"} an empty history, so there is no previous version to descend from. State previous explicitly.`,
+			`${empty.join(", ")} ${empty.length === 1 ? "has" : "have"} an empty history, so there is no previous version to descend from. Register an initial version in the package history first.`,
 			empty,
 		);
 	}
@@ -489,6 +489,18 @@ const describeIssue = (entry: StandardSchemaV1.Issue) => {
 };
 
 /**
+ * Whether a callback returned a thenable (including a Promise from another realm). Planning
+ * is synchronous and never awaits it, so a rejection is handled here instead of surfacing
+ * as an unhandled rejection after the refusal.
+ */
+const ignoreAsync = (result: unknown): boolean => {
+	if (!Predicate.isPromiseLike(result)) return false;
+	result.then(undefined, () => undefined);
+
+	return true;
+};
+
+/**
  * Validates strategy input with its schema, synchronously, and returns the schema's
  * output. A strategy without a schema takes no input.
  */
@@ -512,10 +524,7 @@ const validateInput = (strategy: LooseStrategy, value: unknown, where: string): 
 			[strategy.name],
 		);
 	}
-	// Any thenable counts, including a Promise from another realm.
-	if (Predicate.isPromiseLike(result)) {
-		// Planning is synchronous; the result is never awaited.
-		result.then(undefined, () => undefined);
+	if (ignoreAsync(result)) {
 		return fail(
 			"InvalidInput",
 			`${strategy.name}'s input schema validates asynchronously; planning needs synchronous validation.`,
@@ -559,6 +568,7 @@ const run = (
 		);
 	}
 	if (
+		ignoreAsync(result) ||
 		typeof result !== "object" ||
 		result === null ||
 		"then" in result ||
@@ -804,7 +814,7 @@ const buildPlan = (release: LooseRelease, input: LooseInput, owner: Release): Pl
 				members,
 				versions: released,
 			}) ?? [];
-		if (!Array.isArray(result)) {
+		if (ignoreAsync(result) || !Array.isArray(result)) {
 			fail("InvalidPolicyResult", "A dependents policy must synchronously return proposals.");
 		}
 		// The array shape is checked above.

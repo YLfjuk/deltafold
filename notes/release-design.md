@@ -325,7 +325,13 @@ can include private packages, docs, examples, and files outside group membership
 Include edits in the plan. Zero files/token matches are allowed and reported.
 All release globs (replacements, pending modules, `manifests`) use Effect `Glob`
 syntax through `FileSystem.glob`, walked from the workspace root, so the root's
-name is never read as a pattern. Reject conflicting replacements of the same occurrence. Broad regex or semantic
+name is never read as a pattern. Include and exclude globs, like manifest and
+pending globs, resolve against `base` first. With the config in `release/`, the
+files glob `../packages/*/src/**/*.ts` reaches sibling packages, but the
+exclusion `**/generated/**` means `release/**/generated/**` and misses them;
+write `../packages/*/src/**/generated/**` to exclude within the same scope.
+The group configuration example assumes its config file sits at the workspace
+root, so `configDirectory` there is the root. Reject conflicting replacements of the same occurrence. Broad regex or semantic
 symbol replacement is not required for the initial literal-token implementation.
 
 ## Flow and failure behavior

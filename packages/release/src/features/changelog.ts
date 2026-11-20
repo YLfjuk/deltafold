@@ -29,7 +29,10 @@ export type DependencyMetadata = { readonly dependencies?: ReadonlyArray<Depende
  *
  * @example
  * ```ts
- * const changelog = Changelog.make<MyMetadata & ReleaseChangelog.DependencyMetadata>({
+ * import { ReleaseChangelog } from "@deltafold/release/changelog";
+ * import { Changelog } from "deltafold/changelog";
+ *
+ * const changelog = Changelog.make<ReleaseChangelog.DependencyMetadata>({
  * 	plugins: [ReleaseChangelog.dependencies],
  * });
  * ```
@@ -72,9 +75,15 @@ const bumpSection = (bump: Bump, title: string) =>
  * Changes" by their `bump` metadata. Changes without a recognized bump fall into core's
  * "Other changes" section.
  *
+ * The changelog's type parameter is release metadata; the sections read each change's
+ * own `bump`.
+ *
  * @example
  * ```ts
- * const changelog = Changelog.make<ReleaseChange.Metadata & ReleaseChangelog.DependencyMetadata>({
+ * import { ReleaseChangelog } from "@deltafold/release/changelog";
+ * import { Changelog } from "deltafold/changelog";
+ *
+ * const changelog = Changelog.make<ReleaseChangelog.DependencyMetadata>({
  * 	sections: ReleaseChangelog.bySignificance,
  * 	plugins: [ReleaseChangelog.dependencies],
  * });

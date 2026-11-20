@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it } from "@effect/vitest";
-import { Result, SemVer } from "effect";
+import { Effect, Result, SemVer } from "effect";
 
 import {
 	DependentsPolicy,
@@ -338,6 +338,33 @@ describe("custom factories and strategies", () => {
 				}),
 			).reason,
 		).toBe("InvalidStrategyResult");
+	});
+
+	it.live("handles rejected asynchronous strategies and policies before refusing them", () => {
+		const rejecting = VersionStrategy.make<Impact, SemVerStrategy.Version>({
+			name: "rejecting",
+			scheme: SemVerStrategy.scheme,
+			// @ts-expect-error strategies are synchronous.
+			calculate: () => Promise.reject(new Error("strategy failed")),
+		});
+		const byStrategy = Release.make("app", {
+			packages: [member(app)],
+			change: TeamChange,
+			version: rejecting,
+		}).plan({ packages: [{ package: app, previous: "4.1.0", changes: [breaking] }] });
+		expect(failure(byStrategy).reason).toBe("InvalidStrategyResult");
+
+		const byPolicy = Release.make("app", {
+			packages: [member(app)],
+			change: TeamChange,
+			version: calendar,
+			// @ts-expect-error dependents policies are synchronous.
+			dependents: () => Promise.reject(new Error("policy failed")),
+		}).plan({ packages: [{ package: app, previous: "4.1.0", changes: [breaking] }] });
+		expect(failure(byPolicy).reason).toBe("InvalidPolicyResult");
+
+		// An unhandled rejection would surface after the refusal and fail the run.
+		return Effect.sleep("10 millis");
 	});
 
 	it("refuses plain functions, reports refusals, and wraps foreign throws", () => {
