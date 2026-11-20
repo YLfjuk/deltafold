@@ -113,6 +113,22 @@ describe("checkJson", () => {
 		);
 	});
 
+	it("allows a trailing comma only after a property or element", () => {
+		const original = '{"a":1,}';
+		for (const edited of ['{"b":1,}', "[1,]", '{"b":1, /* c */ }', "[[],]"]) {
+			expect({ edited, reason: checkJson(original, edited) }).toEqual({
+				edited,
+				reason: undefined,
+			});
+		}
+		for (const edited of ["{,}", "[,]", "[1,,]", '{"b":1,,}', "[ , ]"]) {
+			expect({ edited, reason: checkJson(original, edited) }).toEqual({
+				edited,
+				reason: "The edited JSON with comments does not parse",
+			});
+		}
+	});
+
 	it("keeps tokens apart where a block comment separated them", () => {
 		expect(checkJson('{"a":1,}', '{"a":1/*c*/2,}')).toBe(
 			"The edited JSON with comments does not parse",

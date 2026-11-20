@@ -1,6 +1,6 @@
 import * as NodeFileSystem from "@effect/platform-node-shared/NodeFileSystem";
 import * as NodePath from "@effect/platform-node-shared/NodePath";
-import { Effect, Layer, Path, Scope } from "effect";
+import { Effect, FileSystem, Layer, Path, Scope } from "effect";
 import { API } from "typescript-7.1/async";
 
 import * as Workspace from "../workspace.ts";
@@ -8,54 +8,81 @@ import * as Workspace from "../workspace.ts";
 const jsoncSuffix = ".deltafold.json";
 
 /**
- * The name under which the compiler opens a file. TypeScript 7.1.0-beta finds no
- * project for a `.jsonc` file, so such a file is opened as a hidden `.json` file next
- * to it, whose text the snapshot supplies. Nothing is written under that name.
- */
-const compilerPath = (path: string) => {
-	if (!/\.jsonc$/i.test(path)) return path;
-	const slash = path.lastIndexOf("/");
-
-	return `${path.slice(0, slash)}/.${path.slice(slash + 1)}${jsoncSuffix}`;
-};
-
-/**
  * Runs the TypeScript compiler bundled with this package as a child process. The
  * process starts on the first snapshot and stops when the layer's scope closes. It is
  * never restarted after a failure.
+ *
+ * TypeScript 7.1.0-beta finds no project for a `.jsonc` file, so each snapshot opens
+ * such a file under a hidden `.json` name next to it, whose text the snapshot's
+ * file-system layer supplies. Nothing is written under that name. The name is chosen
+ * per snapshot so that it is free on disk and differs, ignoring case, from every
+ * opened file.
  */
-const compiler = (cwd: string): Effect.Effect<Workspace.Compiler, never, Scope.Scope> =>
+const compiler = (
+	cwd: string,
+): Effect.Effect<Workspace.Compiler, never, Scope.Scope | FileSystem.FileSystem> =>
 	Effect.gen(function* () {
+		const fs = yield* FileSystem.FileSystem;
 		let api: API | undefined;
 		yield* Effect.addFinalizer(() =>
 			api === undefined ? Effect.void : Effect.ignore(Effect.promise(() => api!.close())),
 		);
 
+		const allocate = (path: string, taken: Set<string>) =>
+			Effect.gen(function* () {
+				const slash = path.lastIndexOf("/");
+				for (let attempt = 0; attempt < 16; attempt++) {
+					const token = Math.random().toString(36).slice(2, 10);
+					const candidate = `${path.slice(0, slash)}/.${path.slice(slash + 1)}.${token}${jsoncSuffix}`;
+					if (taken.has(candidate.toLowerCase())) continue;
+					// A name whose existence cannot be checked counts as taken.
+					if (yield* fs.exists(candidate).pipe(Effect.orElseSucceed(() => true)))
+						continue;
+					taken.add(candidate.toLowerCase());
+
+					return candidate;
+				}
+
+				return yield* new Workspace.CompilerUnavailable({
+					cause: new Error(`Could not choose a compiler name for ${path}`),
+				});
+			});
+
 		return {
-			open: (files) => {
-				const aliased = Object.fromEntries(
-					files
-						.filter((file) => compilerPath(file.path) !== file.path)
-						.map((file) => [compilerPath(file.path), file.text]),
-				);
+			open: (files) =>
+				Effect.gen(function* () {
+					const taken = new Set(files.map((file) => file.path.toLowerCase()));
+					const aliases = new Map<string, string>();
+					for (const file of files) {
+						if (/\.jsonc$/i.test(file.path))
+							aliases.set(file.path, yield* allocate(file.path, taken));
+					}
+					const compilerPath = (path: string) => aliases.get(path) ?? path;
+					const layered = Object.fromEntries(
+						files
+							.filter((file) => aliases.has(file.path))
+							.map((file) => [compilerPath(file.path), file.text]),
+					);
 
-				return Effect.acquireRelease(
-					Effect.tryPromise({
-						try: () => {
-							api ??= new API({ cwd });
+					const snapshot = yield* Effect.acquireRelease(
+						Effect.tryPromise({
+							try: () => {
+								api ??= new API({ cwd });
 
-							return api.createSnapshot({
-								openFiles: files.map((file) => compilerPath(file.path)),
-								...(Object.keys(aliased).length === 0
-									? {}
-									: { fileSystem: { kind: "layer", files: aliased } }),
-							});
-						},
-						catch: (cause) => new Workspace.CompilerUnavailable({ cause }),
-					}),
-					(snapshot) => Effect.ignore(Effect.promise(() => snapshot.dispose())),
-				).pipe(Effect.map((snapshot) => ({ snapshot, compilerPath })));
-			},
+								return api.createSnapshot({
+									openFiles: files.map((file) => compilerPath(file.path)),
+									...(aliases.size === 0
+										? {}
+										: { fileSystem: { kind: "layer", files: layered } }),
+								});
+							},
+							catch: (cause) => new Workspace.CompilerUnavailable({ cause }),
+						}),
+						(opened) => Effect.ignore(Effect.promise(() => opened.dispose())),
+					);
+
+					return { snapshot, compilerPath };
+				}),
 		};
 	});
 
