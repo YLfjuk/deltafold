@@ -12,17 +12,33 @@ import {
 } from "effect";
 import type { Snapshot } from "typescript-7.1/async";
 
-import { CompilerFailed, ReadFailed, WriteFailed, type WriteStatus } from "./errors.ts";
+import { CompilerFailed, ReadFailed, WriteFailed } from "./errors.ts";
 import { byCodePoint, isContainedPattern, swapCase, toPosix } from "./paths.ts";
 
+/** A file to open in a snapshot: its absolute, `/`-separated path and its text without a byte order mark. */
+export type OpenFile = {
+	readonly path: string;
+	readonly text: string;
+};
+
 /**
- * Opens compiler snapshots for absolute, `/`-separated file paths. The Node entry point
- * provides one that runs the TypeScript compiler.
+ * An open snapshot and the file name under which the compiler knows each opened file.
+ * The compiler can know a file under another name, such as a `.jsonc` file that it
+ * only opens with a `.json` extension.
+ */
+export type Opened = {
+	readonly snapshot: Snapshot;
+	readonly compilerPath: (path: string) => string;
+};
+
+/**
+ * Opens compiler snapshots. The Node entry point provides one that runs the
+ * TypeScript compiler.
  */
 export type Compiler = {
 	readonly open: (
-		files: ReadonlyArray<string>,
-	) => Effect.Effect<Snapshot, CompilerUnavailable, Scope.Scope>;
+		files: ReadonlyArray<OpenFile>,
+	) => Effect.Effect<Opened, CompilerUnavailable, Scope.Scope>;
 };
 
 /** A compiler that could not open a snapshot, with the original failure. */
@@ -55,10 +71,11 @@ export type Internals = {
 		actionId: string,
 		writes: ReadonlyArray<Write>,
 	) => Effect.Effect<void, WriteFailed>;
+	/** Opens root-relative files, with their text without a byte order mark. */
 	readonly open: (
 		actionId: string,
-		paths: ReadonlyArray<string>,
-	) => Effect.Effect<Snapshot, CompilerFailed, Scope.Scope>;
+		files: ReadonlyArray<OpenFile>,
+	) => Effect.Effect<Opened, CompilerFailed, Scope.Scope>;
 };
 
 /**
@@ -73,8 +90,10 @@ export type Workspace = {
 	/**
 	 * Holds the locks of root-relative paths until the current scope closes. Handlers of
 	 * this package lock every file they may write; a custom handler that writes the same
-	 * files can take the same locks. Locks are acquired in sorted order and are not
-	 * reentrant: a fiber that locks a path it already holds waits forever.
+	 * files can take the same locks. Paths are normalized first, so `./a.ts` and `a.ts`
+	 * share a lock. Locks are acquired in sorted order, waiting for one can be
+	 * interrupted, and they are not reentrant: a fiber that locks a path it already
+	 * holds waits until it is interrupted.
 	 */
 	readonly lock: (paths: ReadonlyArray<string>) => Effect.Effect<void, never, Scope.Scope>;
 	readonly [InternalId]: Internals;
@@ -90,7 +109,8 @@ export const Workspace = Context.Service<Workspace>("@deltafold/typescript/Works
 /** The workspace operations that only the handlers of this package use. */
 export const internals = (workspace: Workspace): Internals => workspace[InternalId];
 
-const temporarySuffix = ".deltafold-tmp";
+/** The suffix of the write step's temporary files. Matching never selects them. */
+export const temporarySuffix = ".deltafold-tmp";
 
 /** Decodes UTF-8 file bytes and keeps a leading byte order mark. */
 const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
@@ -119,7 +139,8 @@ export const make = (options: {
 				Effect.orElseSucceed(() => false),
 			));
 
-		const absolute = (relative: string) => `${root}/${relative}`;
+		// Joining resolves `.` and `..` segments, so aliases of one file share a lock key.
+		const absolute = (relative: string) => toPosix(path.join(root, relative));
 		const canonical = (absolutePath: string) => {
 			const posix = toPosix(absolutePath);
 
@@ -136,7 +157,14 @@ export const make = (options: {
 				);
 				for (const key of keys) {
 					const semaphore = yield* RcMap.get(semaphores, key);
-					yield* Effect.acquireRelease(semaphore.take(1), () => semaphore.release(1));
+					// Waiting for the permit stays interruptible; once taken, its release is
+					// registered before anything can interrupt.
+					yield* Effect.uninterruptibleMask((restore) =>
+						Effect.andThen(
+							restore(semaphore.take(1)),
+							Effect.addFinalizer(() => semaphore.release(1)),
+						),
+					);
 				}
 			});
 
@@ -158,7 +186,9 @@ export const make = (options: {
 							exclude: ["**/node_modules", "**/node_modules/**"],
 						})
 						.pipe(Effect.mapError(readFailed(actionId, pattern, "unreadable")));
-					for (const matched of matches) found.add(toPosix(matched));
+					for (const matched of matches) {
+						if (!matched.endsWith(temporarySuffix)) found.add(toPosix(matched));
+					}
 				}
 
 				const files: Array<string> = [];
@@ -194,9 +224,11 @@ export const make = (options: {
 			);
 
 		const write = (actionId: string, writes: ReadonlyArray<Write>) => {
+			// A failure before the first rename leaves every original unchanged, so every
+			// other file is still pending. While renaming, only later files are.
 			const failed = (
 				index: number,
-				status: WriteStatus,
+				phase: "staging" | "renaming",
 				reason: string,
 				written: ReadonlyArray<string>,
 				cause?: unknown,
@@ -205,8 +237,17 @@ export const make = (options: {
 					actionId,
 					root,
 					writtenPaths: written,
-					failed: { path: writes[index]!.path, status, reason, cause },
-					pendingPaths: writes.slice(index + 1).map((entry) => entry.path),
+					failed: {
+						path: writes[index]!.path,
+						status: phase === "staging" ? "not-written" : "unknown",
+						reason,
+						cause,
+					},
+					pendingPaths: writes
+						.filter((_, other) =>
+							phase === "staging" ? other !== index : other > index,
+						)
+						.map((entry) => entry.path),
 				});
 
 			const temporaries = writes.map(({ path: relative }) => {
@@ -235,7 +276,7 @@ export const make = (options: {
 						Effect.mapError((cause) =>
 							failed(
 								index,
-								"not-written",
+								"staging",
 								`Could not write a temporary file: ${errorMessage(cause)}`,
 								[],
 								cause,
@@ -249,7 +290,7 @@ export const make = (options: {
 						Effect.mapError((cause) =>
 							failed(
 								index,
-								"not-written",
+								"staging",
 								`Could not read the file: ${errorMessage(cause)}`,
 								[],
 								cause,
@@ -259,7 +300,7 @@ export const make = (options: {
 					if (current !== entry.expected) {
 						return yield* failed(
 							index,
-							"not-written",
+							"staging",
 							"The file changed after it was read",
 							[],
 						);
@@ -274,7 +315,7 @@ export const make = (options: {
 							Effect.mapError((cause) =>
 								failed(
 									index,
-									"unknown",
+									"renaming",
 									`Could not replace the file: ${errorMessage(cause)}`,
 									written,
 									cause,
@@ -288,18 +329,20 @@ export const make = (options: {
 			}).pipe(Effect.asVoid, Effect.ensuring(cleanup), Effect.uninterruptible);
 		};
 
-		const open = (actionId: string, paths: ReadonlyArray<string>) =>
-			options.compiler.open(paths.map(absolute)).pipe(
-				Effect.mapError(
-					(error) =>
-						new CompilerFailed({
-							actionId,
-							root,
-							stage: "snapshot",
-							cause: error.cause,
-						}),
-				),
-			);
+		const open = (actionId: string, files: ReadonlyArray<OpenFile>) =>
+			options.compiler
+				.open(files.map((file) => ({ path: absolute(file.path), text: file.text })))
+				.pipe(
+					Effect.mapError(
+						(error) =>
+							new CompilerFailed({
+								actionId,
+								root,
+								stage: "snapshot",
+								cause: error.cause,
+							}),
+					),
+				);
 
 		return {
 			root,

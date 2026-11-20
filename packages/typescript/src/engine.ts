@@ -1,6 +1,6 @@
 import { Array as Arr, Cause, Context, Effect, Option, Result, Schema, Scope } from "effect";
 import type { SourceFile } from "typescript-7.1/ast";
-import type { Project as CompilerProject, Snapshot } from "typescript-7.1/async";
+import type { Project as CompilerProject } from "typescript-7.1/async";
 
 import { type Action, Handler } from "deltafold";
 import { applyEdits, type Edits, type FileEdit, makeEdits, splitByteOrderMark } from "./edits.ts";
@@ -19,7 +19,7 @@ import {
 import { checkJson, isJsonPath } from "./jsonc.ts";
 import { byCodePoint, compareCodePoints, ordering } from "./paths.ts";
 import type { Info } from "./project.ts";
-import { type Internals, internals, Workspace, type Write } from "./workspace.ts";
+import { type Internals, internals, type Opened, Workspace, type Write } from "./workspace.ts";
 
 /** Named Effect services that Promise transforms declare. */
 // oxlint-disable-next-line typescript/no-generated-empty-object-type -- Transforms without services declare an empty service map.
@@ -44,6 +44,10 @@ export type Unit = {
 	/** Whether any file of the unit has syntax errors. */
 	readonly blocked: boolean;
 	readonly workspace: Internals;
+	/** The root-relative path of a matched file, from any name the compiler uses for it. */
+	readonly pathOf: (fileName: string) => string | undefined;
+	/** The name under which the compiler knows a matched file. */
+	readonly compilerPath: (path: string) => string;
 	/** Edit helpers that accept nodes of the given root-relative paths only. */
 	readonly edits: (allowed: ReadonlyArray<string>) => Edits;
 };
@@ -89,18 +93,24 @@ const loadUnits = (
 	actionId: string,
 	root: string,
 	workspace: Internals,
-	snapshot: Snapshot,
+	opened: Opened,
 	paths: ReadonlyArray<string>,
 	raws: ReadonlyMap<string, string>,
 ) =>
 	Effect.gen(function* () {
+		const { snapshot } = opened;
+		const compilerPath = (path: string) => opened.compilerPath(workspace.absolute(path));
 		const byCanonical = new Map(
-			paths.map((path) => [workspace.canonical(workspace.absolute(path)), path]),
+			paths.flatMap((path) => [
+				[workspace.canonical(workspace.absolute(path)), path] as const,
+				[workspace.canonical(compilerPath(path)), path] as const,
+			]),
 		);
+		const pathOf = (fileName: string) => byCanonical.get(workspace.canonical(fileName));
 		const groups = new Map<string, { project: CompilerProject; files: Array<string> }>();
 		for (const path of paths) {
 			const project = yield* request(actionId, root, () =>
-				snapshot.getDefaultProjectForFile(workspace.absolute(path)),
+				snapshot.getDefaultProjectForFile(compilerPath(path)),
 			);
 			if (project === undefined) {
 				return yield* new CompilerFailed({
@@ -124,7 +134,7 @@ const loadUnits = (
 			let blocked = false;
 			for (const path of files) {
 				const sourceFile = yield* request(actionId, root, () =>
-					project.program.getSourceFile(workspace.absolute(path)),
+					project.program.getSourceFile(compilerPath(path)),
 				);
 				if (
 					sourceFile === undefined ||
@@ -133,7 +143,7 @@ const loadUnits = (
 					return yield* new ReadFailed({ actionId, root, path, reason: "changed" });
 				}
 				const diagnostics = yield* request(actionId, root, () =>
-					project.program.getSyntacticDiagnostics(workspace.absolute(path)),
+					project.program.getSyntacticDiagnostics(compilerPath(path)),
 				);
 				if (diagnostics.length > 0) {
 					blocked = true;
@@ -152,11 +162,11 @@ const loadUnits = (
 				const permitted = new Set(allowed);
 
 				return makeEdits((sourceFile) => {
-					const absolute = String(sourceFile.fileName);
-					const path = byCanonical.get(workspace.canonical(absolute));
+					const fileName = String(sourceFile.fileName);
+					const path = pathOf(fileName);
 					if (path === undefined || !permitted.has(path)) {
 						throw new EditRejected({
-							path: path ?? absolute,
+							path: path ?? fileName,
 							reason: "The transform may not edit this file",
 							ranges: [],
 						});
@@ -166,7 +176,17 @@ const loadUnits = (
 				});
 			};
 
-			units.push({ info, project, files, sources, blocked, workspace, edits });
+			units.push({
+				info,
+				project,
+				files,
+				sources,
+				blocked,
+				workspace,
+				pathOf,
+				compilerPath,
+				edits,
+			});
 		}
 
 		return { units, failures };
@@ -200,8 +220,11 @@ export const prepare = <C, R>(
 
 		const { failures, edits, projects } = yield* Effect.scoped(
 			Effect.gen(function* () {
-				const snapshot = yield* workspace.open(action.id, paths);
-				const loaded = yield* loadUnits(action.id, root, workspace, snapshot, paths, raws);
+				const opened = yield* workspace.open(
+					action.id,
+					paths.map((path) => ({ path, text: splitByteOrderMark(raws.get(path)!).text })),
+				);
+				const loaded = yield* loadUnits(action.id, root, workspace, opened, paths, raws);
 				const collected: Array<Failure<C | AdapterCause>> = [...loaded.failures];
 				const produced: Array<FileEdit> = [];
 				const owners = new Map<string, Info>();

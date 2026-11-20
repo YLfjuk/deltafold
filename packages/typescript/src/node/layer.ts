@@ -5,6 +5,20 @@ import { API } from "typescript-7.1/async";
 
 import * as Workspace from "../workspace.ts";
 
+const jsoncSuffix = ".deltafold.json";
+
+/**
+ * The name under which the compiler opens a file. TypeScript 7.1.0-beta finds no
+ * project for a `.jsonc` file, so such a file is opened as a hidden `.json` file next
+ * to it, whose text the snapshot supplies. Nothing is written under that name.
+ */
+const compilerPath = (path: string) => {
+	if (!/\.jsonc$/i.test(path)) return path;
+	const slash = path.lastIndexOf("/");
+
+	return `${path.slice(0, slash)}/.${path.slice(slash + 1)}${jsoncSuffix}`;
+};
+
 /**
  * Runs the TypeScript compiler bundled with this package as a child process. The
  * process starts on the first snapshot and stops when the layer's scope closes. It is
@@ -18,18 +32,30 @@ const compiler = (cwd: string): Effect.Effect<Workspace.Compiler, never, Scope.S
 		);
 
 		return {
-			open: (files) =>
-				Effect.acquireRelease(
+			open: (files) => {
+				const aliased = Object.fromEntries(
+					files
+						.filter((file) => compilerPath(file.path) !== file.path)
+						.map((file) => [compilerPath(file.path), file.text]),
+				);
+
+				return Effect.acquireRelease(
 					Effect.tryPromise({
 						try: () => {
 							api ??= new API({ cwd });
 
-							return api.createSnapshot({ openFiles: [...files] });
+							return api.createSnapshot({
+								openFiles: files.map((file) => compilerPath(file.path)),
+								...(Object.keys(aliased).length === 0
+									? {}
+									: { fileSystem: { kind: "layer", files: aliased } }),
+							});
 						},
 						catch: (cause) => new Workspace.CompilerUnavailable({ cause }),
 					}),
 					(snapshot) => Effect.ignore(Effect.promise(() => snapshot.dispose())),
-				),
+				).pipe(Effect.map((snapshot) => ({ snapshot, compilerPath })));
+			},
 		};
 	});
 
