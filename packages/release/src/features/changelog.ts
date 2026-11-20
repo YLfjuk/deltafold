@@ -1,4 +1,7 @@
-import { Document } from "deltafold/changelog";
+import { Predicate } from "effect";
+
+import { Changelog, Document } from "deltafold/changelog";
+import { Bump } from "./semver-strategy.ts";
 
 /**
  * One recorded range edit, as generated version modules write it.
@@ -56,3 +59,31 @@ export const dependencies: Document.Plugin<DependencyMetadata> =
 			});
 		},
 	});
+
+const bumpSection = (bump: Bump, title: string) =>
+	Changelog.section(`@deltafold/release/${bump}`, {
+		title,
+		select: (change) =>
+			Predicate.hasProperty(change.metadata, "bump") && change.metadata.bump === bump,
+	});
+
+/**
+ * Groups each release's changes under "Major Changes", "Minor Changes", and "Patch
+ * Changes" by their `bump` metadata. Changes without a recognized bump fall into core's
+ * "Other changes" section.
+ *
+ * @example
+ * ```ts
+ * const changelog = Changelog.make<ReleaseChange.Metadata & ReleaseChangelog.DependencyMetadata>({
+ * 	sections: ReleaseChangelog.byBump,
+ * 	plugins: [ReleaseChangelog.dependencies],
+ * });
+ * ```
+ *
+ * @since @next
+ */
+export const byBump: ReadonlyArray<Changelog.SectionDefinition> = [
+	bumpSection(Bump.Major, "Major Changes"),
+	bumpSection(Bump.Minor, "Minor Changes"),
+	bumpSection(Bump.Patch, "Patch Changes"),
+];

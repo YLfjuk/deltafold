@@ -258,6 +258,9 @@ included. The generated version module records the range edits as release
 metadata, `Version.withMetadata(version, { dependencies })`, and
 `ReleaseChangelog.dependencies`, from the `@deltafold/release/changelog`
 entry, renders them as "Updated Dependencies".
+The same entry exports `ReleaseChangelog.byBump`, section definitions that
+group a release's changes under "Major Changes", "Minor Changes", and "Patch
+Changes" by their `bump` metadata, for `Changelog.make({ sections })`.
 Preparation refuses when a manifest's range no longer matches the edge the plan
 used, or when `explicit` reports a missing selection.
 
