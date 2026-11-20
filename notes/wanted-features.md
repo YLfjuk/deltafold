@@ -108,7 +108,7 @@ against the config file's directory.
 Status: wanted; needs a core change.
 
 Core changelog plugins can add blocks but cannot register the sections that
-changes are grouped into. When they can, `ReleaseChangelog.byBump` can become
+changes are grouped into. When they can, `ReleaseChangelog.bySignificance` can become
 a plugin with the same output, so one plugin entry gives a bump-grouped layout.
 
 ## Lockfile updates
