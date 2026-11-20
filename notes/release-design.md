@@ -290,7 +290,10 @@ it. Absolute paths are accepted only inside the workspace `root`, and anything
 outside is refused with `OutsideWorkspace`, as are drive-relative Windows paths
 such as `C:dir`. Manifest edits write version ids as JSON string content. Reports, edits, and requirement
 manifests use workspace-relative paths. A `<root>/` prefix for workspace-relative
-configuration is future work.
+configuration is future work. Path handling is plain string arithmetic that
+treats POSIX and Windows drive paths alike on any host; moving its filesystem
+side onto Effect's `Path` service is deferred until the release CLI provides
+platform layers.
 
 Build metadata (a `+...` suffix) is refused by `SemVerStrategy` in previous
 versions, baselines, and targets, because it does not affect precedence. The
