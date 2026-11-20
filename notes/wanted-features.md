@@ -67,6 +67,18 @@ calendar versions, and dependency-range policies for schemes other than SemVer.
 Do not generalize these in advance. A later breaking API change is acceptable
 when supported by real usage.
 
+## Rename replacements
+
+Status: wanted after the release CLI; needs the owner's design approval first.
+
+Replace a literal token in file names as well as contents, for example renaming
+`blog/v-next.md` to the released version. The proposed scope is a `kind:
+"path"` replacement for the file name only, in text files, prepared as a create
+and a remove so review, freshness checks, and restore still apply. It would
+refuse destinations that clash or already exist, and version ids that are not
+plain file names. Directory renames, regular expressions, and value formatting
+are out of scope.
+
 ## Release CLI init
 
 Status: wanted; part of the release CLI, after plan and apply.

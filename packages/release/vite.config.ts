@@ -22,6 +22,7 @@ export default defineConfig({
 	pack: {
 		entry: {
 			index: "src/index.ts",
+			changelog: "src/changelog.ts",
 		},
 		format: ["esm"],
 		platform: "neutral",

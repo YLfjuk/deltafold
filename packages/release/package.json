@@ -20,11 +20,16 @@
 			"@deltafold/dev.src": "./src/index.ts",
 			"default": "./dist/index.js"
 		},
+		"./changelog": {
+			"@deltafold/dev.src": "./src/changelog.ts",
+			"default": "./dist/changelog.js"
+		},
 		"./package.json": "./package.json"
 	},
 	"publishConfig": {
 		"exports": {
 			".": "./dist/index.js",
+			"./changelog": "./dist/changelog.js",
 			"./package.json": "./package.json"
 		}
 	},

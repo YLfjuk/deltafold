@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { ReleaseChangelog } from "@deltafold/release";
+import { ReleaseChangelog } from "@deltafold/release/changelog";
 import { History, Package, Version } from "deltafold";
 import { Changelog } from "deltafold/changelog";
 import * as Markdown from "deltafold/markdown";
