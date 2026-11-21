@@ -111,6 +111,17 @@ Core changelog plugins can add blocks but cannot register the sections that
 changes are grouped into. When they can, `ReleaseChangelog.bySignificance` can become
 a plugin with the same output, so one plugin entry gives a bump-grouped layout.
 
+## Runtime version discovery
+
+Status: idea; needs design.
+
+A helper could build a package's history by scanning its versions directory and
+loading the generated modules, ordered by their `previous` links. That would
+need a file system and a TypeScript module loader at the runtime boundary, and
+version ids would no longer be inferred as literal types. The generated version
+index stays the default way to register versions; discovery could serve tools,
+such as the release CLI, that need a history without importing `package.ts`.
+
 ## Lockfile updates
 
 Status: wanted; opt-in.
