@@ -6,7 +6,12 @@ import { ReleaseChangelog } from "@deltafold/release/changelog";
 import { History, Package, Version } from "deltafold";
 import { Changelog } from "deltafold/changelog";
 import * as Markdown from "deltafold/markdown";
-import { diagnostics, fixtureText, workspace } from "./__fixtures__/workspace.ts";
+import {
+	diagnostics,
+	fixtureText,
+	generatedFixtureText,
+	workspace,
+} from "./__fixtures__/workspace.ts";
 import { headers } from "./__fixtures__/workspace/next-pending/headers.ts";
 import { timeout } from "./__fixtures__/workspace/pending/timeout.ts";
 import { adapter, configure, release, widgets } from "./__fixtures__/workspace/release.ts";
@@ -82,8 +87,12 @@ describe("fixture workspace consumer", () => {
 					],
 					removed: ["pending/timeout.ts"],
 				});
-				expect(files.get(generatedWidgets)).toBe(fixtureText("widgets-2.0.0.ts.txt"));
-				expect(files.get(generatedAdapter)).toBe(fixtureText("adapter-2.0.0.ts.txt"));
+				expect(files.get(generatedWidgets)).toBe(
+					generatedFixtureText("widgets-2.0.0.ts.txt"),
+				);
+				expect(files.get(generatedAdapter)).toBe(
+					generatedFixtureText("adapter-2.0.0.ts.txt"),
+				);
 				expect(files.get(widgetManifest)).toBe(
 					before.get(widgetManifest)?.replace("1.2.0", "2.0.0"),
 				);
@@ -113,7 +122,7 @@ describe("fixture workspace consumer", () => {
 
 				const changelog = Changelog.make<ReleaseChangelog.DependencyMetadata>({
 					sections: ReleaseChangelog.bySignificance,
-					plugins: [ReleaseChangelog.dependencies],
+					plugins: [ReleaseChangelog.dependencies({ verbose: true })],
 				});
 				const rendered = prepared.plan.versions.map((entry) => {
 					const pkg = entry.package === widgets.name ? widgets : adapter;
@@ -206,7 +215,7 @@ describe("fixture workspace consumer", () => {
 				});
 				for (const name of ["widgets", "adapter"]) {
 					expect(files.get(`packages/${name}/versions/2.0.1.ts`)).toBe(
-						fixtureText(`${name}-2.0.1.ts.txt`),
+						generatedFixtureText(`${name}-2.0.1.ts.txt`),
 					);
 					expect(files.get(`packages/${name}/package.json`)).toBe(
 						before.get(`packages/${name}/package.json`)?.replace('"2.0.0"', '"2.0.1"'),
