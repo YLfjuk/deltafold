@@ -7,7 +7,7 @@ import { Bump } from "./semver-strategy.ts";
 /**
  * One recorded range edit, as generated version modules write it.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type DependencyRecord = {
 	readonly dependency: string;
@@ -20,11 +20,11 @@ export type DependencyRecord = {
 /**
  * Release metadata that generated version modules attach for dependency updates.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type DependencyMetadata = { readonly dependencies?: ReadonlyArray<DependencyRecord> };
 
-/** @since @next */
+/** @since 0.0.1 */
 export type DependenciesOptions = {
 	/** Also render each edited manifest field and its range change. Defaults to `false`. */
 	readonly verbose?: boolean;
@@ -45,7 +45,7 @@ export type DependenciesOptions = {
  * });
  * ```
  *
- * @since @next
+ * @since 0.0.1
  */
 export const dependencies = (
 	options: DependenciesOptions = {},
@@ -105,7 +105,7 @@ const bumpSection = (bump: Bump, title: string) =>
  * });
  * ```
  *
- * @since @next
+ * @since 0.0.1
  */
 export const bySignificance: ReadonlyArray<Changelog.SectionDefinition> = [
 	bumpSection(Bump.Major, "Major Changes"),

@@ -4,7 +4,7 @@ import type { Order, Result } from "effect";
  * How version ids are read, written, and ordered. A scheme has no bumping or prerelease
  * rules; those belong to a `VersionStrategy`.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type VersionScheme<V> = {
 	/** Shown in diagnostics, such as `"semver"`. */
@@ -20,6 +20,6 @@ export type VersionScheme<V> = {
 /**
  * Declares a version scheme.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const make = <V>(scheme: VersionScheme<V>): VersionScheme<V> => scheme;

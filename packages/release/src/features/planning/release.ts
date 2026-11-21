@@ -15,7 +15,7 @@ type AnyPackage = Package.Package<any>;
  * directory; absolute paths must be inside the workspace. `ReleaseFiles.at` builds this
  * from a package directory.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Files = {
 	/** The package manifest whose `version` field the release reads and updates. */
@@ -29,7 +29,7 @@ export type Files = {
 	readonly index?: boolean;
 };
 
-/** @since @next */
+/** @since 0.0.1 */
 export type Registration<M extends object> = {
 	readonly package: AnyPackage;
 	/**
@@ -44,7 +44,7 @@ export type Registration<M extends object> = {
 /**
  * Replaces a literal token with the version a package receives in this release.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Replacement = {
 	/** Glob patterns, relative to the release config file's directory. */
@@ -55,7 +55,7 @@ export type Replacement = {
 	readonly versionOf: AnyPackage;
 };
 
-/** @since @next */
+/** @since 0.0.1 */
 export type Config<
 	M extends object,
 	V,
@@ -100,7 +100,7 @@ type OwnsStrategy<R, E> = [E] extends [{ readonly version: VersionStrategy.Any }
 /**
  * An `input` field: required when the strategy's input type does not accept `undefined`.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type InputField<I> = undefined extends I ? { readonly input?: I } : { readonly input: I };
 
@@ -115,7 +115,7 @@ type RequiresInput<S> = [S] extends [never]
 /**
  * The message a per-package `input` gets when the package shares the group calculation.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type SharedInputError<N extends string> =
 	`${N} shares the group calculation; add version: <strategy> to calculate it with its own input`;
@@ -123,7 +123,7 @@ export type SharedInputError<N extends string> =
 /**
  * One package's part of a plan, checked against its registration.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Selection<M extends object, R, Shared, E> = SelectionFields<M, R, Shared, E> &
 	(OwnsStrategy<R, E> extends true
@@ -161,7 +161,7 @@ type SelectionFields<M extends object, R, Shared, E> = {
 /**
  * An element of a plan's `packages`: a registered package, bare, or a selection for it.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Entry<Rs extends ReadonlyArray<Registration<any>>> =
 	| Rs[number]["package"]
@@ -184,7 +184,7 @@ type Checked<
  * against its registration. A bare Package stands for a member with no changes and no
  * overrides, descending from the single head of its history.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Packages<
 	M extends object,
@@ -200,7 +200,7 @@ export type Packages<
 /**
  * The plan options besides `packages` and `requirements`.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Options<M extends object, V, I, D> = {
 	/**
@@ -220,7 +220,7 @@ export type Options<M extends object, V, I, D> = {
  * Plan input. Options replace the configured value at the same level; arrays replace,
  * and an empty array disables.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Input<
 	M extends object,
@@ -237,7 +237,7 @@ export type Input<
 /**
  * A version this plan creates.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type PlannedVersion<D = unknown> = {
 	readonly package: string;
@@ -261,7 +261,7 @@ export type PlannedVersion<D = unknown> = {
 /**
  * Where a member's previous version came from.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type PreviousFrom = "stated" | "history-head";
 
@@ -269,7 +269,7 @@ export type PreviousFrom = "stated" | "history-head";
  * A range edit in a dependent's manifest. Generated version modules record these as
  * release metadata, which `ReleaseChangelog.dependencies()` renders.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type DependencyUpdate = {
 	readonly dependent: string;
@@ -282,7 +282,7 @@ export type DependencyUpdate = {
 	readonly version: string;
 };
 
-/** @since @next */
+/** @since 0.0.1 */
 export type Unchanged = {
 	readonly package: string;
 	readonly version: string;
@@ -290,7 +290,7 @@ export type Unchanged = {
 	readonly previousFrom: PreviousFrom;
 };
 
-/** @since @next */
+/** @since 0.0.1 */
 export type Plan<M extends object = any, D = unknown> = {
 	readonly _tag: "ReleasePlan";
 	readonly release: Release<M>;
@@ -312,13 +312,13 @@ export type Plan<M extends object = any, D = unknown> = {
  * The details a plan's versions can carry: the shared strategy's and every registered
  * strategy's.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type PlanDetails<D, Rs extends ReadonlyArray<Registration<any>>> =
 	| D
 	| VersionStrategy.DetailsOf<NonNullable<Rs[number]["version"]>>;
 
-/** @since @next */
+/** @since 0.0.1 */
 export type Release<
 	M extends object = any,
 	V = any,
@@ -347,7 +347,7 @@ const fail = (...args: Parameters<typeof issue>): never => {
  * Release.heads(widgets).map((version) => version.id); // ["2.0.0", "1.5.3"]
  * ```
  *
- * @since @next
+ * @since 0.0.1
  */
 export const heads = (pkg: AnyPackage): ReadonlyArray<Version.Version> => {
 	const parents = new Set(pkg.history.versions.flatMap((version) => version.previous?.id ?? []));
@@ -987,7 +987,7 @@ const planOrError = (try_: () => Plan): Result.Result<Plan, PlanError> =>
  * const plan = release.plan({ packages: [{ package: widgets, changes: [retries] }] });
  * ```
  *
- * @since @next
+ * @since 0.0.1
  */
 export const make = <M extends object, V, I, D, const Rs extends ReadonlyArray<Registration<M>>>(
 	group: string,
@@ -1035,7 +1035,7 @@ export const make = <M extends object, V, I, D, const Rs extends ReadonlyArray<R
 /**
  * Plans once without keeping the group. It takes the same stable group identifier.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const plan = <
 	M extends object,

@@ -7,7 +7,7 @@ import * as paths from "./paths.ts";
 /**
  * A pending change module: its workspace-relative path, and its text.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type PendingSource = { readonly path: string; readonly text: string };
 
@@ -21,7 +21,7 @@ type Import = {
  * A pending module in the supported shape: imports, then exactly one
  * `export const name = <factory>.make("id", ...)` declaration.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Declaration = {
 	readonly path: string;
@@ -141,7 +141,7 @@ const unsupported = (path: string, detail: string): Issue =>
  * Reads a pending module without evaluating it. Unsupported shapes are reported, never
  * rewritten.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const scan = (source: PendingSource): Declaration | Issue => {
 	const imports: Array<Import> = [];
@@ -207,21 +207,21 @@ export const scan = (source: PendingSource): Declaration | Issue => {
 /**
  * The directory part of a path. Absolute POSIX and Windows drive paths keep their prefix.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const dirname: (path: string) => string = paths.dirname;
 
 /**
  * Joins and normalizes path parts with "/". An absolute part restarts the path.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const join: (...parts: ReadonlyArray<string>) => string = paths.join;
 
 /**
  * The module specifier from a directory to a file, starting with `./` or `../`.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const relative: (fromDirectory: string, to: string) => string = paths.relative;
 
@@ -248,7 +248,7 @@ const resolutions = (target: string): ReadonlyArray<string> => {
 	];
 };
 
-/** @since @next */
+/** @since 0.0.1 */
 export type RenderInput = {
 	readonly path: string;
 	readonly version: Version.Version;
@@ -265,7 +265,7 @@ export type RenderInput = {
  * Renders a generated version module from copied declarations. Relative imports are
  * re-pointed from the new location; nothing is evaluated.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const render = (
 	input: RenderInput,

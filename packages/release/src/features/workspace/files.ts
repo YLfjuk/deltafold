@@ -11,7 +11,7 @@ export type { ResolveOptions, Resolved, Snapshot, WithPrevious } from "./resolve
  * A version module that the plan's previous version can be imported from when it was
  * not generated into the versions directory.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type PreviousSource = {
 	readonly package: string;
@@ -45,7 +45,7 @@ export type PreviousSource = {
  * });
  * ```
  *
- * @since @next
+ * @since 0.0.1
  */
 export const at = (
 	dir: string,
@@ -56,7 +56,7 @@ export const at = (
 	...(options.index === undefined ? {} : { index: options.index }),
 });
 
-/** @since @next */
+/** @since 0.0.1 */
 export type PrepareOptions = Location & {
 	/** Glob patterns of pending change modules, relative to the release config file's directory. */
 	readonly pending: ReadonlyArray<string>;
@@ -68,7 +68,7 @@ export type PrepareOptions = Location & {
 /**
  * One file operation. `before` is `null` for a new file; `after` is `null` for a removal.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Edit = {
 	readonly path: string;
@@ -76,7 +76,7 @@ export type Edit = {
 	readonly after: string | null;
 };
 
-/** @since @next */
+/** @since 0.0.1 */
 export type ReplacementReport = {
 	readonly match: string;
 	readonly versionOf: string;
@@ -90,7 +90,7 @@ export type ReplacementReport = {
  * A reviewed set of local file edits. `reads` holds every file preparation depended on,
  * so `apply` can refuse when any of them changed.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Prepared = {
 	readonly _tag: "PreparedRelease";
@@ -110,7 +110,7 @@ export type Prepared = {
 	}>;
 };
 
-/** @since @next */
+/** @since 0.0.1 */
 export type Applied = {
 	readonly written: ReadonlyArray<string>;
 	readonly removed: ReadonlyArray<string>;

@@ -4,13 +4,13 @@ import type { StandardSchemaV1 } from "effect/StandardSchema";
 import type { Change } from "deltafold";
 import type * as VersionScheme from "./version-scheme.ts";
 
-/** @since @next */
+/** @since 0.0.1 */
 export const TypeId = "~@deltafold/release/VersionStrategy";
 
 /**
  * One package taking part in a calculation.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Participant<M extends object, V> = {
 	readonly package: string;
@@ -25,7 +25,7 @@ export type Participant<M extends object, V> = {
 	readonly dependencies: ReadonlyArray<string>;
 };
 
-/** @since @next */
+/** @since 0.0.1 */
 export type Context<M extends object, V, I> = {
 	readonly participants: ReadonlyArray<Participant<M, V>>;
 	/** Per-plan options the strategy defines, such as SemVer's `{ pre }`. */
@@ -35,7 +35,7 @@ export type Context<M extends object, V, I> = {
 /**
  * A strategy's result for one calculation.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Calculation<V, D> = {
 	/** The version every participant receives, unless `versions` names it otherwise. */
@@ -57,7 +57,7 @@ export type Calculation<V, D> = {
  * planner may call it several times for one plan. Build one with `VersionStrategy.make`;
  * plain functions are not strategies.
  *
- * @since @next
+ * @since 0.0.1
  */
 export interface VersionStrategy<M extends object, V, I = undefined, D = undefined> {
 	(context: Context<M, V, I>): Calculation<V, D>;
@@ -74,24 +74,24 @@ export interface VersionStrategy<M extends object, V, I = undefined, D = undefin
 /**
  * Any version strategy.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Any = VersionStrategy<any, any, any, any>;
 
-/** @since @next */
+/** @since 0.0.1 */
 export type InputOf<S> = S extends VersionStrategy<any, any, infer I, any> ? I : never;
 
-/** @since @next */
+/** @since 0.0.1 */
 export type VersionOf<S> = S extends VersionStrategy<any, infer V, any, any> ? V : never;
 
-/** @since @next */
+/** @since 0.0.1 */
 export type DetailsOf<S> = S extends VersionStrategy<any, any, any, infer D> ? D : never;
 
 /**
  * The input schema option: required when the strategy declares an input type, and absent
  * when it takes none, so an input type always has a schema behind it.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type InputOption<I> = [I] extends [undefined]
 	? { readonly input?: undefined }
@@ -113,7 +113,7 @@ export type InputOption<I> = [I] extends [undefined]
  * });
  * ```
  *
- * @since @next
+ * @since 0.0.1
  */
 export const make = <M extends object = object, V = never, I = undefined, D = undefined>(
 	options: {
@@ -132,7 +132,7 @@ export const make = <M extends object = object, V = never, I = undefined, D = un
 	} as const);
 };
 
-/** @since @next */
+/** @since 0.0.1 */
 export const isVersionStrategy = (value: unknown): value is Any =>
 	Predicate.isFunction(value) && TypeId in value;
 
@@ -140,7 +140,7 @@ export const isVersionStrategy = (value: unknown): value is Any =>
  * A deliberate refusal by a strategy. The planner reports it as `StrategyRefused`, naming
  * the strategy.
  *
- * @since @next
+ * @since 0.0.1
  */
 export class StrategyRefusal extends Error {
 	readonly subjects: ReadonlyArray<string>;
@@ -156,7 +156,7 @@ export class StrategyRefusal extends Error {
  * Refuses the calculation with a reason. Use it instead of throwing other errors, which
  * the planner reports as invalid strategy results.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const refuse = (message: string, subjects: ReadonlyArray<string> = []): never => {
 	throw new StrategyRefusal(message, subjects);

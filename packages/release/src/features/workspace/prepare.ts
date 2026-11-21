@@ -29,7 +29,7 @@ const plainFileName = /^(?!\.{1,2}$)[^/\\:\0]+$/;
  * Reads pending modules, manifests, and replacement targets, and prepares every file
  * edit of a plan. It writes nothing. Problems are collected and reported together.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const prepare = (
 	plan: Plan,

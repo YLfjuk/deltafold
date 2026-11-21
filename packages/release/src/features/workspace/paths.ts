@@ -90,7 +90,7 @@ export const relative = (fromDirectory: string, to: string): string => {
 /**
  * Where release files are found.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Location = {
 	/**
