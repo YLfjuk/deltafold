@@ -25,11 +25,23 @@ export type PreviousSource = {
  * File locations for a package directory. `manifest` is required: deltafold does not
  * assume a manifest name. `versions` defaults to `.deltafold/versions` inside `dir`.
  *
+ * Apply also keeps `index.ts` in the versions directory. It exports the versions apply
+ * generated, in release order, as `versions`. Earlier versions stay where they are, so the
+ * package's history spreads the index after them once; `index: false` turns the index off.
+ *
  * @example
  * ```ts
  * Release.make("widgets", {
  * 	packages: [{ package: widgets, files: ReleaseFiles.at("packages/widgets", { manifest: "package.json" }) }],
  * 	// ...
+ * });
+ *
+ * // packages/widgets/src/package.ts
+ * import { version as initial } from "../.deltafold/versions/1.5.2.ts";
+ * import { versions } from "../.deltafold/versions/index.ts";
+ *
+ * export const widgets = Package.make("@acme/widgets", {
+ * 	history: History.make({ versions: [initial, ...versions], migrations: [] }),
  * });
  * ```
  *
@@ -37,10 +49,11 @@ export type PreviousSource = {
  */
 export const at = (
 	dir: string,
-	options: { readonly manifest: string; readonly versions?: string },
+	options: { readonly manifest: string; readonly versions?: string; readonly index?: boolean },
 ): Files => ({
 	manifest: join(dir, options.manifest),
 	versions: join(dir, options.versions ?? ".deltafold/versions"),
+	...(options.index === undefined ? {} : { index: options.index }),
 });
 
 /** @since @next */

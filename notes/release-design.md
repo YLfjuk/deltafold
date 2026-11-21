@@ -280,9 +280,33 @@ Generated modules export the version and, when dependencies were updated, its
 release metadata; they record no prerelease state. Custom output layouts are
 deferred.
 
+Apply also keeps a version index, `index.ts` in the versions directory, in the
+same prepared edits as the new version module and the manifest, so the freshness
+checks and failure recovery cover it. The index exports, as `versions`, every
+version apply generated, in release order; it never lists versions written by
+hand, inline, or at adoption. Those stay in the package's handwritten history,
+which spreads the index after them once, so later releases need no source edit:
+
+```ts
+import { version as initial } from "../.deltafold/versions/1.5.2.ts";
+import { versions } from "../.deltafold/versions/index.ts";
+
+export const widgets = Package.make("@acme/widgets", {
+	history: History.make({ versions: [initial, ...versions], migrations }),
+});
+```
+
+Migrations stay in the handwritten module. The index is on for every
+registration; `index: false` in `files` or `ReleaseFiles.at` turns it off.
+Preparation refuses an index that is not in the generated format
+(`InvalidVersionIndex`), members that share a versions directory while keeping
+an index (`SharedVersionsDirectory`), and the version id `index`. When a stated
+previous version is missing from the history, `UnknownPrevious` names the index
+to spread.
+
 Every registration has `files`: a required `manifest` path and a `versions`
 directory, written by hand or built by `ReleaseFiles.at(dir, { manifest,
-versions? })`. `versions` defaults to `.deltafold/versions` inside `dir`.
+versions?, index? })`. `versions` defaults to `.deltafold/versions` inside `dir`.
 deltafold never assumes a manifest name. A registration has no separate `dir`,
 so a directory and explicit files can never conflict. The manifest is a path for
 now; manifest adapters (for example `NpmManifest.at` or `CargoManifest.at`) may
@@ -433,6 +457,9 @@ Interface choices made by the prototype, open to revision:
 - Generated modules export the version, and release metadata for dependency
   updates. The previous version is imported from its generated module or an
   explicit source.
+- The version index lists generated versions only, and apply keeps it with the
+  version module and manifest; a second release resolves from the manifest
+  without a hand edit once the history spreads the index.
 - Source relocation accepts imports followed by exactly one
   `export const name = factory.make("id", ...)`. Dynamic imports, `import.meta`,
   re-exports, further bindings in the same statement, regular expressions and

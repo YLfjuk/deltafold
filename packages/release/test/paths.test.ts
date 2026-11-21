@@ -73,6 +73,7 @@ describe("locations", () => {
 				);
 				expect(prepared.edits.map((edit) => edit.path)).toEqual([
 					"packages/widgets/.deltafold/versions/1.6.0.ts",
+					"packages/widgets/.deltafold/versions/index.ts",
 					"packages/widgets/package.json",
 					"release/changes/retries.ts",
 				]);
