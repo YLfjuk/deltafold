@@ -206,9 +206,6 @@ importers:
       '@effect/tsgo':
         specifier: 'catalog:'
         version: 0.69.0
-      '@types/node':
-        specifier: 22.18.0
-        version: 22.18.0
       turbo:
         specifier: 'catalog:'
         version: 2.11.11
@@ -267,6 +264,9 @@ importers:
       '@effect/vitest':
         specifier: 'catalog:'
         version: 4.1.4(effect@4.1.2)(vitest@5.1.0)
+      '@types/node':
+        specifier: 22.18.0
+        version: 22.18.0
       deltafold:
         specifier: workspace:*
         version: link:../deltafold
