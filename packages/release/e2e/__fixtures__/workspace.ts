@@ -14,6 +14,9 @@ const root = resolve(fixtureDirectory, "workspace").replaceAll("\\", "/");
 export const fixtureText = (path: string) =>
 	readFileSync(resolve(fixtureDirectory, path), "utf8").replaceAll("\r\n", "\n");
 
+export const generatedFixtureText = (path: string) =>
+	fixtureText(path).replace("{{releaseVersion}}", releaseManifest.version);
+
 export const workspace = (options?: Parameters<typeof memoryFs>[1]) => {
 	const initial = Object.fromEntries(
 		readdirSync(root, { recursive: true, withFileTypes: true })
