@@ -11,7 +11,7 @@ export const release = Release.make("fixture-widgets", {
 		},
 		{
 			package: adapter,
-			files: ReleaseFiles.at("packages/adapter", { manifest: "package.json" }),
+			files: ReleaseFiles.at("packages/adapter", { manifest: "package.json", index: false }),
 		},
 	],
 	change: ProjectChange,

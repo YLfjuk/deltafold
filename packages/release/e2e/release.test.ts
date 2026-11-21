@@ -6,6 +6,7 @@ import { ReleaseChangelog } from "@deltafold/release/changelog";
 import { History, Package, Version } from "deltafold";
 import { Changelog } from "deltafold/changelog";
 import * as Markdown from "deltafold/markdown";
+import { loadPackage } from "./__fixtures__/load-package.ts";
 import {
 	diagnostics,
 	fixtureText,
@@ -24,20 +25,33 @@ const pendingHeaders = "packages/widgets/.deltafold/changes/headers.ts";
 const queuedHeaders = "workspace/packages/widgets/.deltafold/queued/headers.ts";
 const generatedWidgets = "packages/widgets/.deltafold/versions/2.0.0.ts";
 const generatedAdapter = "packages/adapter/.deltafold/versions/2.0.0.ts";
+const widgetsIndex = "packages/widgets/.deltafold/versions/index.ts";
+const adapterIndex = "packages/adapter/.deltafold/versions/index.ts";
+const adapterHistory = "packages/adapter/.deltafold/package.ts";
 const widgetManifest = "packages/widgets/package.json";
 const adapterManifest = "packages/adapter/package.json";
 
-const prepare = Effect.gen(function* () {
-	const resolved = yield* ReleaseFiles.resolve(release, {
-		packages: [{ package: widgets, changes: [timeout] }, adapter],
+const prepareFirst = (input?: Parameters<typeof release.plan>[0]["input"]) =>
+	Effect.gen(function* () {
+		const resolved = yield* ReleaseFiles.resolve(release, {
+			packages: [{ package: widgets, changes: [timeout] }, adapter],
+			input,
+		});
+		const result = release.plan(resolved.input);
+		if (Result.isFailure(result)) throw result.failure;
+		return yield* ReleaseFiles.prepare(result.success, {
+			pending: [pending],
+			snapshot: resolved.snapshot,
+		});
 	});
-	const result = release.plan(resolved.input);
-	if (Result.isFailure(result)) throw result.failure;
-	return yield* ReleaseFiles.prepare(result.success, {
-		pending: [pending],
-		snapshot: resolved.snapshot,
-	});
-});
+
+const prepare = prepareFirst();
+
+const updateAdapterHistory = (files: Map<string, string>, version: string) =>
+	files.set(
+		adapterHistory,
+		fixtureText("adapter-history.ts.txt").replace("{{previousVersion}}", version),
+	);
 
 describe("fixture workspace consumer", () => {
 	it.effect(
@@ -85,6 +99,7 @@ describe("fixture workspace consumer", () => {
 				expect(report).toEqual({
 					written: [
 						generatedWidgets,
+						widgetsIndex,
 						generatedAdapter,
 						widgetManifest,
 						adapterManifest,
@@ -99,6 +114,10 @@ describe("fixture workspace consumer", () => {
 				expect(files.get(generatedAdapter)).toBe(
 					generatedFixtureText("adapter-2.0.0.ts.txt"),
 				);
+				expect(files.get(widgetsIndex)).toBe(
+					generatedFixtureText("widgets-index-first.ts.txt"),
+				);
+				expect(files.has(adapterIndex)).toBe(false);
 				expect(files.get(widgetManifest)).toBe(
 					before.get(widgetManifest)?.replace("1.2.0", "2.0.0"),
 				);
@@ -160,83 +179,152 @@ describe("fixture workspace consumer", () => {
 		},
 	);
 
-	it.effect(
-		"uses the first release as history and manifest input for a second patch release",
-		() => {
-			const { files, provide } = workspace();
-			return Effect.gen(function* () {
-				const first = yield* prepare;
-				yield* ReleaseFiles.apply(first);
-				files.set(pendingHeaders, fixtureText(queuedHeaders));
-				const widgetVersion = first.plan.versions.find(
-					(entry) => entry.package === widgets.name,
-				)?.version;
-				const adapterVersion = first.plan.versions.find(
-					(entry) => entry.package === adapter.name,
-				)?.version;
-				if (widgetVersion === undefined || adapterVersion === undefined)
-					throw new Error("Missing released version");
-				const nextWidgets = Package.make(widgets.name, {
-					history: History.make({
-						versions: [...widgets.history.versions, widgetVersion],
-						migrations: [],
-					}),
-				});
-				const nextAdapter = Package.make(adapter.name, {
-					history: History.make({
-						versions: [...adapter.history.versions, adapterVersion],
-						migrations: [],
-					}),
-				});
-				const resolved = yield* ReleaseFiles.resolve(release, {
-					packages: [{ package: nextWidgets, changes: [headers] }, nextAdapter],
-				});
-				const result = release.plan(resolved.input);
-				if (Result.isFailure(result)) throw result.failure;
-				expect(
-					result.success.versions.map((entry) => [
-						entry.package,
-						entry.version.id,
-						entry.version.previous?.id,
-					]),
-				).toEqual([
-					[widgets.name, "2.0.1", "2.0.0"],
-					[adapter.name, "2.0.1", "2.0.0"],
-				]);
-				expect(result.success.dependencyUpdates).toEqual([]);
-				const prepared = yield* ReleaseFiles.prepare(result.success, {
-					pending: [pending],
-					snapshot: resolved.snapshot,
-				});
-				const before = new Map(files);
-				const report = yield* ReleaseFiles.apply(prepared);
-				expect(report).toEqual({
-					written: [
-						"packages/widgets/.deltafold/versions/2.0.1.ts",
-						"packages/adapter/.deltafold/versions/2.0.1.ts",
-						widgetManifest,
-						adapterManifest,
-					],
-					removed: [pendingHeaders],
-				});
-				for (const name of ["widgets", "adapter"]) {
-					expect(files.get(`packages/${name}/.deltafold/versions/2.0.1.ts`)).toBe(
-						generatedFixtureText(`${name}-2.0.1.ts.txt`),
-					);
-					expect(files.get(`packages/${name}/package.json`)).toBe(
-						before.get(`packages/${name}/package.json`)?.replace('"2.0.0"', '"2.0.1"'),
-					);
-				}
-				expect(files.has(pendingHeaders)).toBe(false);
-				for (const [path, contents] of before) {
-					if (![...report.written, ...report.removed].includes(path))
-						expect(files.get(path)).toBe(contents);
-				}
-				files.set("consumer.ts", fixtureText("second-consumer.ts.txt"));
-				expect(diagnostics(files)).toEqual([]);
-			}).pipe(provide);
-		},
-	);
+	it.effect("reloads indexed history and requires an explicit update for manual history", () => {
+		const { files, provide } = workspace();
+		return Effect.gen(function* () {
+			const first = yield* prepare;
+			yield* ReleaseFiles.apply(first);
+			files.set(pendingHeaders, fixtureText(queuedHeaders));
+			const nextWidgets = loadPackage(files, "widgets");
+			const staleAdapter = loadPackage(files, "adapter");
+			expect(nextWidgets.history.versions.map((version) => version.id)).toEqual([
+				"1.2.0",
+				"2.0.0",
+			]);
+			expect(staleAdapter.history.versions.map((version) => version.id)).toEqual(["1.2.0"]);
+			expect(files.has(adapterIndex)).toBe(false);
+			const stale = yield* ReleaseFiles.resolve(release, {
+				packages: [{ package: nextWidgets, changes: [headers] }, staleAdapter],
+			});
+			const refused = release.plan(stale.input);
+			if (Result.isSuccess(refused)) throw new Error("Expected stale manual history to fail");
+			expect(refused.failure).toMatchObject({
+				reason: "UnknownPrevious",
+				subjects: [adapter.name, "2.0.0"],
+			});
+
+			updateAdapterHistory(files, "2.0.0");
+			const nextAdapter = loadPackage(files, "adapter");
+			const resolved = yield* ReleaseFiles.resolve(release, {
+				packages: [{ package: nextWidgets, changes: [headers] }, nextAdapter],
+			});
+			const result = release.plan(resolved.input);
+			if (Result.isFailure(result)) throw result.failure;
+			expect(
+				result.success.versions.map((entry) => [
+					entry.package,
+					entry.version.id,
+					entry.version.previous?.id,
+				]),
+			).toEqual([
+				[widgets.name, "2.0.1", "2.0.0"],
+				[adapter.name, "2.0.1", "2.0.0"],
+			]);
+			expect(result.success.dependencyUpdates).toEqual([]);
+			const prepared = yield* ReleaseFiles.prepare(result.success, {
+				pending: [pending],
+				snapshot: resolved.snapshot,
+			});
+			const before = new Map(files);
+			const report = yield* ReleaseFiles.apply(prepared);
+			expect(report).toEqual({
+				written: [
+					"packages/widgets/.deltafold/versions/2.0.1.ts",
+					widgetsIndex,
+					"packages/adapter/.deltafold/versions/2.0.1.ts",
+					widgetManifest,
+					adapterManifest,
+				],
+				removed: [pendingHeaders],
+			});
+			for (const name of ["widgets", "adapter"]) {
+				expect(files.get(`packages/${name}/.deltafold/versions/2.0.1.ts`)).toBe(
+					generatedFixtureText(`${name}-2.0.1.ts.txt`),
+				);
+				expect(files.get(`packages/${name}/package.json`)).toBe(
+					before.get(`packages/${name}/package.json`)?.replace('"2.0.0"', '"2.0.1"'),
+				);
+			}
+			expect(files.has(pendingHeaders)).toBe(false);
+			expect(files.get(widgetsIndex)).toBe(
+				generatedFixtureText("widgets-index-second.ts.txt"),
+			);
+			expect(files.has(adapterIndex)).toBe(false);
+			expect(
+				loadPackage(files, "widgets").history.versions.map((version) => version.id),
+			).toEqual(["1.2.0", "2.0.0", "2.0.1"]);
+			for (const [path, contents] of before) {
+				if (![...report.written, ...report.removed].includes(path))
+					expect(files.get(path)).toBe(contents);
+			}
+			files.set("consumer.ts", fixtureText("second-consumer.ts.txt"));
+			expect(diagnostics(files)).toEqual([]);
+		}).pipe(provide);
+	});
+
+	it.effect("starts and continues a prerelease from the applied history", () => {
+		const { files, provide } = workspace();
+		return Effect.gen(function* () {
+			const first = yield* prepareFirst({ pre: { tag: "beta", continue: false } });
+			expect(
+				first.plan.versions.map((entry) => [
+					entry.package,
+					entry.version.id,
+					entry.version.previous?.id,
+				]),
+			).toEqual([
+				[widgets.name, "2.0.0-beta.0", "1.2.0"],
+				[adapter.name, "2.0.0-beta.0", "1.2.0"],
+			]);
+			yield* ReleaseFiles.apply(first);
+			for (const path of [widgetManifest, adapterManifest]) {
+				expect(files.get(path)).toContain('"version": "2.0.0-beta.0"');
+			}
+			expect(files.has(adapterIndex)).toBe(false);
+
+			files.set(pendingHeaders, fixtureText(queuedHeaders));
+			updateAdapterHistory(files, "2.0.0-beta.0");
+			const resolved = yield* ReleaseFiles.resolve(release, {
+				packages: [
+					{ package: loadPackage(files, "widgets"), changes: [headers] },
+					loadPackage(files, "adapter"),
+				],
+				input: { pre: { tag: "beta", continue: true } },
+			});
+			const continued = release.plan(resolved.input);
+			if (Result.isFailure(continued)) throw continued.failure;
+			expect(
+				continued.success.versions.map((entry) => [
+					entry.package,
+					entry.version.id,
+					entry.version.previous?.id,
+				]),
+			).toEqual([
+				[widgets.name, "2.0.0-beta.1", "2.0.0-beta.0"],
+				[adapter.name, "2.0.0-beta.1", "2.0.0-beta.0"],
+			]);
+			const prepared = yield* ReleaseFiles.prepare(continued.success, {
+				pending: [pending],
+				snapshot: resolved.snapshot,
+			});
+			expect((yield* ReleaseFiles.apply(prepared)).removed).toEqual([pendingHeaders]);
+			expect(files.has(adapterIndex)).toBe(false);
+			expect(
+				loadPackage(files, "widgets").history.versions.map((version) => [
+					version.id,
+					version.previous?.id,
+				]),
+			).toEqual([
+				["1.2.0", undefined],
+				["2.0.0-beta.0", "1.2.0"],
+				["2.0.0-beta.1", "2.0.0-beta.0"],
+			]);
+			for (const path of [widgetManifest, adapterManifest]) {
+				expect(files.get(path)).toContain('"version": "2.0.0-beta.1"');
+			}
+			expect(diagnostics(files)).toEqual([]);
+		}).pipe(provide);
+	});
 
 	it.effect(
 		"refuses reviewed artifacts after pending inputs and a replacement target change",
@@ -246,11 +334,12 @@ describe("fixture workspace consumer", () => {
 				const prepared = yield* prepare;
 				files.set("docs/guide.md", "External edit: @next.\n");
 				files.set(pendingHeaders, fixtureText(queuedHeaders));
+				files.set(widgetsIndex, "// External index edit.\n");
 				const beforeApply = new Map(files);
 				const error = yield* Effect.flip(ReleaseFiles.apply(prepared));
 				expect(error).toMatchObject({
 					_tag: "StalePlan",
-					paths: ["docs/guide.md", pendingHeaders],
+					paths: ["docs/guide.md", pendingHeaders, widgetsIndex],
 				});
 				expect(files).toEqual(beforeApply);
 			}).pipe(provide);
@@ -275,7 +364,7 @@ describe("fixture workspace consumer", () => {
 				expect(error).toMatchObject({
 					_tag: "ApplyFailed",
 					path: adapterManifest,
-					restored: [generatedAdapter, generatedWidgets],
+					restored: [generatedAdapter, widgetsIndex, generatedWidgets],
 					unrestored: [{ path: widgetManifest, cause: { _tag: "ChangedDuringApply" } }],
 				});
 				expect(files.get(widgetManifest)).toBe('"external manifest edit"\n');
