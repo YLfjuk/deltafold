@@ -262,7 +262,7 @@ export type PreviousFrom = "stated" | "history-head";
 
 /**
  * A range edit in a dependent's manifest. Generated version modules record these as
- * release metadata, which `ReleaseChangelog.dependencies` renders.
+ * release metadata, which `ReleaseChangelog.dependencies()` renders.
  *
  * @since @next
  */

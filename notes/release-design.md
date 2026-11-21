@@ -256,8 +256,9 @@ shared version, and a drifting group gives it its own patch. Planning repeats
 until no new dependent release appears, so dependents of dependents are
 included. The generated version module records the range edits as release
 metadata, `Version.withMetadata(version, { dependencies })`, and
-`ReleaseChangelog.dependencies`, from the `@deltafold/release/changelog`
-entry, renders them as "Updated Dependencies".
+`ReleaseChangelog.dependencies()`, from the `@deltafold/release/changelog`
+entry, renders them as "Updated Dependencies", one `name@version` entry each;
+`{ verbose: true }` adds the edited field and its range change.
 The same entry exports `ReleaseChangelog.bySignificance`, section definitions that
 group a release's changes under "Major Changes", "Minor Changes", and "Patch
 Changes" by their `bump` metadata, for `Changelog.make({ sections })`.

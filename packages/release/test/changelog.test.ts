@@ -12,13 +12,11 @@ describe("ReleaseChangelog.dependencies", () => {
 	const react = Package.make("@acme/widgets-react", {
 		history: History.make({ versions: [v140, v141], migrations: [] }),
 	});
-	const changelog = Changelog.make<ReleaseChangelog.DependencyMetadata>({
-		plugins: [ReleaseChangelog.dependencies],
-	});
-
-	it("renders recorded dependency updates and nothing for releases without them", () => {
-		const markdown = Markdown.render(
-			changelog.history(react, {
+	const render = (options?: ReleaseChangelog.DependenciesOptions) =>
+		Markdown.render(
+			Changelog.make<ReleaseChangelog.DependencyMetadata>({
+				plugins: [ReleaseChangelog.dependencies(options)],
+			}).history(react, {
 				releases: [
 					Version.withMetadata(v140, {}),
 					Version.withMetadata(v141, {
@@ -36,10 +34,18 @@ describe("ReleaseChangelog.dependencies", () => {
 			}),
 		);
 
-		expect(markdown).toContain(
+	it("renders recorded dependency updates and nothing for releases without them", () => {
+		const markdown = render();
+
+		expect(markdown).toContain("### Updated Dependencies\n\n- `@acme/widgets@2.0.0`\n");
+		expect(markdown).not.toContain("peerDependencies");
+		expect(markdown.match(/Updated Dependencies/g)).toHaveLength(1);
+	});
+
+	it("adds the edited field and range change when verbose", () => {
+		expect(render({ verbose: true })).toContain(
 			"### Updated Dependencies\n\n- `@acme/widgets@2.0.0` (peerDependencies: ^1.5.0 to ^2.0.0)",
 		);
-		expect(markdown.match(/Updated Dependencies/g)).toHaveLength(1);
 	});
 });
 
@@ -55,7 +61,7 @@ describe("ReleaseChangelog.bySignificance", () => {
 		});
 		const changelog = Changelog.make<ReleaseChangelog.DependencyMetadata>({
 			sections: ReleaseChangelog.bySignificance,
-			plugins: [ReleaseChangelog.dependencies],
+			plugins: [ReleaseChangelog.dependencies()],
 		});
 		const markdown = Markdown.render(
 			changelog.history(widgets, {
