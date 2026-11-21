@@ -30,7 +30,14 @@
 				"diagnostics": false,
 				"noExternal": true,
 				"importAliases": { "Array": "Arr" },
-				"allowedUnstableApis": ["@effect/vitest#it", "effect/Graph", "effect/SemVer"]
+				"allowedUnstableApis": [
+					"@effect/vitest#it",
+					"effect/FileSystem",
+					"effect/Graph",
+					"effect/PlatformError",
+					"effect/SemVer",
+					"effect/SemVerRange"
+				]
 			}
 		]
 	}

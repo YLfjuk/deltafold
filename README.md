@@ -9,6 +9,8 @@ early development.
 - [Requirements](notes/requirements.md): what the library must do.
 - [Decisions](notes/decisions.md): design decisions, provisional choices,
   limitations, unbuilt work, and open questions.
+- [Release design](notes/release-design.md): the `@deltafold/release` contract
+  and prototype findings.
 
 ## Development
 

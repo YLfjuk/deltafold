@@ -1,0 +1,52 @@
+{
+	"name": "@deltafold/release",
+	"version": "0.0.0",
+	"private": true,
+	"description": "Plan and apply local releases for packages modeled with deltafold.",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/YLfjuk/deltafold.git",
+		"directory": "packages/release"
+	},
+	"files": [
+		"dist",
+		"src"
+	],
+	"type": "module",
+	"sideEffects": false,
+	"exports": {
+		".": {
+			"@deltafold/dev.src": "./src/index.ts",
+			"default": "./dist/index.js"
+		},
+		"./changelog": {
+			"@deltafold/dev.src": "./src/changelog.ts",
+			"default": "./dist/changelog.js"
+		},
+		"./package.json": "./package.json"
+	},
+	"publishConfig": {
+		"exports": {
+			".": "./dist/index.js",
+			"./changelog": "./dist/changelog.js",
+			"./package.json": "./package.json"
+		}
+	},
+	"scripts": {
+		"build": "vp pack",
+		"typecheck": "tsc --noEmit",
+		"test": "vp test run"
+	},
+	"devDependencies": {
+		"@effect/vitest": "catalog:",
+		"deltafold": "workspace:*",
+		"effect": "catalog:",
+		"typescript": "catalog:",
+		"vite-plus": "catalog:"
+	},
+	"peerDependencies": {
+		"deltafold": "workspace:^",
+		"effect": "catalog:"
+	}
+}
