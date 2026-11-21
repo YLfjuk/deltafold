@@ -10,7 +10,7 @@ import { dirname, paths } from "./paths.ts";
  * read is unchanged, and refuses with `StalePlan` otherwise. On failure, it restores the
  * files it changed where it can.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const apply = (
 	prepared: Prepared,

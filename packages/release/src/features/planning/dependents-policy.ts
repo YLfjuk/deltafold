@@ -3,7 +3,7 @@ import { form, satisfies } from "../../foundation/npm/ranges.ts";
 /**
  * A dependency between workspace packages, resolved from manifests before planning.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Requirement = {
 	readonly dependency: string;
@@ -27,7 +27,7 @@ export type Requirement = {
  * - `cross-group`: the dependent is outside this group. It is reported, never added.
  * - `missing-selection`: the dependent needs a release that the plan does not select.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Action =
 	| "edit"
@@ -37,10 +37,10 @@ export type Action =
 	| "cross-group"
 	| "missing-selection";
 
-/** @since @next */
+/** @since 0.0.1 */
 export type Proposal = Requirement & { readonly action: Action };
 
-/** @since @next */
+/** @since 0.0.1 */
 export type Context = {
 	/** Requirements on packages this plan releases. */
 	readonly requirements: ReadonlyArray<Requirement>;
@@ -53,7 +53,7 @@ export type Context = {
  * Decides dependent work. It must return synchronously. Planning runs it until no new
  * `release` appears, so a dependent's own dependents are considered too.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Policy = (context: Context) => ReadonlyArray<Proposal>;
 
@@ -61,7 +61,7 @@ export type Policy = (context: Context) => ReadonlyArray<Proposal>;
  * When a range is rewritten: only when the new version falls outside it (the default), or
  * whenever the dependency is released.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Options = { readonly updateRanges?: "out-of-range" | "always" };
 
@@ -99,7 +99,7 @@ const decide = (
  * releases for public dependents whose range changes. Dependents outside the group are
  * reported as `cross-group`.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const propose =
 	(options: Options = {}): Policy =>
@@ -110,7 +110,7 @@ export const propose =
  * Like `propose`, but a required release that the plan does not select is reported as
  * `missing-selection`, and preparation refuses until it is selected.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const explicit =
 	(options: Options = {}): Policy =>

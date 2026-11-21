@@ -1,5 +1,11 @@
 # deltafold
 
+## 0.2.2
+
+### Patch Changes
+
+- 7cff57a: Keep a package's name as a literal type. `Package.make("@acme/widgets", { history })` now returns `Package.Package<A, "@acme/widgets">`. `Package.Package` takes an optional second type parameter for the name, defaulting to `string`, so existing `Package.Package<A>` annotations stay compatible.
+
 ## 0.2.1
 
 ### Patch Changes

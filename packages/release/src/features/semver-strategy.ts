@@ -10,7 +10,7 @@ import type { ValueOf } from "../types.ts";
 /**
  * Release magnitudes. A prerelease stage is chosen per plan, never per change.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const Bump = {
 	Major: "major",
@@ -18,7 +18,7 @@ export const Bump = {
 	Patch: "patch",
 } as const;
 
-/** @since @next */
+/** @since 0.0.1 */
 export type Bump = ValueOf<typeof Bump>;
 
 const isBump = Schema.is(Schema.Enum(Bump));
@@ -27,7 +27,7 @@ const isBump = Schema.is(Schema.Enum(Bump));
  * The SemVer value type, from Effect. Effect marks its SemVer module unstable, so this
  * type may change with Effect releases.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Version = SemVer.SemVer;
 
@@ -35,7 +35,7 @@ export type Version = SemVer.SemVer;
  * Canonical SemVer ids. Build metadata is accepted by the scheme, so literal targets such
  * as `1.6.0+build.4` pass through; the strategy refuses to calculate from it.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const scheme: VersionScheme.VersionScheme<Version> = VersionScheme.make({
 	name: "semver",
@@ -54,7 +54,7 @@ export const scheme: VersionScheme.VersionScheme<Version> = VersionScheme.make({
 /**
  * The prerelease choice of one plan. Omit it for a stable release.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Pre = {
 	readonly tag: string;
@@ -65,7 +65,7 @@ export type Pre = {
 /**
  * Per-plan input of the SemVer strategy.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Input = {
 	readonly pre?: Pre;
@@ -79,7 +79,7 @@ export type Input = {
 /**
  * The input schema, for reading input from outside TypeScript.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const InputSchema = Schema.Struct({
 	pre: Schema.optionalKey(Schema.Struct({ tag: Schema.String, continue: Schema.Boolean })),
@@ -91,7 +91,7 @@ export const InputSchema = Schema.Struct({
  * `2.0.0-beta.3` is on the line with target `2.0.0`, tag `beta`, and counter 3. Packages
  * share a line when its target and tag match.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Line = {
 	/** The nearest stable ancestor, absent when the line starts at the root of the history. */
@@ -105,14 +105,14 @@ export type Line = {
 /**
  * Details the SemVer strategy attaches to each planned version.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Details = { readonly line: Line | undefined };
 
 /**
  * A line as plain strings, for JSON output.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type EncodedLine = {
 	readonly baseline: string | undefined;
@@ -125,7 +125,7 @@ export type EncodedLine = {
  * Encodes a line with string versions. Effect SemVer values do not serialize to JSON as
  * ids, so use this for output.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const encodeLine = (line: Line): EncodedLine => ({
 	baseline: line.baseline === undefined ? undefined : SemVer.format(line.baseline),
@@ -139,7 +139,7 @@ export const encodeLine = (line: Line): EncodedLine => ({
  * its baseline is the first stable version in `ancestry`. Stable versions, and
  * prereleases in another shape, have no line.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const lineOf = (version: Version, ancestry: ReadonlyArray<Version>): Line | undefined => {
 	const [tag, counter, ...rest] = version.prerelease;
@@ -161,11 +161,11 @@ export const lineOf = (version: Version, ancestry: ReadonlyArray<Version>): Line
  * - `{ version }`: an explicit version, used for calculation only. Alignment does not
  *   apply to it; each package's downgrade check still does.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Baseline = "highest" | "require-matching" | { readonly version: string };
 
-/** @since @next */
+/** @since 0.0.1 */
 export type Options<M extends object> = {
 	readonly bump: (change: Change.Change<M>) => Bump;
 	readonly baseline?: Baseline;
@@ -313,7 +313,7 @@ const onLine = (target: Version, tag: string, counter: number): Version =>
  * const strategy = SemVerStrategy.make({ bump: (change) => change.metadata.bump });
  * ```
  *
- * @since @next
+ * @since 0.0.1
  */
 export const make = <M extends object>(
 	options: Options<M>,
@@ -499,7 +499,7 @@ export const make = <M extends object>(
 /**
  * One change found on a prerelease line.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type LineChange = {
 	readonly change: Change.Any;
@@ -514,7 +514,7 @@ export type LineChange = {
 /**
  * The changes of a prerelease line since its last stable ancestor.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type PrereleaseChanges = {
 	readonly package: string;
@@ -537,7 +537,7 @@ export type PrereleaseChanges = {
  * const line = SemVerStrategy.prereleaseChanges(widgets, "2.0.0-rc.1");
  * ```
  *
- * @since @next
+ * @since 0.0.1
  */
 export const prereleaseChanges = (
 	pkg: Package.Package,

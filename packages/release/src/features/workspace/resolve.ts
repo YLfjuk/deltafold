@@ -12,7 +12,7 @@ import { paths, type Location } from "./paths.ts";
  * The files a resolution read, so that preparation and apply can refuse when any of them
  * changed afterwards.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Snapshot = {
 	readonly reads: ReadonlyMap<string, string>;
@@ -25,14 +25,14 @@ export type Snapshot = {
 /**
  * A plan entry after resolution: its previous version is the manifest's version.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type WithPrevious<E> =
 	E extends Package.Package<any>
 		? { readonly package: E; readonly previous: string; readonly changes: ReadonlyArray<never> }
 		: Omit<E, "previous"> & { readonly previous: string };
 
-/** @since @next */
+/** @since 0.0.1 */
 export type Resolved<
 	M extends object,
 	V,
@@ -53,7 +53,7 @@ export type Resolved<
  * Resolution options: plan input whose previous versions and requirements come from
  * manifests.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type ResolveOptions<
 	M extends object,
@@ -77,7 +77,7 @@ export type ResolveOptions<
  * `version`, and dependency fields become requirements: `devDependencies` can get range
  * edits but never require a release. Nothing is written.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const resolve = <
 	M extends object,

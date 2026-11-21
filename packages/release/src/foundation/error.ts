@@ -3,7 +3,7 @@ import { Data } from "effect";
 /**
  * Why planning or preparation refused a release.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Reason =
 	| "GroupId"
@@ -48,7 +48,7 @@ export type Reason =
 /**
  * A structured planning or preparation problem.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Issue = {
 	readonly reason: Reason;
@@ -57,7 +57,7 @@ export type Issue = {
 	readonly subjects: ReadonlyArray<string>;
 };
 
-/** @since @next */
+/** @since 0.0.1 */
 export const issue = (reason: Reason, message: string, subjects: ReadonlyArray<string> = []) => ({
 	reason,
 	message,
@@ -67,7 +67,7 @@ export const issue = (reason: Reason, message: string, subjects: ReadonlyArray<s
 /**
  * Planning refused the input. Nothing was read or written.
  *
- * @since @next
+ * @since 0.0.1
  */
 export class PlanError extends Data.TaggedError("PlanError")<Issue> {}
 
@@ -75,7 +75,7 @@ export class PlanError extends Data.TaggedError("PlanError")<Issue> {}
  * Preparation found problems. Every independent problem is listed, and nothing was
  * written.
  *
- * @since @next
+ * @since 0.0.1
  */
 export class PrepareError extends Data.TaggedError("PrepareError")<{
 	readonly issues: ReadonlyArray<Issue>;
@@ -85,7 +85,7 @@ export class PrepareError extends Data.TaggedError("PrepareError")<{
  * Files that the prepared release read have changed since preparation. Nothing was
  * written; prepare the release again and review the new result.
  *
- * @since @next
+ * @since 0.0.1
  */
 export class StalePlan extends Data.TaggedError("StalePlan")<{
 	readonly paths: ReadonlyArray<string>;
@@ -99,7 +99,7 @@ export class StalePlan extends Data.TaggedError("StalePlan")<{
  * Directories created for new files are kept. Restoration is best effort and does not
  * survive a crash.
  *
- * @since @next
+ * @since 0.0.1
  */
 export class ApplyFailed extends Data.TaggedError("ApplyFailed")<{
 	readonly path: string;
@@ -111,7 +111,7 @@ export class ApplyFailed extends Data.TaggedError("ApplyFailed")<{
 /**
  * A file changed while apply was running, so apply left it as it was.
  *
- * @since @next
+ * @since 0.0.1
  */
 export class ChangedDuringApply extends Data.TaggedError("ChangedDuringApply")<{
 	readonly path: string;

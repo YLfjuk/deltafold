@@ -6,7 +6,7 @@ export { Bump } from "./semver-strategy.ts";
 /**
  * The metadata `ReleaseChange` requires.
  *
- * @since @next
+ * @since 0.0.1
  */
 export type Metadata = { readonly bump: Bump };
 
@@ -22,7 +22,7 @@ export type Metadata = { readonly bump: Bump };
  * `;
  * ```
  *
- * @since @next
+ * @since 0.0.1
  */
 export const define = <Extra extends object = {}>(): Change.Definition<Extra & Metadata> =>
 	Change.define<Extra & Metadata>();
@@ -30,6 +30,6 @@ export const define = <Extra extends object = {}>(): Change.Definition<Extra & M
 /**
  * Declares a change with only bump metadata.
  *
- * @since @next
+ * @since 0.0.1
  */
 export const make = define().make;
