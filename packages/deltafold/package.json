@@ -68,7 +68,7 @@
 		"@types/mdast": "4.0.4",
 		"dedent": "1.7.2",
 		"hast-util-to-html": "9.0.6",
-		"mdast-util-to-hast": "13.2.1",
+		"mdast-util-to-hast": "13.2.2",
 		"mdast-util-to-markdown": "2.2.3",
 		"micromark-util-sanitize-uri": "2.0.1"
 	},
