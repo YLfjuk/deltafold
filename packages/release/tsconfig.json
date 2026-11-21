@@ -1,18 +1,4 @@
 {
 	"extends": "../../tsconfig.base.json",
-	"compilerOptions": {
-		"declaration": false,
-		"declarationMap": false,
-		"types": ["node"],
-		"paths": {
-			"@deltafold/release": ["./src/index.ts"]
-		}
-	},
-	// Give the linter a project for hidden fixture modules that import workspace packages.
-	"files": [
-		"e2e/__fixtures__/workspace/.deltafold/change.ts",
-		"e2e/__fixtures__/workspace/packages/adapter/.deltafold/versions/1.2.0.ts",
-		"e2e/__fixtures__/workspace/packages/widgets/.deltafold/versions/1.2.0.ts"
-	],
-	"include": ["src", "test", "e2e", "vite.config.ts", "../deltafold/@types"]
+	"include": ["src", "test", "vite.config.ts", "../deltafold/@types"]
 }

@@ -12,14 +12,16 @@ import {
 	generatedFixtureText,
 	workspace,
 } from "./__fixtures__/workspace.ts";
-import { timeout } from "./__fixtures__/workspace/.deltafold/changes/timeout.ts";
-import { headers } from "./__fixtures__/workspace/.deltafold/queued/headers.ts";
-import { adapter, configure, release, widgets } from "./__fixtures__/workspace/deltafold.config.ts";
+import { release } from "./__fixtures__/workspace/deltafold.config.ts";
+import { adapter } from "./__fixtures__/workspace/packages/adapter/.deltafold/package.ts";
+import { timeout } from "./__fixtures__/workspace/packages/widgets/.deltafold/changes/timeout.ts";
+import { widgets } from "./__fixtures__/workspace/packages/widgets/.deltafold/package.ts";
+import { headers } from "./__fixtures__/workspace/packages/widgets/.deltafold/queued/headers.ts";
 
-const pending = ".deltafold/changes/*.ts";
-const pendingTimeout = ".deltafold/changes/timeout.ts";
-const pendingHeaders = ".deltafold/changes/headers.ts";
-const queuedHeaders = "workspace/.deltafold/queued/headers.ts";
+const pending = "packages/*/.deltafold/changes/*.ts";
+const pendingTimeout = "packages/widgets/.deltafold/changes/timeout.ts";
+const pendingHeaders = "packages/widgets/.deltafold/changes/headers.ts";
+const queuedHeaders = "workspace/packages/widgets/.deltafold/queued/headers.ts";
 const generatedWidgets = "packages/widgets/.deltafold/versions/2.0.0.ts";
 const generatedAdapter = "packages/adapter/.deltafold/versions/2.0.0.ts";
 const widgetManifest = "packages/widgets/package.json";
@@ -186,11 +188,10 @@ describe("fixture workspace consumer", () => {
 						migrations: [],
 					}),
 				});
-				const nextRelease = configure(nextWidgets, nextAdapter);
-				const resolved = yield* ReleaseFiles.resolve(nextRelease, {
+				const resolved = yield* ReleaseFiles.resolve(release, {
 					packages: [{ package: nextWidgets, changes: [headers] }, nextAdapter],
 				});
-				const result = nextRelease.plan(resolved.input);
+				const result = release.plan(resolved.input);
 				if (Result.isFailure(result)) throw result.failure;
 				expect(
 					result.success.versions.map((entry) => [
@@ -249,7 +250,7 @@ describe("fixture workspace consumer", () => {
 				const error = yield* Effect.flip(ReleaseFiles.apply(prepared));
 				expect(error).toMatchObject({
 					_tag: "StalePlan",
-					paths: [pendingHeaders, "docs/guide.md"],
+					paths: ["docs/guide.md", pendingHeaders],
 				});
 				expect(files).toEqual(beforeApply);
 			}).pipe(provide);

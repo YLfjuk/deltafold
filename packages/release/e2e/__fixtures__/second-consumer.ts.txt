@@ -1,11 +1,13 @@
 import { History, Package, Version } from "deltafold";
 import { version as widgetsVersion, headers } from "./packages/widgets/.deltafold/versions/2.0.1.ts";
 import { version as adapterVersion } from "./packages/adapter/.deltafold/versions/2.0.1.ts";
+import widgetsManifest from "./packages/widgets/package.json" with { type: "json" };
+import adapterManifest from "./packages/adapter/package.json" with { type: "json" };
 
 export const successor = Version.make("2.0.2", { previous: widgetsVersion, changes: [headers] });
-export const widgets = Package.make("@fixture/widgets", {
+export const widgets = Package.make(widgetsManifest.name, {
 	history: History.make({ versions: [widgetsVersion, successor], migrations: [] }),
 });
-export const adapter = Package.make("@fixture/adapter", {
+export const adapter = Package.make(adapterManifest.name, {
 	history: History.make({ versions: [adapterVersion], migrations: [] }),
 });
