@@ -1,6 +1,6 @@
 import type { Version } from "deltafold";
+import { header } from "../../configs/gen.config.ts";
 import { issue, type Issue } from "../../foundation/error.ts";
-import { header } from "../../gen.config.ts";
 import type { DependencyUpdate } from "../planning/release.ts";
 import * as paths from "./paths.ts";
 
