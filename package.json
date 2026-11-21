@@ -18,7 +18,6 @@
 	"devDependencies": {
 		"@changesets/cli": "catalog:",
 		"@effect/tsgo": "catalog:",
-		"@types/node": "22.18.0",
 		"turbo": "catalog:",
 		"typescript": "catalog:",
 		"vite-plus": "catalog:"

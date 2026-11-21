@@ -1,0 +1,11 @@
+import { History, Package, Version } from "deltafold";
+import { version as widgetsVersion, headers } from "./packages/widgets/versions/2.0.1.ts";
+import { version as adapterVersion } from "./packages/adapter/versions/2.0.1.ts";
+
+export const successor = Version.make("2.0.2", { previous: widgetsVersion, changes: [headers] });
+export const widgets = Package.make("@fixture/widgets", {
+	history: History.make({ versions: [widgetsVersion, successor], migrations: [] }),
+});
+export const adapter = Package.make("@fixture/adapter", {
+	history: History.make({ versions: [adapterVersion], migrations: [] }),
+});

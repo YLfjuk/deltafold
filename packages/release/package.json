@@ -40,6 +40,7 @@
 	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:",
+		"@types/node": "22.18.0",
 		"deltafold": "workspace:*",
 		"effect": "catalog:",
 		"typescript": "catalog:",

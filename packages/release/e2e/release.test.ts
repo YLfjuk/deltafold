@@ -30,7 +30,7 @@ const prepare = Effect.gen(function* () {
 
 describe("fixture workspace consumer", () => {
 	it.effect(
-		"releases a breaking change and its dependent, with consumable source and changelog",
+		"releases a breaking change with shared-group alignment and a peer range update",
 		() => {
 			const { files, provide } = workspace();
 			const before = new Map(files);
@@ -193,15 +193,31 @@ describe("fixture workspace consumer", () => {
 					pending: ["next-pending/*.ts"],
 					snapshot: resolved.snapshot,
 				});
+				const before = new Map(files);
 				const report = yield* ReleaseFiles.apply(prepared);
-				expect(report.removed).toEqual(["next-pending/headers.ts"]);
-				expect(files.get("packages/widgets/versions/2.0.1.ts")).toContain(
-					'import { version as previous } from "./2.0.0.ts";',
-				);
-				expect(files.get("packages/widgets/versions/2.0.1.ts")).toContain(
-					"changes: [headers]",
-				);
-				expect(files.get(adapterManifest)).toContain('"@fixture/widgets": "^2.0.0"');
+				expect(report).toEqual({
+					written: [
+						"packages/widgets/versions/2.0.1.ts",
+						"packages/adapter/versions/2.0.1.ts",
+						widgetManifest,
+						adapterManifest,
+					],
+					removed: ["next-pending/headers.ts"],
+				});
+				for (const name of ["widgets", "adapter"]) {
+					expect(files.get(`packages/${name}/versions/2.0.1.ts`)).toBe(
+						fixtureText(`${name}-2.0.1.ts.txt`),
+					);
+					expect(files.get(`packages/${name}/package.json`)).toBe(
+						before.get(`packages/${name}/package.json`)?.replace('"2.0.0"', '"2.0.1"'),
+					);
+				}
+				expect(files.has("next-pending/headers.ts")).toBe(false);
+				for (const [path, contents] of before) {
+					if (![...report.written, ...report.removed].includes(path))
+						expect(files.get(path)).toBe(contents);
+				}
+				files.set("consumer.ts", fixtureText("second-consumer.ts.txt"));
 				expect(diagnostics(files)).toEqual([]);
 			}).pipe(provide);
 		},
