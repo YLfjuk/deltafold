@@ -1,3 +1,5 @@
+import { Result } from "effect";
+
 import * as GenConfig from "../../configs/gen.config.ts";
 
 /** One version the index imports: the module's version id and the name it exports. */
@@ -29,18 +31,23 @@ export const renderIndex = (
 	return `${[firstLine, ...imports, "", `export const versions = [${names.join(", ")}] as const;`].join("\n")}\n`;
 };
 
-const importLine = /^import \{ ([\w$]+) as [\w$]+ \} from ("(?:[^"\\]|\\.)*");$/;
+// Export names are any identifier the generator wrote; local names are its own ASCII ones.
+const importLine =
+	/^import \{ ([\p{ID_Start}$_][\p{ID_Continue}$‌‍]*) as [\w$]+ \} from ("(?:[^"\\]|\\.)*");$/u;
 
 const idOf = (quoted: string): string | undefined => {
-	const specifier: unknown = JSON.parse(quoted);
-	return typeof specifier === "string" && specifier.startsWith("./") && specifier.endsWith(".ts")
-		? specifier.slice(2, -3)
+	const specifier = Result.try((): unknown => JSON.parse(quoted));
+	if (Result.isFailure(specifier)) return undefined;
+	const value = specifier.success;
+
+	return typeof value === "string" && value.startsWith("./") && value.endsWith(".ts")
+		? value.slice(2, -3)
 		: undefined;
 };
 
 /**
  * Reads an index this package rendered, by any version of it. Anything else, including a
- * hand-edited index, gives `undefined`.
+ * hand-edited index or one that lists a version twice, gives `undefined`.
  */
 export const parseIndex = (text: string): ReadonlyArray<IndexEntry> | undefined => {
 	const [firstLine = "", ...rest] = text.split("\n");
@@ -51,7 +58,7 @@ export const parseIndex = (text: string): ReadonlyArray<IndexEntry> | undefined 
 		if (match === null) break;
 		const [, exportName = "", quoted = ""] = match;
 		const id = idOf(quoted);
-		if (id === undefined) return undefined;
+		if (id === undefined || entries.some((entry) => entry.id === id)) return undefined;
 		entries.push({ id, exportName });
 	}
 

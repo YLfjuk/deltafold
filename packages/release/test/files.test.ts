@@ -1067,6 +1067,57 @@ export const versions = [v1_6_0, v1_7_0] as const;
 		}).pipe(provide);
 	});
 
+	it.effect("refuses an index that lists a version twice or has a malformed import", () =>
+		Effect.gen(function* () {
+			const line = `import { version as v1_5_2 } from "./1.5.2.ts";`;
+			for (const imports of [
+				`${line}\n${line}`,
+				`import { version as bad } from "./bad\\x.ts";`,
+			]) {
+				const { provide } = memoryFs({
+					...start(),
+					[index]: `${header}\n${imports}\n\nexport const versions = [] as const;\n`,
+				});
+				const error = yield* Effect.flip(
+					ReleaseFiles.prepare(planned(widgets, "1.5.2", [retries]), pending),
+				).pipe(provide);
+				expect(
+					error._tag === "PrepareError" ? error.issues.map((entry) => entry.reason) : [],
+				).toEqual(["InvalidVersionIndex"]);
+			}
+		}),
+	);
+
+	it.effect("imports an indexed predecessor by the export name it was generated with", () => {
+		const { files: current, provide } = memoryFs({
+			...start(),
+			"packages/widgets/package.json": `{\n\t"name": "@acme/widgets",\n\t"version": "1.6.0"\n}\n`,
+			"packages/widgets/versions/1.6.0.ts": "export const révision = undefined;\n",
+			[index]: `${header}\nimport { révision as v1_6_0 } from "./1.6.0.ts";\n\nexport const versions = [v1_6_0] as const;\n`,
+		});
+		const history = packageWith("@acme/widgets", ["1.5.2", "1.6.0"]);
+		const result = Release.make("widgets", {
+			packages: [{ package: history, files }],
+			change: ProjectChange,
+			version: SemVerStrategy.make({ bump: (change) => change.metadata.bump }),
+			exportName: "current",
+		}).plan({ packages: [{ package: history, previous: "1.6.0", changes: [retries] }] });
+		if (Result.isFailure(result)) throw new Error(result.failure.message);
+
+		return Effect.gen(function* () {
+			yield* ReleaseFiles.apply(yield* ReleaseFiles.prepare(result.success, pending));
+			expect(current.get("packages/widgets/versions/1.7.0.ts")).toContain(
+				`import { révision as previous } from "./1.6.0.ts";`,
+			);
+			expect(current.get("packages/widgets/versions/1.7.0.ts")).toContain(
+				"export const current = Version.make",
+			);
+			expect(current.get(index)).toBe(
+				`${header}\nimport { révision as v1_6_0 } from "./1.6.0.ts";\nimport { current as v1_7_0 } from "./1.7.0.ts";\n\nexport const versions = [v1_6_0, v1_7_0] as const;\n`,
+			);
+		}).pipe(provide);
+	});
+
 	it("names the index when a stated previous version is not in the history", () => {
 		expect(refusal(files)).toMatchObject({
 			reason: "UnknownPrevious",

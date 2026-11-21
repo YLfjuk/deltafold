@@ -200,14 +200,34 @@ export const prepare = (
 				issues.push(issue("VersionFileExists", `${target} already exists.`, [target]));
 				continue;
 			}
+			const indexText = indexPath === undefined ? null : yield* read(indexPath);
+			const listed = indexText === null ? [] : parseIndex(indexText);
+			if (
+				indexPath !== undefined &&
+				(listed === undefined ||
+					listed.some((listedEntry) => listedEntry.id === entry.version.id))
+			) {
+				issues.push(
+					issue(
+						"InvalidVersionIndex",
+						`${indexPath} is not a generated version index; restore it from version control.`,
+						[indexPath],
+					),
+				);
+				continue;
+			}
 			const generated = join(versionsDir, `${previousId}.ts`);
 			const explicit = options.previous?.find(
 				(source) => source.package === entry.package && source.version === previousId,
 			);
 			const explicitModule = explicit === undefined ? undefined : fromBase(explicit.module);
+			// An indexed predecessor keeps the export name it was generated with.
+			const previousExport =
+				listed?.find((listedEntry) => listedEntry.id === previousId)?.exportName ??
+				exportName;
 			const previous =
 				(yield* read(generated)) !== null
-					? { specifier: relative(versionsDir, generated), exportName }
+					? { specifier: relative(versionsDir, generated), exportName: previousExport }
 					: explicit !== undefined && explicitModule !== undefined
 						? {
 								specifier: relative(versionsDir, explicitModule),
@@ -251,22 +271,7 @@ export const prepare = (
 				continue;
 			}
 			stage(target, rendered.text);
-			if (indexPath === undefined) continue;
-			const indexText = yield* read(indexPath);
-			const listed = indexText === null ? [] : parseIndex(indexText);
-			if (
-				listed === undefined ||
-				listed.some((listedEntry) => listedEntry.id === entry.version.id)
-			) {
-				issues.push(
-					issue(
-						"InvalidVersionIndex",
-						`${indexPath} is not a generated version index; restore it from version control.`,
-						[indexPath],
-					),
-				);
-				continue;
-			}
+			if (indexPath === undefined || listed === undefined) continue;
 			stage(indexPath, renderIndex([...listed, { id: entry.version.id, exportName }]));
 		}
 
