@@ -1,4 +1,4 @@
-import { header, headerPrefix } from "../../gen.config.ts";
+import { header, headerPrefix } from "../../configs/gen.config.ts";
 
 /** One version the index imports: the module's version id and the name it exports. */
 export type IndexEntry = { readonly id: string; readonly exportName: string };
