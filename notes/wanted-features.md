@@ -1,0 +1,136 @@
+# Wanted features
+
+These are design intentions, not implemented APIs or commitments to a release.
+
+## Custom delta files with TypeScript content mappers
+
+Status: wanted; deferred until the basic release flow and authoring model settle.
+
+Support custom authoring files such as `.change.delta` and `.version.delta` to
+reduce object-construction boilerplate. Provide TypeScript diagnostics,
+completion, and navigation through a TypeScript 7.1 content mapper. Ordinary
+TypeScript declarations remain a supported authoring path.
+
+Filename-derived IDs are desired. Define collision namespaces, explicit ID
+overrides, and rename behavior before implementation; a filename change must not
+silently rewrite historical identity.
+
+Use one parsing/model-construction contract across the release loader, mapper,
+and any build/runtime integration. A compiler/editor mapping alone does not
+establish runtime or bundler support. Keep this optional and outside core.
+
+Acceptance goals:
+
+- Custom input and equivalent TypeScript input produce the same models.
+- Diagnostics point to the original custom file rather than generated code.
+- Consumer-defined metadata retains useful type checking.
+- Command-line checking and editor tooling agree on the custom format.
+- Pending inputs can be snapshotted and consumed by the release flow without
+  requiring the mapper at runtime for generated ordinary TypeScript output.
+- Document compiler version support, external-code permission, workspace trust,
+  loading/build requirements, and compatibility with Effect tooling.
+
+Still open: grammar, package name, extension registration for compound suffixes,
+metadata/type declarations, generated output format, and distribution.
+
+References:
+
+- [TypeScript 7.1 content mappers](https://devblogs.microsoft.com/typescript/announcing-typescript-7-1-beta/#content-mappers)
+- [Content mapper protocol](https://github.com/microsoft/typescript-go/pull/4712)
+
+## TypeScript 7.1 API for release tooling
+
+Status: candidate implementation tool, not a required dependency decision.
+
+Evaluate syntax factories for version-file generation and filesystem snapshots
+for checking proposed generated code before apply. Semantic analysis may help
+explicit TypeScript-aware replacement adapters. Keep literal file replacements
+and data-only planning independent of a compiler when they do not need one.
+
+Do not assume semantic analysis can evaluate arbitrary metadata or recover the
+source declaration of an arbitrary runtime object. Manage compiler API,
+program, and snapshot lifetimes explicitly. Verify supported TypeScript and
+Effect compiler versions before adoption.
+
+Reference: [TypeScript 7.1 API](https://devblogs.microsoft.com/typescript/announcing-typescript-7-1-beta/#typescript-7.1-api).
+
+## Ecosystem support beyond SemVer
+
+Status: wanted; deferred until usage provides concrete ecosystem requirements.
+
+Custom version formats are available: a `VersionScheme` gives decoding, encoding,
+and ordering, and a strategy built on it plans end to end. The built-in strategy
+and dependency handling remain SemVer and npm specific.
+
+Still wanted: built-in schemes and strategies for other ecosystems, such as
+calendar versions, and dependency-range policies for schemes other than SemVer.
+Do not generalize these in advance. A later breaking API change is acceptable
+when supported by real usage.
+
+## Rename replacements
+
+Status: wanted after the release CLI; needs the owner's design approval first.
+
+Replace a literal token in file names as well as contents, for example renaming
+`blog/v-next.md` to the released version. The proposed scope is a `kind:
+"path"` replacement for the file name only, in text files, prepared as a create
+and a remove so review, freshness checks, and restore still apply. It would
+refuse destinations that clash or already exist, and version ids that are not
+plain file names. Directory renames, regular expressions, and value formatting
+are out of scope.
+
+## Release CLI init
+
+Status: wanted; part of the release CLI, after plan and apply.
+
+`deltafold release init` writes a release config for the workspace. A later
+`init --from changesets` or `init --from nx` reads an existing Changesets or Nx
+release setup and writes the equivalent group, packages, and policies.
+
+## Manifest adapters
+
+Status: wanted; deferred until a second ecosystem needs it.
+
+`Files.manifest` is a path, read and written as npm `package.json`. Adapters such
+as `NpmManifest.at(path)` or `CargoManifest.at(path)` could replace the path and
+own reading the version, reading dependency ranges, and editing both.
+
+## Workspace-root path prefix
+
+Status: wanted.
+
+A `<root>/` prefix would let configuration name a workspace-relative path
+regardless of where the release config file lives. Today relative paths resolve
+against the config file's directory.
+
+## Changelog plugins that register sections
+
+Status: wanted; needs a core change.
+
+Core changelog plugins can add blocks but cannot register the sections that
+changes are grouped into. When they can, `ReleaseChangelog.bySignificance` can become
+a plugin with the same output, so one plugin entry gives a bump-grouped layout.
+
+## Runtime version discovery
+
+Status: idea; needs design.
+
+A helper could build a package's history by scanning its versions directory and
+loading the generated modules, ordered by their `previous` links. That would
+need a file system and a TypeScript module loader at the runtime boundary, and
+version ids would no longer be inferred as literal types. The generated version
+index stays the default way to register versions; discovery could serve tools,
+such as the release CLI, that need a history without importing `package.ts`.
+
+## Lockfile updates
+
+Status: wanted; opt-in.
+
+After apply, a `Lockfile.update` step backed by package-manager adapters could
+update the lockfile. Until then, users run the install command themselves after
+apply; the release CLI is intended to print it.
+
+## Out of scope: npm dist-tags
+
+Prerelease identifiers are arbitrary SemVer identifiers chosen per plan. npm
+dist-tags belong to the publish step, which deltafold release does not perform.
