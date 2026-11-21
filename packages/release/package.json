@@ -35,7 +35,7 @@
 	},
 	"scripts": {
 		"build": "vp pack",
-		"typecheck": "tsc --noEmit",
+		"typecheck": "tsc --noEmit && tsc --noEmit -p e2e/tsconfig.json",
 		"test": "vp test run"
 	},
 	"devDependencies": {
