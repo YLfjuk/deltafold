@@ -39,6 +39,8 @@ export type Reason =
 	| "MissingPreviousSource"
 	| "VersionFileExists"
 	| "VersionFileName"
+	| "InvalidVersionIndex"
+	| "SharedVersionsDirectory"
 	| "ManifestMismatch"
 	| "OutsideWorkspace"
 	| "ReplacementConflict";

@@ -7,6 +7,7 @@ import type { Edit, Prepared, PrepareOptions, ReplacementReport } from "./files.
 import { globAll } from "./glob.ts";
 import { join, paths, relative } from "./paths.ts";
 import { render, scan, type Declaration } from "./source.ts";
+import { parseIndex, renderIndex } from "./version-index.ts";
 
 const occurrences = (text: string, token: string): ReadonlyArray<number> => {
 	const found: Array<number> = [];
@@ -145,6 +146,25 @@ export const prepare = (
 			const files = plan.files.get(entry.package);
 			return files === undefined ? undefined : { files };
 		};
+		// Each version index belongs to one package.
+		const indexed = new Map<string, Array<string>>();
+		for (const [name, files] of plan.files) {
+			if (files.index === false) continue;
+			// Paths outside the workspace are reported where they are used.
+			const dir = location.fromBase(files.versions);
+			if (typeof dir === "string") indexed.set(dir, [...(indexed.get(dir) ?? []), name]);
+		}
+		for (const [dir, names] of indexed) {
+			if (names.length > 1) {
+				issues.push(
+					issue(
+						"SharedVersionsDirectory",
+						`${names.join(", ")} share ${dir}, so they cannot each keep a version index there. Give each package its own versions directory, or set index: false.`,
+						[dir, ...names],
+					),
+				);
+			}
+		}
 		for (const entry of plan.versions) {
 			const configured = registration(entry)?.files;
 			const versionsDir =
@@ -159,6 +179,18 @@ export const prepare = (
 						"VersionFileName",
 						`${entry.package}: ${unusable.map((id) => `"${id}"`).join(", ")} cannot name a file in ${versionsDir}; version ids used as file names cannot contain path separators or ":".`,
 						[entry.package, ...unusable],
+					),
+				);
+				continue;
+			}
+			const indexPath =
+				configured?.index === false ? undefined : join(versionsDir, "index.ts");
+			if (indexPath !== undefined && entry.version.id === "index") {
+				issues.push(
+					issue(
+						"VersionFileName",
+						`${entry.package}: "index" cannot name a version file in ${versionsDir}, which holds the version index.`,
+						[entry.package, entry.version.id],
 					),
 				);
 				continue;
@@ -214,8 +246,28 @@ export const prepare = (
 				dependencies: entry.dependencies,
 				consumed: pendingPaths,
 			});
-			if ("issues" in rendered) issues.push(...rendered.issues);
-			else stage(target, rendered.text);
+			if ("issues" in rendered) {
+				issues.push(...rendered.issues);
+				continue;
+			}
+			stage(target, rendered.text);
+			if (indexPath === undefined) continue;
+			const indexText = yield* read(indexPath);
+			const listed = indexText === null ? [] : parseIndex(indexText);
+			if (
+				listed === undefined ||
+				listed.some((listedEntry) => listedEntry.id === entry.version.id)
+			) {
+				issues.push(
+					issue(
+						"InvalidVersionIndex",
+						`${indexPath} is not a generated version index; restore it from version control.`,
+						[indexPath],
+					),
+				);
+				continue;
+			}
+			stage(indexPath, renderIndex([...listed, { id: entry.version.id, exportName }]));
 		}
 
 		// Manifests.

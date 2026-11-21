@@ -22,6 +22,11 @@ export type Files = {
 	readonly manifest: string;
 	/** The directory that receives one generated module per version. */
 	readonly versions: string;
+	/**
+	 * Whether apply keeps `index.ts` in the versions directory, a generated module that
+	 * exports every version apply generated as `versions`. Defaults to `true`.
+	 */
+	readonly index?: boolean;
 };
 
 /** @since @next */
@@ -413,16 +418,19 @@ const strategyOrLiteral = (value: unknown, where: string): LooseSetting | undefi
 	);
 };
 
-const statedPrevious = (member: Member, id: string): Version.Version =>
+const statedPrevious = (member: Member, id: string, index: string | undefined): Version.Version =>
 	member.package.history.versions.find((version) => version.id === id) ??
 	fail(
 		"UnknownPrevious",
-		`${member.package.name}@${id} is not in the package history, so its ancestry is unknown.`,
+		`${member.package.name}@${id} is not in the package history${index === undefined ? ", so its ancestry is unknown." : `; spread the versions from ${index} into it.`}`,
 		[member.package.name, id],
 	);
 
 /** Resolves every member's previous version, reporting all ambiguous members at once. */
-const previousVersions = (members: ReadonlyArray<Member>) => {
+const previousVersions = (
+	members: ReadonlyArray<Member>,
+	indexOf: (name: string) => string | undefined,
+) => {
 	const resolved = new Map<string, { previous: Version.Version; from: PreviousFrom }>();
 	const ambiguous: Array<string> = [];
 	const empty: Array<string> = [];
@@ -430,7 +438,10 @@ const previousVersions = (members: ReadonlyArray<Member>) => {
 		const name = member.package.name;
 		if (member.previous !== undefined) {
 			const id = typeof member.previous === "string" ? member.previous : member.previous.id;
-			resolved.set(name, { previous: statedPrevious(member, id), from: "stated" });
+			resolved.set(name, {
+				previous: statedPrevious(member, id, indexOf(name)),
+				from: "stated",
+			});
 			continue;
 		}
 		const found = heads(member.package);
@@ -613,7 +624,12 @@ const buildPlan = (release: LooseRelease, input: LooseInput, owner: Release): Pl
 	const sharedStrategy: LooseStrategy =
 		typeof planVersion === "function" ? planVersion : config.version;
 	const sharedLiteral = typeof planVersion === "string" ? planVersion : undefined;
-	const previousOf = previousVersions(selections);
+	const previousOf = previousVersions(selections, (name) => {
+		const files = config.packages.find((candidate) => candidate.package.name === name)?.files;
+		return files === undefined || files.index === false
+			? undefined
+			: `${files.versions}/index.ts`;
+	});
 	const entries = selections.map((selection) => {
 		const name = selection.package.name;
 		const registration = config.packages.find((candidate) => candidate.package.name === name);
@@ -900,7 +916,11 @@ const buildPlan = (release: LooseRelease, input: LooseInput, owner: Release): Pl
 		files: new Map(
 			config.packages.map((registration) => [
 				registration.package.name,
-				{ manifest: registration.files.manifest, versions: registration.files.versions },
+				{
+					manifest: registration.files.manifest,
+					versions: registration.files.versions,
+					index: registration.files.index ?? true,
+				},
 			]),
 		),
 		exportName: config.exportName ?? "version",
