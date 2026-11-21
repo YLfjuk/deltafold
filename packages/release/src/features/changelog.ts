@@ -1,6 +1,7 @@
 import { Predicate } from "effect";
 
 import { Changelog, Document } from "deltafold/changelog";
+import { name } from "../package.config.ts";
 import { Bump } from "./semver-strategy.ts";
 
 /**
@@ -23,9 +24,16 @@ export type DependencyRecord = {
  */
 export type DependencyMetadata = { readonly dependencies?: ReadonlyArray<DependencyRecord> };
 
+/** @since @next */
+export type DependenciesOptions = {
+	/** Also render each edited manifest field and its range change. Defaults to `false`. */
+	readonly verbose?: boolean;
+};
+
 /**
  * Renders an "Updated Dependencies" section at the end of each release that recorded
- * dependency updates. Releases without them get nothing.
+ * dependency updates, one `name@version` entry per update. Releases without them get
+ * nothing. With `verbose`, each entry also shows the edited field and its range change.
  *
  * @example
  * ```ts
@@ -33,14 +41,16 @@ export type DependencyMetadata = { readonly dependencies?: ReadonlyArray<Depende
  * import { Changelog } from "deltafold/changelog";
  *
  * const changelog = Changelog.make<ReleaseChangelog.DependencyMetadata>({
- * 	plugins: [ReleaseChangelog.dependencies],
+ * 	plugins: [ReleaseChangelog.dependencies()],
  * });
  * ```
  *
  * @since @next
  */
-export const dependencies: Document.Plugin<DependencyMetadata> =
-	Document.Plugin.make<DependencyMetadata>("@deltafold/release/dependencies", {
+export const dependencies = (
+	options: DependenciesOptions = {},
+): Document.Plugin<DependencyMetadata> =>
+	Document.Plugin.make<DependencyMetadata>(`${name}/dependencies`, {
 		scope: Document.Release,
 		at: Document.Body.post,
 		resolve: ({ metadata }) => {
@@ -54,7 +64,13 @@ export const dependencies: Document.Plugin<DependencyMetadata> =
 						records.map((record) =>
 							Document.Paragraph([
 								Document.Code(`${record.dependency}@${record.version}`),
-								Document.Text(` (${record.field}: ${record.from} to ${record.to})`),
+								...(options.verbose === true
+									? [
+											Document.Text(
+												` (${record.field}: ${record.from} to ${record.to})`,
+											),
+										]
+									: []),
 							]),
 						),
 					),
@@ -64,7 +80,7 @@ export const dependencies: Document.Plugin<DependencyMetadata> =
 	});
 
 const bumpSection = (bump: Bump, title: string) =>
-	Changelog.section(`@deltafold/release/${bump}`, {
+	Changelog.section(`${name}/${bump}`, {
 		title,
 		select: (change) =>
 			Predicate.hasProperty(change.metadata, "bump") && change.metadata.bump === bump,
@@ -85,7 +101,7 @@ const bumpSection = (bump: Bump, title: string) =>
  *
  * const changelog = Changelog.make<ReleaseChangelog.DependencyMetadata>({
  * 	sections: ReleaseChangelog.bySignificance,
- * 	plugins: [ReleaseChangelog.dependencies],
+ * 	plugins: [ReleaseChangelog.dependencies()],
  * });
  * ```
  *
