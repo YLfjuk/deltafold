@@ -24,7 +24,12 @@ export const workspace = (options?: Parameters<typeof memoryFs>[1]) => {
 			.map((entry) => {
 				const path = resolve(entry.parentPath, entry.name).replaceAll("\\", "/");
 				const relative = path.slice(root.length + 1);
-				return [relative, fixtureText(`workspace/${relative}`)];
+				return [
+					relative,
+					relative.endsWith("/versions/index.ts")
+						? generatedFixtureText(`workspace/${relative}`)
+						: fixtureText(`workspace/${relative}`),
+				];
 			}),
 	);
 	return memoryFs(initial, options);

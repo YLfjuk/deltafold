@@ -1,0 +1,8 @@
+import { History, Package } from "deltafold";
+import manifest from "../package.json" with { type: "json" };
+import { version as initial } from "./versions/1.2.0.ts";
+import { version as released } from "./versions/{{previousVersion}}.ts";
+
+export const adapter = Package.make(manifest.name, {
+	history: History.make({ versions: [initial, released], migrations: [] }),
+});
