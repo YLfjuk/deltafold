@@ -1,7 +1,7 @@
 import { Predicate } from "effect";
 
 import { Changelog, Document } from "deltafold/changelog";
-import { name } from "../configs/package.config.ts";
+import * as PackageConfig from "../configs/package.config.ts";
 import { Bump } from "./semver-strategy.ts";
 
 /**
@@ -50,7 +50,7 @@ export type DependenciesOptions = {
 export const dependencies = (
 	options: DependenciesOptions = {},
 ): Document.Plugin<DependencyMetadata> =>
-	Document.Plugin.make<DependencyMetadata>(`${name}/dependencies`, {
+	Document.Plugin.make<DependencyMetadata>(`${PackageConfig.name}/dependencies`, {
 		scope: Document.Release,
 		at: Document.Body.post,
 		resolve: ({ metadata }) => {
@@ -80,7 +80,7 @@ export const dependencies = (
 	});
 
 const bumpSection = (bump: Bump, title: string) =>
-	Changelog.section(`${name}/${bump}`, {
+	Changelog.section(`${PackageConfig.name}/${bump}`, {
 		title,
 		select: (change) =>
 			Predicate.hasProperty(change.metadata, "bump") && change.metadata.bump === bump,

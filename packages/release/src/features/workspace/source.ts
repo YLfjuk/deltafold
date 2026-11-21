@@ -1,5 +1,5 @@
 import type { Version } from "deltafold";
-import { header } from "../../configs/gen.config.ts";
+import * as GenConfig from "../../configs/gen.config.ts";
 import { issue, type Issue } from "../../foundation/error.ts";
 import type { DependencyUpdate } from "../planning/release.ts";
 import * as paths from "./paths.ts";
@@ -323,7 +323,7 @@ export const render = (
 
 	const names = input.declarations.map((declaration) => declaration.name);
 	const lines = [
-		header,
+		GenConfig.header,
 		deltafoldImport,
 		previousImport,
 		...imports.filter((text) => text !== deltafoldImport),

@@ -1,4 +1,4 @@
-import { header, headerPrefix } from "../../configs/gen.config.ts";
+import * as GenConfig from "../../configs/gen.config.ts";
 
 /** One version the index imports: the module's version id and the name it exports. */
 export type IndexEntry = { readonly id: string; readonly exportName: string };
@@ -18,7 +18,7 @@ const localNames = (entries: ReadonlyArray<IndexEntry>): ReadonlyArray<string> =
 /** Renders the index module, which exports the generated versions in release order. */
 export const renderIndex = (
 	entries: ReadonlyArray<IndexEntry>,
-	firstLine: string = header,
+	firstLine: string = GenConfig.header,
 ): string => {
 	const names = localNames(entries);
 	const imports = entries.map(
@@ -44,7 +44,7 @@ const idOf = (quoted: string): string | undefined => {
  */
 export const parseIndex = (text: string): ReadonlyArray<IndexEntry> | undefined => {
 	const [firstLine = "", ...rest] = text.split("\n");
-	if (!firstLine.startsWith(headerPrefix)) return undefined;
+	if (!firstLine.startsWith(GenConfig.headerPrefix)) return undefined;
 	const entries: Array<IndexEntry> = [];
 	for (const line of rest) {
 		const match = importLine.exec(line);
