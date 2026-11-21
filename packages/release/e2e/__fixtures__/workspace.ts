@@ -53,7 +53,7 @@ export const diagnostics = (files: ReadonlyMap<string, string>) => {
 					],
 				},
 			},
-			include: ["**/*.ts"],
+			files: [...files.keys()].filter((path) => path.endsWith(".ts")),
 		}),
 	});
 	const inWorkspace = (path: string) => path.replaceAll("\\", "/").startsWith(`${root}/`);

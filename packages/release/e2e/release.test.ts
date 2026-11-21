@@ -12,12 +12,16 @@ import {
 	generatedFixtureText,
 	workspace,
 } from "./__fixtures__/workspace.ts";
-import { headers } from "./__fixtures__/workspace/next-pending/headers.ts";
-import { timeout } from "./__fixtures__/workspace/pending/timeout.ts";
-import { adapter, configure, release, widgets } from "./__fixtures__/workspace/release.ts";
+import { timeout } from "./__fixtures__/workspace/.deltafold/changes/timeout.ts";
+import { headers } from "./__fixtures__/workspace/.deltafold/queued/headers.ts";
+import { adapter, configure, release, widgets } from "./__fixtures__/workspace/deltafold.config.ts";
 
-const generatedWidgets = "packages/widgets/versions/2.0.0.ts";
-const generatedAdapter = "packages/adapter/versions/2.0.0.ts";
+const pending = ".deltafold/changes/*.ts";
+const pendingTimeout = ".deltafold/changes/timeout.ts";
+const pendingHeaders = ".deltafold/changes/headers.ts";
+const queuedHeaders = "workspace/.deltafold/queued/headers.ts";
+const generatedWidgets = "packages/widgets/.deltafold/versions/2.0.0.ts";
+const generatedAdapter = "packages/adapter/.deltafold/versions/2.0.0.ts";
 const widgetManifest = "packages/widgets/package.json";
 const adapterManifest = "packages/adapter/package.json";
 
@@ -28,7 +32,7 @@ const prepare = Effect.gen(function* () {
 	const result = release.plan(resolved.input);
 	if (Result.isFailure(result)) throw result.failure;
 	return yield* ReleaseFiles.prepare(result.success, {
-		pending: ["pending/*.ts"],
+		pending: [pending],
 		snapshot: resolved.snapshot,
 	});
 });
@@ -85,7 +89,7 @@ describe("fixture workspace consumer", () => {
 						"docs/guide.md",
 						"packages/widgets/src/index.ts",
 					],
-					removed: ["pending/timeout.ts"],
+					removed: [pendingTimeout],
 				});
 				expect(files.get(generatedWidgets)).toBe(
 					generatedFixtureText("widgets-2.0.0.ts.txt"),
@@ -105,7 +109,7 @@ describe("fixture workspace consumer", () => {
 				expect(files.get("packages/widgets/src/index.ts")).toBe(
 					"/** @since 2.0.0 */\nexport const requestTimeout = 30;\n",
 				);
-				expect(files.has("pending/timeout.ts")).toBe(false);
+				expect(files.has(pendingTimeout)).toBe(false);
 				for (const [path, contents] of before) {
 					if (![...report.written, ...report.removed].includes(path))
 						expect(files.get(path)).toBe(contents);
@@ -161,6 +165,7 @@ describe("fixture workspace consumer", () => {
 			return Effect.gen(function* () {
 				const first = yield* prepare;
 				yield* ReleaseFiles.apply(first);
+				files.set(pendingHeaders, fixtureText(queuedHeaders));
 				const widgetVersion = first.plan.versions.find(
 					(entry) => entry.package === widgets.name,
 				)?.version;
@@ -199,29 +204,29 @@ describe("fixture workspace consumer", () => {
 				]);
 				expect(result.success.dependencyUpdates).toEqual([]);
 				const prepared = yield* ReleaseFiles.prepare(result.success, {
-					pending: ["next-pending/*.ts"],
+					pending: [pending],
 					snapshot: resolved.snapshot,
 				});
 				const before = new Map(files);
 				const report = yield* ReleaseFiles.apply(prepared);
 				expect(report).toEqual({
 					written: [
-						"packages/widgets/versions/2.0.1.ts",
-						"packages/adapter/versions/2.0.1.ts",
+						"packages/widgets/.deltafold/versions/2.0.1.ts",
+						"packages/adapter/.deltafold/versions/2.0.1.ts",
 						widgetManifest,
 						adapterManifest,
 					],
-					removed: ["next-pending/headers.ts"],
+					removed: [pendingHeaders],
 				});
 				for (const name of ["widgets", "adapter"]) {
-					expect(files.get(`packages/${name}/versions/2.0.1.ts`)).toBe(
+					expect(files.get(`packages/${name}/.deltafold/versions/2.0.1.ts`)).toBe(
 						generatedFixtureText(`${name}-2.0.1.ts.txt`),
 					);
 					expect(files.get(`packages/${name}/package.json`)).toBe(
 						before.get(`packages/${name}/package.json`)?.replace('"2.0.0"', '"2.0.1"'),
 					);
 				}
-				expect(files.has("next-pending/headers.ts")).toBe(false);
+				expect(files.has(pendingHeaders)).toBe(false);
 				for (const [path, contents] of before) {
 					if (![...report.written, ...report.removed].includes(path))
 						expect(files.get(path)).toBe(contents);
@@ -239,12 +244,12 @@ describe("fixture workspace consumer", () => {
 			return Effect.gen(function* () {
 				const prepared = yield* prepare;
 				files.set("docs/guide.md", "External edit: @next.\n");
-				files.set("pending/late.ts", fixtureText("workspace/next-pending/headers.ts"));
+				files.set(pendingHeaders, fixtureText(queuedHeaders));
 				const beforeApply = new Map(files);
 				const error = yield* Effect.flip(ReleaseFiles.apply(prepared));
 				expect(error).toMatchObject({
 					_tag: "StalePlan",
-					paths: ["docs/guide.md", "pending/late.ts"],
+					paths: [pendingHeaders, "docs/guide.md"],
 				});
 				expect(files).toEqual(beforeApply);
 			}).pipe(provide);

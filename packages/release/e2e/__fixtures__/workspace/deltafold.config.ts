@@ -1,8 +1,8 @@
 import { DependentsPolicy, Release, ReleaseFiles, SemVerStrategy } from "@deltafold/release";
 import { History, Package } from "deltafold";
-import { ProjectChange } from "./changes.ts";
-import { version as adapterVersion } from "./packages/adapter/versions/1.2.0.ts";
-import { version as widgetsVersion } from "./packages/widgets/versions/1.2.0.ts";
+import { ProjectChange } from "./.deltafold/change.ts";
+import { version as adapterVersion } from "./packages/adapter/.deltafold/versions/1.2.0.ts";
+import { version as widgetsVersion } from "./packages/widgets/.deltafold/versions/1.2.0.ts";
 
 export const widgets = Package.make("@fixture/widgets", {
 	history: History.make({ versions: [widgetsVersion], migrations: [] }),
@@ -16,17 +16,11 @@ export const configure = (widgetPackage: typeof widgets, adapterPackage: typeof 
 		packages: [
 			{
 				package: widgetPackage,
-				files: ReleaseFiles.at("packages/widgets", {
-					manifest: "package.json",
-					versions: "versions",
-				}),
+				files: ReleaseFiles.at("packages/widgets", { manifest: "package.json" }),
 			},
 			{
 				package: adapterPackage,
-				files: ReleaseFiles.at("packages/adapter", {
-					manifest: "package.json",
-					versions: "versions",
-				}),
+				files: ReleaseFiles.at("packages/adapter", { manifest: "package.json" }),
 			},
 		],
 		change: ProjectChange,
