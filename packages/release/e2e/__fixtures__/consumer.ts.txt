@@ -1,0 +1,14 @@
+import { History, Package, Version } from "deltafold";
+import { version as widgetsVersion, timeout } from "./packages/widgets/.deltafold/versions/2.0.0.ts";
+import { version as adapterVersion, release } from "./packages/adapter/.deltafold/versions/2.0.0.ts";
+import widgetsManifest from "./packages/widgets/package.json" with { type: "json" };
+import adapterManifest from "./packages/adapter/package.json" with { type: "json" };
+
+export const successor = Version.make("2.0.1", { previous: widgetsVersion, changes: [timeout] });
+export const widgets = Package.make(widgetsManifest.name, {
+	history: History.make({ versions: [widgetsVersion, successor], migrations: [] }),
+});
+export const adapter = Package.make(adapterManifest.name, {
+	history: History.make({ versions: [adapterVersion], migrations: [] }),
+});
+export const dependencyName: string | undefined = release.metadata.dependencies.at(0)?.dependency;
