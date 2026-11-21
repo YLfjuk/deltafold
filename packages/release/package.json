@@ -2,6 +2,16 @@
 	"name": "@deltafold/release",
 	"version": "0.0.1",
 	"description": "Plan and apply local releases for packages modeled with deltafold.",
+	"keywords": [
+		"changelog",
+		"deltafold",
+		"effect",
+		"monorepo",
+		"release",
+		"semver",
+		"typescript",
+		"versioning"
+	],
 	"license": "MIT",
 	"repository": {
 		"type": "git",
