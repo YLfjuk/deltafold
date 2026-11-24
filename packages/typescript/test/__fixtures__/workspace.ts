@@ -4,7 +4,8 @@ import { Effect, FileSystem, Result, Scope } from "effect";
 
 import { TypeScript } from "@deltafold/typescript";
 import { TypeScriptNode } from "@deltafold/typescript/node";
-import { type Action, Executor, type Handler, History, Migration, Plan, Version } from "deltafold";
+import type { Action, Handler } from "deltafold";
+import { Executor, History, Migration, Plan, Version } from "deltafold";
 
 export type Files = Readonly<Record<string, string>>;
 
@@ -32,7 +33,6 @@ export const writeFiles = (root: string, files: Files) =>
 		}
 	}).pipe(Effect.orDie);
 
-/** Reads root-relative files. */
 export const readFiles = (root: string, paths: ReadonlyArray<string>) =>
 	Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem;
@@ -97,7 +97,10 @@ export const outcomeOf = <A extends Action.Any, E>(
 				: undefined;
 		if (report === undefined) return yield* Effect.die(result);
 
-		return report.occurrences[0]!.outcome;
+		const [occurrence] = report.occurrences;
+		if (occurrence === undefined) return yield* Effect.die("The plan ran no occurrence");
+
+		return occurrence.outcome;
 	});
 
 /** The `TransformFailed` error of a failed outcome. */

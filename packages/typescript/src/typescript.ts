@@ -11,20 +11,22 @@ export * as File from "./file.ts";
  */
 export * as Project from "./project.ts";
 export type { Edits, FileEdit, NameForm, TextEdit } from "./edits.ts";
+export type {
+	AdapterCause,
+	CompilerStage,
+	Errors,
+	Failure,
+	GuardedError,
+	ReadReason,
+	WriteStatus,
+} from "./errors.ts";
 export {
-	type AdapterCause,
 	causes,
 	CompilerFailed,
-	type CompilerStage,
 	EditRejected,
-	type Errors,
-	type Failure,
-	type GuardedError,
 	ReadFailed,
-	type ReadReason,
 	SyntaxErrors,
 	TransformFailed,
 	WriteFailed,
-	type WriteStatus,
 } from "./errors.ts";
 export { Workspace } from "./workspace.ts";

@@ -67,13 +67,13 @@ const renameImports = TypeScript.File.promise(
 			const bindings = statement.importClause?.namedBindings;
 			if (bindings === undefined || !isNamedImports(bindings)) return [];
 
-			return bindings.elements
-				.filter((element) => (element.propertyName ?? element.name).text === payload.from)
-				.map((element) =>
-					element.propertyName === undefined
-						? edit.replace(element, `${payload.to} as ${element.name.text}`)
-						: edit.replace(element.propertyName, payload.to),
-				);
+			return bindings.elements.flatMap((element) => {
+				if ((element.propertyName ?? element.name).text !== payload.from) return [];
+
+				return element.propertyName === undefined
+					? [edit.replace(element, `${payload.to} as ${element.name.text}`)]
+					: [edit.replace(element.propertyName, payload.to)];
+			});
 		}),
 	{ include: ({ include }) => include },
 );

@@ -1,7 +1,8 @@
 import * as NodeFileSystem from "@effect/platform-node-shared/NodeFileSystem";
 import { expect, expectTypeOf, layer, vi } from "@effect/vitest";
 import { Array as Arr, Context, Effect, Order, Schema, Scope } from "effect";
-import { type Node, type SourceFile, SyntaxKind } from "typescript-7.1/ast";
+import type { Node, SourceFile } from "typescript-7.1/ast";
+import { SyntaxKind } from "typescript-7.1/ast";
 import {
 	isImportDeclaration,
 	isNamedImports,
@@ -10,7 +11,8 @@ import {
 } from "typescript-7.1/ast/is";
 
 import { TypeScript } from "@deltafold/typescript";
-import { Action, type Handler } from "deltafold";
+import type { Handler } from "deltafold";
+import { Action } from "deltafold";
 import { nameForm } from "../src/edits.ts";
 import {
 	fixture,
@@ -127,9 +129,9 @@ const renameA1In = (forms: ReadonlyArray<TypeScript.NameForm>) =>
 	TypeScript.File.promise(
 		renameCreateClient,
 		async ({ sourceFile, edit }) =>
-			namesCalled(sourceFile, "a1")
-				.filter((name) => forms.includes(nameForm(name)))
-				.map((name) => edit.rename(name, "a2")),
+			namesCalled(sourceFile, "a1").flatMap((name) =>
+				forms.includes(nameForm(name)) ? [edit.rename(name, "a2")] : [],
+			),
 		{ include: () => ["src/*.ts"] },
 	);
 
@@ -222,10 +224,15 @@ layer(NodeFileSystem.layer)("TypeScript.File", (it) => {
 			]);
 			expect(outcome._tag).toBe("Failed");
 			const { failures } = transformFailed(outcome);
-			expect(failures.map((failure) => [failure.path, failure.cause._tag])).toEqual([
-				["src/broken.ts", "SyntaxErrors"],
+			expect(
+				failures.map((failure) => [failure.project, failure.path, failure.cause._tag]),
+			).toEqual([
+				[
+					{ kind: "configured", config: "tsconfig.json" },
+					"src/broken.ts",
+					"@deltafold/typescript/SyntaxErrors",
+				],
 			]);
-			expect(failures[0]!.project).toEqual({ kind: "configured", config: "tsconfig.json" });
 			expect(yield* readFiles(root, Object.keys(broken))).toEqual(broken);
 		}),
 	);
@@ -268,13 +275,13 @@ layer(NodeFileSystem.layer)("TypeScript.File", (it) => {
 				renameCreateClient,
 				({ sourceFile, edit }) =>
 					Effect.succeed(
-						sourceFile.statements.length === 0
-							? []
-							: [
-									edit.replace(sourceFile.statements[0]!, "a"),
-									edit.insertAfter(sourceFile.statements[0]!, "b"),
-									{ pos: 1, end: 3, newText: "c" },
-								],
+						sourceFile.statements
+							.slice(0, 1)
+							.flatMap((first) => [
+								edit.replace(first, "a"),
+								edit.insertAfter(first, "b"),
+								{ pos: 1, end: 3, newText: "c" },
+							]),
 					),
 				{ include: () => ["src/esm.ts"] },
 			);
@@ -282,7 +289,9 @@ layer(NodeFileSystem.layer)("TypeScript.File", (it) => {
 			const outcome = yield* outcomeOf(root, overlapping);
 
 			const error = transformFailed(outcome);
-			expect(error.failures.map((failure) => failure.cause._tag)).toEqual(["EditRejected"]);
+			expect(error.failures.map((failure) => failure.cause._tag)).toEqual([
+				"@deltafold/typescript/EditRejected",
+			]);
 		}),
 	);
 
@@ -295,7 +304,7 @@ layer(NodeFileSystem.layer)("TypeScript.File", (it) => {
 			const outcome = yield* outcomeOf(root, escaping);
 
 			expect(outcome._tag === "Failed" ? outcome.error : undefined).toMatchObject({
-				_tag: "ReadFailed",
+				_tag: "@deltafold/typescript/ReadFailed",
 				reason: "pattern",
 				path: "../**/*.ts",
 			});
@@ -330,7 +339,9 @@ layer(NodeFileSystem.layer)("TypeScript.File", (it) => {
 			);
 			const outcome = yield* outcomeOf(root, breaking);
 			const error = transformFailed(outcome);
-			expect(error.failures.map((failure) => failure.cause._tag)).toEqual(["EditRejected"]);
+			expect(error.failures.map((failure) => failure.cause._tag)).toEqual([
+				"@deltafold/typescript/EditRejected",
+			]);
 		}),
 	);
 
@@ -374,7 +385,7 @@ layer(NodeFileSystem.layer)("TypeScript.File", (it) => {
 			const outcome = yield* outcomeOf(root, emptying);
 
 			expect(transformFailed(outcome).failures.map((failure) => failure.cause._tag)).toEqual([
-				"EditRejected",
+				"@deltafold/typescript/EditRejected",
 			]);
 			expect(yield* readFiles(root, ["config.json"])).toEqual({ "config.json": config });
 		}),
@@ -454,7 +465,7 @@ layer(NodeFileSystem.layer)("TypeScript.File", (it) => {
 			const outcome = yield* outcomeOf(root, joining);
 
 			expect(transformFailed(outcome).failures.map((failure) => failure.cause._tag)).toEqual([
-				"EditRejected",
+				"@deltafold/typescript/EditRejected",
 			]);
 			expect(yield* readFiles(root, ["config.json"])).toEqual({ "config.json": config });
 		}),
@@ -492,7 +503,9 @@ layer(NodeFileSystem.layer)("TypeScript.File", (it) => {
 						if (other === undefined)
 							return yield* Effect.die("src/b.ts is not in the program");
 
-						return [edit.replace(other.statements[0]!, "export const b = 3;")];
+						return other.statements
+							.slice(0, 1)
+							.map((first) => edit.replace(first, "export const b = 3;"));
 					}),
 				{ include: () => ["src/*.ts"] },
 			);
@@ -500,7 +513,7 @@ layer(NodeFileSystem.layer)("TypeScript.File", (it) => {
 			for (const escaping of [returning, building]) {
 				const { failures } = transformFailed(yield* outcomeOf(root, escaping));
 				expect(failures.map((failure) => [failure.path, failure.cause._tag])).toEqual([
-					["src/a.ts", "EditRejected"],
+					["src/a.ts", "@deltafold/typescript/EditRejected"],
 				]);
 			}
 			expect(yield* readFiles(root, Object.keys(sources))).toEqual(sources);
@@ -514,7 +527,7 @@ layer(NodeFileSystem.layer)("TypeScript.File", (it) => {
 			const root = yield* fixture({ "tsconfig.json": tsconfig, "src/forms.ts": source });
 			const { failures } = transformFailed(yield* outcomeOf(root, renameA1In(["other"])));
 			expect(failures.map((failure) => [failure.path, failure.cause._tag])).toEqual([
-				["src/forms.ts", "EditRejected"],
+				["src/forms.ts", "@deltafold/typescript/EditRejected"],
 			]);
 			expect(yield* readFiles(root, ["src/forms.ts"])).toEqual({ "src/forms.ts": source });
 
@@ -544,8 +557,8 @@ layer(NodeFileSystem.layer)("TypeScript.File", (it) => {
 
 			const { failures } = transformFailed(yield* outcomeOf(root, rename));
 			expect(failures.map((failure) => [failure.path, failure.cause._tag])).toEqual([
-				["config.json", "SyntaxErrors"],
-				["settings.jsonc", "SyntaxErrors"],
+				["config.json", "@deltafold/typescript/SyntaxErrors"],
+				["settings.jsonc", "@deltafold/typescript/SyntaxErrors"],
 			]);
 			expect(yield* readFiles(root, Object.keys(broken))).toEqual(broken);
 		}),
@@ -572,7 +585,7 @@ layer(NodeFileSystem.layer)("TypeScript.File", (it) => {
 				const exhausted = yield* outcomeOf(root, rename);
 				expect(exhausted).toMatchObject({
 					_tag: "Failed",
-					error: { _tag: "CompilerFailed", stage: "snapshot" },
+					error: { _tag: "@deltafold/typescript/CompilerFailed", stage: "snapshot" },
 				});
 				expect(random).toHaveBeenCalledTimes(16);
 				expect(yield* readFiles(root, Object.keys(jsonFiles))).toEqual(jsonFiles);

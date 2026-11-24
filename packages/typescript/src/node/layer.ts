@@ -24,9 +24,13 @@ const compiler = (
 	Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem;
 		let api: API | undefined;
-		yield* Effect.addFinalizer(() =>
-			api === undefined ? Effect.void : Effect.ignore(Effect.promise(() => api!.close())),
-		);
+		yield* Effect.addFinalizer(() => {
+			const started = api;
+
+			return started === undefined
+				? Effect.void
+				: Effect.ignore(Effect.promise(() => started.close()));
+		});
 
 		const allocate = (path: string, taken: Set<string>) =>
 			Effect.gen(function* () {
@@ -59,9 +63,11 @@ const compiler = (
 					}
 					const compilerPath = (path: string) => aliases.get(path) ?? path;
 					const layered = Object.fromEntries(
-						files
-							.filter((file) => aliases.has(file.path))
-							.map((file) => [compilerPath(file.path), file.text]),
+						files.flatMap((file) => {
+							const alias = aliases.get(file.path);
+
+							return alias === undefined ? [] : [[alias, file.text]];
+						}),
 					);
 
 					const snapshot = yield* Effect.acquireRelease(

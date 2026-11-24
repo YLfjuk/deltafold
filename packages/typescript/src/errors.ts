@@ -10,9 +10,12 @@ import type { Info } from "./project.ts";
  *
  * @since @next
  */
-export class EditRejected extends Data.TaggedError("EditRejected")<{
+export class EditRejected extends Data.TaggedError("@deltafold/typescript/EditRejected")<{
+	/** @since @next */
 	readonly path: string;
+	/** @since @next */
 	readonly reason: string;
+	/** @since @next */
 	readonly ranges: ReadonlyArray<{ readonly pos: number; readonly end: number }>;
 }> {
 	override get message() {
@@ -26,8 +29,10 @@ export class EditRejected extends Data.TaggedError("EditRejected")<{
  *
  * @since @next
  */
-export class SyntaxErrors extends Data.TaggedError("SyntaxErrors")<{
+export class SyntaxErrors extends Data.TaggedError("@deltafold/typescript/SyntaxErrors")<{
+	/** @since @next */
 	readonly path: string;
+	/** @since @next */
 	readonly messages: ReadonlyArray<string>;
 }> {
 	override get message() {
@@ -44,8 +49,11 @@ export class SyntaxErrors extends Data.TaggedError("SyntaxErrors")<{
  * @since @next
  */
 export type Failure<C> = {
+	/** @since @next */
 	readonly project: Info;
+	/** @since @next */
 	readonly path?: string;
+	/** @since @next */
 	readonly cause: C;
 };
 
@@ -65,9 +73,14 @@ export type AdapterCause = Handler.UnexpectedHandlerError | EditRejected | Synta
  *
  * @since @next
  */
-export class TransformFailed<out E = never> extends Data.TaggedError("TransformFailed")<{
+export class TransformFailed<out E = never> extends Data.TaggedError(
+	"@deltafold/typescript/TransformFailed",
+)<{
+	/** @since @next */
 	readonly actionId: string;
+	/** @since @next */
 	readonly root: string;
+	/** @since @next */
 	readonly failures: ReadonlyArray<Failure<E | AdapterCause>>;
 }> {
 	override get message() {
@@ -117,16 +130,25 @@ export type WriteStatus = "not-written" | "unknown";
  *
  * @since @next
  */
-export class WriteFailed extends Data.TaggedError("WriteFailed")<{
+export class WriteFailed extends Data.TaggedError("@deltafold/typescript/WriteFailed")<{
+	/** @since @next */
 	readonly actionId: string;
+	/** @since @next */
 	readonly root: string;
+	/** @since @next */
 	readonly writtenPaths: ReadonlyArray<string>;
+	/** @since @next */
 	readonly failed: {
+		/** @since @next */
 		readonly path: string;
+		/** @since @next */
 		readonly status: WriteStatus;
+		/** @since @next */
 		readonly reason: string;
+		/** @since @next */
 		readonly cause?: unknown;
 	};
+	/** @since @next */
 	readonly pendingPaths: ReadonlyArray<string>;
 }> {
 	override get message() {
@@ -148,11 +170,16 @@ export type ReadReason = "pattern" | "link" | "unreadable" | "changed";
  *
  * @since @next
  */
-export class ReadFailed extends Data.TaggedError("ReadFailed")<{
+export class ReadFailed extends Data.TaggedError("@deltafold/typescript/ReadFailed")<{
+	/** @since @next */
 	readonly actionId: string;
+	/** @since @next */
 	readonly root: string;
+	/** @since @next */
 	readonly path: string;
+	/** @since @next */
 	readonly reason: ReadReason;
+	/** @since @next */
 	readonly cause?: unknown;
 }> {
 	override get message() {
@@ -173,10 +200,14 @@ export type CompilerStage = "snapshot" | "request";
  *
  * @since @next
  */
-export class CompilerFailed extends Data.TaggedError("CompilerFailed")<{
+export class CompilerFailed extends Data.TaggedError("@deltafold/typescript/CompilerFailed")<{
+	/** @since @next */
 	readonly actionId: string;
+	/** @since @next */
 	readonly root: string;
+	/** @since @next */
 	readonly stage: CompilerStage;
+	/** @since @next */
 	readonly cause: unknown;
 }> {
 	override get message() {

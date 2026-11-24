@@ -190,7 +190,11 @@ layer(NodeFileSystem.layer)("TypeScript.Workspace", (it) => {
 					internals(workspace).match("test", [pattern]),
 				).pipe(Effect.exit);
 				expect(exit).toMatchObject(
-					Exit.fail({ _tag: "ReadFailed", reason: "pattern", path: pattern }),
+					Exit.fail({
+						_tag: "@deltafold/typescript/ReadFailed",
+						reason: "pattern",
+						path: pattern,
+					}),
 				);
 			}
 		}),
@@ -207,7 +211,11 @@ layer(NodeFileSystem.layer)("TypeScript.Workspace", (it) => {
 			).pipe(Effect.exit);
 			// oxlint-disable-next-line vitest/no-standalone-expect -- it.effect.skipIf registers this test.
 			expect(exit).toMatchObject(
-				Exit.fail({ _tag: "ReadFailed", reason: "link", path: "src/link.ts" }),
+				Exit.fail({
+					_tag: "@deltafold/typescript/ReadFailed",
+					reason: "link",
+					path: "src/link.ts",
+				}),
 			);
 		}),
 	);
@@ -224,7 +232,11 @@ layer(NodeFileSystem.layer)("TypeScript.Workspace", (it) => {
 				internals(workspace).match("test", ["src/linked/*.ts"]),
 			).pipe(Effect.exit);
 			expect(exit).toMatchObject(
-				Exit.fail({ _tag: "ReadFailed", reason: "link", path: "src/linked/a.ts" }),
+				Exit.fail({
+					_tag: "@deltafold/typescript/ReadFailed",
+					reason: "link",
+					path: "src/linked/a.ts",
+				}),
 			);
 		}),
 	);
@@ -265,7 +277,7 @@ layer(NodeFileSystem.layer)("TypeScript.Workspace", (it) => {
 
 			expect(exit).toMatchObject(
 				Exit.fail({
-					_tag: "WriteFailed",
+					_tag: "@deltafold/typescript/WriteFailed",
 					actionId: "rename",
 					writtenPaths: [],
 					failed: {
@@ -302,7 +314,7 @@ layer(NodeFileSystem.layer)("TypeScript.Workspace", (it) => {
 
 			expect(exit).toMatchObject(
 				Exit.fail({
-					_tag: "WriteFailed",
+					_tag: "@deltafold/typescript/WriteFailed",
 					actionId: "rename",
 					writtenPaths: ["a.ts"],
 					failed: { path: "b.ts", status: "unknown" },

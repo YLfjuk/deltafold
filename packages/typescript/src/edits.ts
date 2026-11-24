@@ -1,5 +1,6 @@
 import { Array as Arr, Order } from "effect";
-import { type Node, type SourceFile, SyntaxKind } from "typescript-7.1/ast";
+import type { Node, SourceFile } from "typescript-7.1/ast";
+import { SyntaxKind } from "typescript-7.1/ast";
 import { skipTrivia } from "typescript-7.1/ast/scanner";
 
 import { EditRejected } from "./errors.ts";
@@ -12,8 +13,11 @@ import { EditRejected } from "./errors.ts";
  * @since @next
  */
 export type TextEdit = {
+	/** @since @next */
 	readonly pos: number;
+	/** @since @next */
 	readonly end: number;
+	/** @since @next */
 	readonly newText: string;
 };
 
@@ -31,22 +35,40 @@ export type FileEdit = TextEdit & { readonly path: string };
  * @since @next
  */
 export type Edits = {
-	/** Replaces a node's text. */
+	/** @since @next */
 	readonly replace: (node: Node, text: string) => FileEdit;
-	/** Removes a node and keeps its leading comments and whitespace. */
+	/**
+	 * Removes a node and keeps its leading comments and whitespace.
+	 *
+	 * @since @next
+	 */
 	readonly remove: (node: Node) => FileEdit;
-	/** Inserts text before a node's first token. */
+	/**
+	 * Inserts text before a node's first token.
+	 *
+	 * @since @next
+	 */
 	readonly insertBefore: (node: Node, text: string) => FileEdit;
-	/** Inserts text after a node's last character. */
+	/**
+	 * Inserts text after a node's last character.
+	 *
+	 * @since @next
+	 */
 	readonly insertAfter: (node: Node, text: string) => FileEdit;
 	/**
 	 * Renames a property or member at a name node, such as a find-references result.
 	 * Shorthand forms keep the local name, so `const { a1 } = value` becomes
 	 * `const { a2: a1 } = value`, and string-literal names keep their quotes. Other
 	 * name positions throw `EditRejected`.
+	 *
+	 * @since @next
 	 */
 	readonly rename: (name: Node, newName: string) => FileEdit;
-	/** A node's text, without its leading comments and whitespace. */
+	/**
+	 * A node's text, without its leading comments and whitespace.
+	 *
+	 * @since @next
+	 */
 	readonly text: (node: Node) => string;
 };
 
@@ -259,7 +281,6 @@ export const applyEdits = (
 
 const byteOrderMark = "﻿";
 
-/** Splits a leading byte order mark from file text. */
 export const splitByteOrderMark = (raw: string) =>
 	raw.startsWith(byteOrderMark)
 		? { bom: byteOrderMark, text: raw.slice(1) }

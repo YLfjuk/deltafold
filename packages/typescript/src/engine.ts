@@ -2,22 +2,22 @@ import { Array as Arr, Cause, Context, Effect, Option, Order, Result, Schema, Sc
 import type { SourceFile } from "typescript-7.1/ast";
 import type { Project as CompilerProject } from "typescript-7.1/async";
 
-import { type Action, Handler } from "deltafold";
-import { applyEdits, type Edits, type FileEdit, makeEdits, splitByteOrderMark } from "./edits.ts";
+import type { Action } from "deltafold";
+import { Handler } from "deltafold";
+import type { Edits, FileEdit } from "./edits.ts";
+import { applyEdits, makeEdits, splitByteOrderMark } from "./edits.ts";
+import type { AdapterCause, Failure, GuardedError, WriteFailed } from "./errors.ts";
 import {
-	type AdapterCause,
 	CompilerFailed,
 	EditRejected,
-	type Failure,
-	type GuardedError,
 	ReadFailed,
 	SyntaxErrors,
 	TransformFailed,
-	type WriteFailed,
 } from "./errors.ts";
 import { checkJson, isJsonPath } from "./jsonc.ts";
 import type { Info } from "./project.ts";
-import { type Internals, internals, type Opened, Workspace, type Write } from "./workspace.ts";
+import type { Internals, OpenFile, Opened, Write } from "./workspace.ts";
+import { internals, Workspace } from "./workspace.ts";
 
 /** The service map of a Promise transform that declares no services. */
 // oxlint-disable-next-line typescript/no-generated-empty-object-type -- Transforms without services declare an empty service map.
@@ -80,6 +80,8 @@ const projectInfo = (workspace: Internals, root: string, project: CompilerProjec
 };
 
 const infoKey = (info: Info) => (info.kind === "configured" ? info.config : `inferred:${info.id}`);
+
+const byKey = Order.mapInput(Order.String, ([key]: readonly [string, unknown]) => key);
 
 const byPathAndProject = Order.combine(
 	Order.mapInput(Order.String, (failure: Failure<unknown>) => failure.path ?? ""),
@@ -146,7 +148,7 @@ const loadUnits = (
 				);
 				if (
 					sourceFile === undefined ||
-					sourceFile.text !== splitByteOrderMark(raws.get(path)!).text
+					sourceFile.text !== splitByteOrderMark(raws.get(path) ?? "").text
 				) {
 					return yield* new ReadFailed({ actionId, root, path, reason: "changed" });
 				}
@@ -224,14 +226,16 @@ export const prepare = <C, R>(
 
 		yield* service.lock(paths);
 		const raws = new Map<string, string>();
-		for (const path of paths) raws.set(path, yield* workspace.read(action.id, path));
+		const texts: Array<OpenFile> = [];
+		for (const path of paths) {
+			const raw = yield* workspace.read(action.id, path);
+			raws.set(path, raw);
+			texts.push({ path, text: splitByteOrderMark(raw).text });
+		}
 
 		const { failures, edits, projects } = yield* Effect.scoped(
 			Effect.gen(function* () {
-				const opened = yield* workspace.open(
-					action.id,
-					paths.map((path) => ({ path, text: splitByteOrderMark(raws.get(path)!).text })),
-				);
+				const opened = yield* workspace.open(action.id, texts);
 				const loaded = yield* loadUnits(action.id, root, workspace, opened, paths, raws);
 				const collected: Array<Failure<C | AdapterCause>> = [...loaded.failures];
 				const produced: Array<FileEdit> = [];
@@ -262,11 +266,15 @@ export const prepare = <C, R>(
 		}
 		const writes: Array<Write> = [];
 		const rejected: Array<Failure<EditRejected>> = [];
-		for (const path of Arr.sort(byPath.keys(), Order.String)) {
-			const raw = raws.get(path)!;
+		for (const [path, fileEdits] of Arr.sort(byPath, byKey)) {
+			const raw = raws.get(path);
+			const project = projects.get(path);
+			// Earlier checks reject edits for files that were not matched.
+			if (raw === undefined || project === undefined) {
+				return yield* Effect.die(new Error(`${path} is not a matched file`));
+			}
 			const { bom, text } = splitByteOrderMark(raw);
-			const applied = applyEdits(path, text, byPath.get(path)!);
-			const project = projects.get(path)!;
+			const applied = applyEdits(path, text, fileEdits);
 			if (applied instanceof EditRejected) {
 				rejected.push({ project, path, cause: applied });
 				continue;
@@ -291,7 +299,6 @@ export const prepare = <C, R>(
 		return Handler.prepared<Pending>({ writes });
 	});
 
-/** The apply phase: writes the prepared files. */
 export const apply = (
 	actionId: string,
 	pending: Pending,
@@ -323,17 +330,17 @@ export const classify =
 		return declared ? (cause as GuardedError<G[number]>) : unexpected(action, cause);
 	};
 
-/** Resolves a Promise transform's declared services. */
 export const resolveServices = <S extends Handler.ServiceMap>(services: S | undefined) =>
 	Effect.map(
 		Effect.context<ServiceIds<S>>(),
 		(context) =>
 			// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.fromEntries does not track keys.
 			Object.fromEntries(
-				Reflect.ownKeys(services ?? {}).map((name) => [
-					name,
-					Context.get(context, services![name]!),
-				]),
+				Reflect.ownKeys(services ?? {}).flatMap((name) => {
+					const key = services?.[name];
+
+					return key === undefined ? [] : [[name, Context.get(context, key)]];
+				}),
 			) as ResolvedServices<S>,
 	);
 

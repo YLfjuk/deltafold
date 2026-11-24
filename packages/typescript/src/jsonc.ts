@@ -1,4 +1,3 @@
-/** Whether `path` names a JSON or JSONC file. */
 export const isJsonPath = (path: string) => /\.jsonc?$/i.test(path);
 
 const parses = (text: string) => {
@@ -24,7 +23,7 @@ const stripComments = (text: string) => {
 	let output = "";
 	let index = 0;
 	while (index < text.length) {
-		const char = text[index]!;
+		const char = text.charAt(index);
 		if (char === '"') {
 			const end = stringEnd(text, index);
 			output += text.slice(index, end);
@@ -55,7 +54,7 @@ const stripTrailingCommas = (text: string) => {
 	let output = "";
 	let index = 0;
 	while (index < text.length) {
-		const char = text[index]!;
+		const char = text.charAt(index);
 		if (char === '"') {
 			const end = stringEnd(text, index);
 			output += text.slice(index, end);
@@ -64,7 +63,7 @@ const stripTrailingCommas = (text: string) => {
 		}
 		if (char === ",") {
 			let next = index + 1;
-			while (next < text.length && /\s/.test(text[next]!)) next++;
+			while (next < text.length && /\s/.test(text.charAt(next))) next++;
 			const previous = output.trimEnd().at(-1);
 			const afterValue = previous !== undefined && !"{[,".includes(previous);
 			if (afterValue && (text[next] === "}" || text[next] === "]")) {

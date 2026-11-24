@@ -190,7 +190,7 @@ layer(NodeFileSystem.layer)("TypeScript.Project", (it) => {
 			expect(error.failures).toMatchObject([
 				{
 					project: { kind: "configured", config: "packages/cli/tsconfig.json" },
-					cause: { _tag: "EditRejected" },
+					cause: { _tag: "@deltafold/typescript/EditRejected" },
 				},
 			]);
 			expect(yield* readFiles(root, Object.keys(files))).toEqual(files);
@@ -270,7 +270,7 @@ layer(NodeFileSystem.layer)("TypeScript.Project", (it) => {
 				[
 					{ kind: "configured", config: "packages/cli/tsconfig.json" },
 					"packages/cli/src/broken.ts",
-					"SyntaxErrors",
+					"@deltafold/typescript/SyntaxErrors",
 				],
 			]);
 			expect(yield* readFiles(root, Object.keys(broken))).toEqual(broken);

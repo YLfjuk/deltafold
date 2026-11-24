@@ -2,28 +2,13 @@ import { Effect, Result, Scope } from "effect";
 import type { SourceFile } from "typescript-7.1/ast";
 import type { Checker, Program } from "typescript-7.1/async";
 
-import { type Action, Handler } from "deltafold";
+import type { Action } from "deltafold";
+import { Handler } from "deltafold";
 import type { Edits, FileEdit, TextEdit } from "./edits.ts";
-import {
-	apply,
-	classify,
-	type NoServices,
-	prepare,
-	resolveServices,
-	type ResolvedServices,
-	runEffect,
-	runPromise,
-	type ServiceIds,
-	type Unit,
-	type UnitResult,
-} from "./engine.ts";
-import {
-	type AdapterCause,
-	EditRejected,
-	type Errors,
-	type Failure,
-	type GuardedError,
-} from "./errors.ts";
+import type { NoServices, ResolvedServices, ServiceIds, Unit, UnitResult } from "./engine.ts";
+import { apply, classify, prepare, resolveServices, runEffect, runPromise } from "./engine.ts";
+import type { AdapterCause, Errors, Failure, GuardedError } from "./errors.ts";
+import { EditRejected } from "./errors.ts";
 import type { Info, Options, PromiseOptions } from "./project.ts";
 import type { Workspace } from "./workspace.ts";
 
@@ -34,15 +19,31 @@ import type { Workspace } from "./workspace.ts";
  * @since @next
  */
 export type Context<Payload> = {
+	/** @since @next */
 	readonly payload: Payload;
-	/** The root-relative, `/`-separated path of the file. */
+	/**
+	 * The root-relative, `/`-separated path of the file.
+	 *
+	 * @since @next
+	 */
 	readonly path: string;
+	/** @since @next */
 	readonly sourceFile: SourceFile;
-	/** The compiler project that the file belongs to. */
+	/**
+	 * The compiler project that the file belongs to.
+	 *
+	 * @since @next
+	 */
 	readonly project: Info;
+	/** @since @next */
 	readonly program: Program;
+	/** @since @next */
 	readonly checker: Checker;
-	/** Edit helpers that accept nodes of this file only. */
+	/**
+	 * Edit helpers that accept nodes of this file only.
+	 *
+	 * @since @next
+	 */
 	readonly edit: Edits;
 };
 
@@ -55,8 +56,13 @@ export type PromiseContext<
 	Payload,
 	S extends Handler.ServiceMap = NoServices,
 > = Context<Payload> & {
-	/** Aborted when the action is interrupted. */
+	/**
+	 * Aborted when the action is interrupted.
+	 *
+	 * @since @next
+	 */
 	readonly signal: AbortSignal;
+	/** @since @next */
 	readonly services: ResolvedServices<S>;
 };
 

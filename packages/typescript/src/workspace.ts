@@ -42,7 +42,9 @@ export type Compiler = {
 };
 
 /** A compiler that could not open a snapshot, with the original failure. */
-export class CompilerUnavailable extends Data.TaggedError("CompilerUnavailable")<{
+export class CompilerUnavailable extends Data.TaggedError(
+	"@deltafold/typescript/CompilerUnavailable",
+)<{
 	readonly cause: unknown;
 }> {}
 
@@ -85,7 +87,11 @@ export type Internals = {
  * @since @next
  */
 export type Workspace = {
-	/** The absolute, `/`-separated root that payload globs are relative to. */
+	/**
+	 * The absolute, `/`-separated root that payload globs are relative to.
+	 *
+	 * @since @next
+	 */
 	readonly root: string;
 	/**
 	 * Locks root-relative paths until the current scope closes. This package's handlers
@@ -93,25 +99,21 @@ export type Workspace = {
 	 * take the same locks. `./a.ts` and `a.ts` share a lock. It takes locks in sorted
 	 * order, and waiting for one can be interrupted. Locks are not reentrant: a fiber
 	 * that locks a path it already holds waits until it is interrupted.
+	 *
+	 * @since @next
 	 */
 	readonly lock: (paths: ReadonlyArray<string>) => Effect.Effect<void, never, Scope.Scope>;
 	readonly [InternalId]: Internals;
 };
 
-/**
- * The `Workspace` service.
- *
- * @since @next
- */
+/** @since @next */
 export const Workspace = Context.Service<Workspace>("@deltafold/typescript/Workspace");
 
-/** The workspace operations that only the handlers of this package use. */
 export const internals = (workspace: Workspace): Internals => workspace[InternalId];
 
 /** The suffix of the write step's temporary files. Matching never selects them. */
 export const temporarySuffix = ".deltafold-tmp";
 
-/** Replaces backslashes with `/`. */
 const toPosix = (path: string) => path.replaceAll("\\", "/");
 
 /** Decodes UTF-8 file bytes and keeps a leading byte order mark. */
@@ -120,7 +122,6 @@ const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
 const errorMessage = (cause: unknown) =>
 	cause instanceof Error ? cause.message : typeof cause === "string" ? cause : String(cause);
 
-/** Builds a workspace on Effect's file system, for a root and a compiler. */
 export const make = (options: {
 	readonly root: string;
 	readonly compiler: Compiler;
@@ -235,10 +236,19 @@ export const make = (options: {
 			);
 
 		const write = (actionId: string, writes: ReadonlyArray<Write>) => {
+			const staged = writes.map((entry, index) => {
+				const target = absolute(entry.path);
+				const slash = target.lastIndexOf("/");
+				const random = Math.random().toString(36).slice(2, 10);
+				const temporary = `${target.slice(0, slash)}/.${target.slice(slash + 1)}.${random}${temporarySuffix}`;
+
+				return { ...entry, index, target, temporary };
+			});
+
 			// A failure before the first rename leaves every original unchanged, so every
 			// other file is still pending. While renaming, only later files are.
 			const failed = (
-				index: number,
+				entry: (typeof staged)[number],
 				phase: "staging" | "renaming",
 				reason: string,
 				written: ReadonlyArray<string>,
@@ -249,44 +259,41 @@ export const make = (options: {
 					root,
 					writtenPaths: written,
 					failed: {
-						path: writes[index]!.path,
+						path: entry.path,
 						status: phase === "staging" ? "not-written" : "unknown",
 						reason,
 						cause,
 					},
-					pendingPaths: writes
-						.filter((_, other) =>
-							phase === "staging" ? other !== index : other > index,
+					pendingPaths: staged.flatMap((other) =>
+						(
+							phase === "staging"
+								? other.index !== entry.index
+								: other.index > entry.index
 						)
-						.map((entry) => entry.path),
+							? [other.path]
+							: [],
+					),
 				});
 
-			const temporaries = writes.map(({ path: relative }) => {
-				const target = absolute(relative);
-				const slash = target.lastIndexOf("/");
-				const random = Math.random().toString(36).slice(2, 10);
-
-				return `${target.slice(0, slash)}/.${target.slice(slash + 1)}.${random}${temporarySuffix}`;
-			});
-			const cleanup = Effect.forEach(temporaries, (temporary) =>
+			const cleanup = Effect.forEach(staged, ({ temporary }) =>
 				fs.remove(temporary).pipe(Effect.ignore),
 			);
 
 			return Effect.gen(function* () {
 				// Pass 1: write every temporary file, keeping the original's mode.
-				for (const [index, entry] of writes.entries()) {
-					const target = absolute(entry.path);
-					const temporary = temporaries[index]!;
-					yield* fs.writeFileString(temporary, entry.text).pipe(
+				for (const entry of staged) {
+					yield* fs.writeFileString(entry.temporary, entry.text).pipe(
 						Effect.andThen(
-							fs.stat(target).pipe(
-								Effect.flatMap((info) => fs.chmod(temporary, info.mode & 0o7777)),
+							fs.stat(entry.target).pipe(
+								Effect.flatMap((info) =>
+									fs.chmod(entry.temporary, info.mode & 0o7777),
+								),
 								Effect.ignore,
 							),
 						),
 						Effect.mapError((cause) =>
 							failed(
-								index,
+								entry,
 								"staging",
 								`Could not write a temporary file: ${errorMessage(cause)}`,
 								[],
@@ -296,11 +303,11 @@ export const make = (options: {
 					);
 				}
 				// Pass 2: check that every original still has the content that was read.
-				for (const [index, entry] of writes.entries()) {
-					const current = yield* readText(absolute(entry.path)).pipe(
+				for (const entry of staged) {
+					const current = yield* readText(entry.target).pipe(
 						Effect.mapError((cause) =>
 							failed(
-								index,
+								entry,
 								"staging",
 								`Could not read the file: ${errorMessage(cause)}`,
 								[],
@@ -310,7 +317,7 @@ export const make = (options: {
 					);
 					if (current !== entry.expected) {
 						return yield* failed(
-							index,
+							entry,
 							"staging",
 							"The file changed after it was read",
 							[],
@@ -319,13 +326,13 @@ export const make = (options: {
 				}
 				// Pass 3: replace each original.
 				const written: Array<string> = [];
-				for (const [index, entry] of writes.entries()) {
+				for (const entry of staged) {
 					yield* fs
-						.rename(temporaries[index]!, absolute(entry.path))
+						.rename(entry.temporary, entry.target)
 						.pipe(
 							Effect.mapError((cause) =>
 								failed(
-									index,
+									entry,
 									"renaming",
 									`Could not replace the file: ${errorMessage(cause)}`,
 									written,
@@ -362,6 +369,5 @@ export const make = (options: {
 		} satisfies Workspace;
 	});
 
-/** A layer that builds the workspace on Effect's file system. */
 export const layer = (options: { readonly root: string; readonly compiler: Compiler }) =>
 	Layer.effect(Workspace, make(options));

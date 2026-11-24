@@ -3,29 +3,22 @@ import type { Node, SourceFile } from "typescript-7.1/ast";
 import { skipTrivia } from "typescript-7.1/ast/scanner";
 import type { Checker, Program, Symbol } from "typescript-7.1/async";
 
-import { type Action, Handler } from "deltafold";
-import { type Edits, type FileEdit, nameForm, type NameForm } from "./edits.ts";
+import type { Action } from "deltafold";
+import { Handler } from "deltafold";
+import type { Edits, FileEdit, NameForm } from "./edits.ts";
+import { nameForm } from "./edits.ts";
+import type { NoServices, ResolvedServices, ServiceIds, Unit, UnitResult } from "./engine.ts";
 import {
 	apply,
 	classify,
-	type NoServices,
 	prepare,
 	resolveServices,
-	type ResolvedServices,
 	runEffect,
 	runPromise,
-	type ServiceIds,
 	unexpected,
-	type Unit,
-	type UnitResult,
 } from "./engine.ts";
-import {
-	type AdapterCause,
-	EditRejected,
-	type Errors,
-	type Failure,
-	type GuardedError,
-} from "./errors.ts";
+import type { AdapterCause, Errors, Failure, GuardedError } from "./errors.ts";
+import { EditRejected } from "./errors.ts";
 import type { Workspace } from "./workspace.ts";
 
 /**
@@ -36,8 +29,18 @@ import type { Workspace } from "./workspace.ts";
  * @since @next
  */
 export type Info =
-	| { readonly kind: "configured"; readonly config: string }
-	| { readonly kind: "inferred"; readonly id: string };
+	| {
+			/** @since @next */
+			readonly kind: "configured";
+			/** @since @next */
+			readonly config: string;
+	  }
+	| {
+			/** @since @next */
+			readonly kind: "inferred";
+			/** @since @next */
+			readonly id: string;
+	  };
 
 /**
  * One use of a symbol in a file the transform may edit.
@@ -45,11 +48,23 @@ export type Info =
  * @since @next
  */
 export type Reference = {
-	/** The root-relative, `/`-separated path of the file. */
+	/**
+	 * The root-relative, `/`-separated path of the file.
+	 *
+	 * @since @next
+	 */
 	readonly path: string;
-	/** The name node, such as the `a1` in `value.a1`. */
+	/**
+	 * The name node, such as the `a1` in `value.a1`.
+	 *
+	 * @since @next
+	 */
 	readonly node: Node;
-	/** Where the name appears. */
+	/**
+	 * Where the name appears.
+	 *
+	 * @since @next
+	 */
 	readonly form: NameForm;
 };
 
@@ -60,16 +75,26 @@ export type Reference = {
  * @since @next
  */
 export type Context<Payload> = {
+	/** @since @next */
 	readonly payload: Payload;
+	/** @since @next */
 	readonly project: Info;
 	/**
 	 * The project's matched files, as root-relative paths. The transform may edit only
 	 * these files, and it does not run while any of them has syntax errors.
+	 *
+	 * @since @next
 	 */
 	readonly files: ReadonlyArray<string>;
-	/** Reads every file of the project, including installed declarations. */
+	/**
+	 * Reads every file of the project, including installed declarations.
+	 *
+	 * @since @next
+	 */
 	readonly program: Program;
+	/** @since @next */
 	readonly checker: Checker;
+	/** @since @next */
 	readonly edit: Edits;
 };
 
@@ -82,15 +107,26 @@ export type PromiseContext<
 	Payload,
 	S extends Handler.ServiceMap = NoServices,
 > = Context<Payload> & {
-	/** Loads one of `files`. */
+	/**
+	 * Loads one of `files`.
+	 *
+	 * @since @next
+	 */
 	readonly sourceFile: (path: string) => Promise<SourceFile>;
 	/**
 	 * Finds the uses of a symbol in `files` with the compiler's find-references. It leaves
 	 * out uses in installed packages, unmatched files, and other projects.
+	 *
+	 * @since @next
 	 */
 	readonly references: (symbol: Symbol) => Promise<ReadonlyArray<Reference>>;
-	/** Aborted when the action is interrupted. */
+	/**
+	 * Aborted when the action is interrupted.
+	 *
+	 * @since @next
+	 */
 	readonly signal: AbortSignal;
+	/** @since @next */
 	readonly services: ResolvedServices<S>;
 };
 
@@ -100,13 +136,19 @@ export type PromiseContext<
  * @since @next
  */
 export type EffectContext<Payload> = Context<Payload> & {
-	/** Loads one of `files`. */
+	/**
+	 * Loads one of `files`.
+	 *
+	 * @since @next
+	 */
 	readonly sourceFile: (
 		path: string,
 	) => Effect.Effect<SourceFile, Handler.UnexpectedHandlerError>;
 	/**
 	 * Finds the uses of a symbol in `files` with the compiler's find-references. It leaves
 	 * out uses in installed packages, unmatched files, and other projects.
+	 *
+	 * @since @next
 	 */
 	readonly references: (
 		symbol: Symbol,
@@ -119,7 +161,11 @@ export type EffectContext<Payload> = Context<Payload> & {
  * @since @next
  */
 export type Options<Payload> = {
-	/** Globs, relative to the run's root, that select the action's files. */
+	/**
+	 * Globs, relative to the run's root, that select the action's files.
+	 *
+	 * @since @next
+	 */
 	readonly include: (payload: Payload) => ReadonlyArray<string>;
 };
 
@@ -133,9 +179,17 @@ export type PromiseOptions<
 	S extends Handler.ServiceMap,
 	G extends ReadonlyArray<Handler.ErrorGuard>,
 > = Options<Payload> & {
-	/** Effect services that the transform receives as `services`. The handler requires them. */
+	/**
+	 * Effect services that the transform receives as `services`. The handler requires them.
+	 *
+	 * @since @next
+	 */
 	readonly services?: S;
-	/** Guards for errors that keep their own type. Others become `Handler.UnexpectedHandlerError`. */
+	/**
+	 * Guards for errors that keep their own type. Others become `Handler.UnexpectedHandlerError`.
+	 *
+	 * @since @next
+	 */
 	readonly errors?: G;
 };
 
