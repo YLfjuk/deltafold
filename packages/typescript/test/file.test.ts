@@ -481,11 +481,18 @@ layer(NodeFileSystem.layer)("TypeScript.File", (it) => {
 				({ path, program, edit }) =>
 					Effect.gen(function* () {
 						if (path !== "src/a.ts") return [];
-						const other = yield* Effect.promise(() =>
-							program.getSourceFile(`${root}/src/b.ts`),
-						);
+						// The compiler names files by their real path, which can differ from the
+						// fixture's temporary path, such as a Windows short name.
+						const other = yield* Effect.promise(async () => {
+							const names = await program.getSourceFileNames();
+							const name = names.find((file) => String(file).endsWith("/src/b.ts"));
 
-						return [edit.replace(other!.statements[0]!, "export const b = 3;")];
+							return name === undefined ? undefined : program.getSourceFile(name);
+						});
+						if (other === undefined)
+							return yield* Effect.die("src/b.ts is not in the program");
+
+						return [edit.replace(other.statements[0]!, "export const b = 3;")];
 					}),
 				{ include: () => ["src/*.ts"] },
 			);
