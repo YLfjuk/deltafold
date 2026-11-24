@@ -66,7 +66,7 @@ export const actionsOfSteps = (steps: ReadonlyArray<Action.Step>): ReadonlyArray
 
 export const stepsOf = (content: Migration.Content): ReadonlyArray<Action.Step> =>
 	content.flatMap((fragment) =>
-		fragment._tag === "Text" || fragment._tag === "ActionRef" ? [] : [fragment],
+		fragment._tag === "Text" || fragment._tag === "ActionRef" ? [] : fragment,
 	);
 
 /** Whether two definitions with the same identifier describe the same change. */

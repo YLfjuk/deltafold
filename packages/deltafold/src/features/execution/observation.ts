@@ -1,15 +1,5 @@
-import {
-	Cause,
-	Clock,
-	Deferred,
-	Duration,
-	Effect,
-	Exit,
-	Fiber,
-	Option,
-	Predicate,
-	Semaphore,
-} from "effect";
+import type { Duration } from "effect";
+import { Cause, Clock, Deferred, Effect, Exit, Fiber, Option, Predicate, Semaphore } from "effect";
 
 import type * as Plan from "../../foundation/plan.ts";
 import type { Occurrence, Step } from "../../foundation/plan.ts";

@@ -36,7 +36,7 @@ export type Blocker = {
  *
  * @since 0.0.1
  */
-export class InvalidHistory extends Data.TaggedError("InvalidHistory")<{
+export class InvalidHistory extends Data.TaggedError("deltafold/InvalidHistory")<{
 	readonly issues: ReadonlyArray<Issue>;
 }> {
 	override get message() {
@@ -47,7 +47,7 @@ export class InvalidHistory extends Data.TaggedError("InvalidHistory")<{
 }
 
 /** @since 0.0.1 */
-export class UnknownVersion extends Data.TaggedError("UnknownVersion")<{
+export class UnknownVersion extends Data.TaggedError("deltafold/UnknownVersion")<{
 	readonly version: string;
 	readonly known: ReadonlyArray<string>;
 }> {
@@ -62,7 +62,7 @@ export class UnknownVersion extends Data.TaggedError("UnknownVersion")<{
  *
  * @since 0.0.1
  */
-export class UnsupportedRoute extends Data.TaggedError("UnsupportedRoute")<{
+export class UnsupportedRoute extends Data.TaggedError("deltafold/UnsupportedRoute")<{
 	readonly from: string;
 	readonly to: string;
 	readonly direction: RequestDirection;
@@ -85,7 +85,7 @@ export class UnsupportedRoute extends Data.TaggedError("UnsupportedRoute")<{
  *
  * @since 0.0.1
  */
-export class AmbiguousRoute extends Data.TaggedError("AmbiguousRoute")<{
+export class AmbiguousRoute extends Data.TaggedError("deltafold/AmbiguousRoute")<{
 	readonly from: string;
 	readonly to: string;
 	readonly candidates: ReadonlyArray<RouteSummary>;
@@ -105,7 +105,7 @@ export class AmbiguousRoute extends Data.TaggedError("AmbiguousRoute")<{
  *
  * @since 0.0.1
  */
-export class UnknownRoute extends Data.TaggedError("UnknownRoute")<{
+export class UnknownRoute extends Data.TaggedError("deltafold/UnknownRoute")<{
 	readonly route: string;
 	readonly candidates: ReadonlyArray<RouteSummary>;
 }> {
@@ -121,7 +121,7 @@ export class UnknownRoute extends Data.TaggedError("UnknownRoute")<{
  *
  * @since 0.0.1
  */
-export class RewriteCycle extends Data.TaggedError("RewriteCycle")<{
+export class RewriteCycle extends Data.TaggedError("deltafold/RewriteCycle")<{
 	readonly route: string;
 	readonly rules: ReadonlyArray<string>;
 	readonly actions: string;
@@ -136,7 +136,7 @@ export class RewriteCycle extends Data.TaggedError("RewriteCycle")<{
  *
  * @since 0.0.1
  */
-export class ConflictingRewrites extends Data.TaggedError("ConflictingRewrites")<{
+export class ConflictingRewrites extends Data.TaggedError("deltafold/ConflictingRewrites")<{
 	readonly route: string;
 	readonly outcomes: ReadonlyArray<{
 		readonly actions: string;
@@ -154,7 +154,7 @@ export class ConflictingRewrites extends Data.TaggedError("ConflictingRewrites")
  *
  * @since 0.0.1
  */
-export class RewriteLimitExceeded extends Data.TaggedError("RewriteLimitExceeded")<{
+export class RewriteLimitExceeded extends Data.TaggedError("deltafold/RewriteLimitExceeded")<{
 	readonly route: string;
 	readonly limit: "states" | "depth";
 	readonly value: number;
@@ -171,7 +171,7 @@ export class RewriteLimitExceeded extends Data.TaggedError("RewriteLimitExceeded
  *
  * @since 0.0.1
  */
-export class TooManyRoutes extends Data.TaggedError("TooManyRoutes")<{
+export class TooManyRoutes extends Data.TaggedError("deltafold/TooManyRoutes")<{
 	readonly from: string;
 	readonly to: string;
 	readonly limit: number;

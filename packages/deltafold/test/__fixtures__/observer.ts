@@ -1,6 +1,7 @@
 import { expect } from "@effect/vitest";
 
-import { type Executor, Observer } from "deltafold";
+import { Observer } from "deltafold";
+import type { Executor } from "deltafold";
 
 /** Cancels the run when the given phase starts, before the phase can run. */
 export const abortingAt = (controller: AbortController, phase: string) =>

@@ -1,13 +1,8 @@
 import { describe, expect, expectTypeOf, it } from "@effect/vitest";
 import { Effect, Result, SemVer } from "effect";
 
-import {
-	DependentsPolicy,
-	Release,
-	VersionStrategy,
-	type PlanError,
-	SemVerStrategy,
-} from "@deltafold/release";
+import { DependentsPolicy, Release, VersionStrategy, SemVerStrategy } from "@deltafold/release";
+import type { PlanError } from "@deltafold/release";
 import { Change, History, Package, Version } from "deltafold";
 import {
 	advance,
@@ -15,10 +10,10 @@ import {
 	member,
 	packageWith,
 	ProjectChange,
-	type ProjectMetadata,
 	retries,
 	timeout,
 } from "./__fixtures__/packages.ts";
+import type { ProjectMetadata } from "./__fixtures__/packages.ts";
 
 const widgets = packageWith("@acme/widgets", ["1.5.0", "1.5.2"]);
 const react = packageWith("@acme/widgets-react", ["1.4.0"]);

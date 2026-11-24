@@ -1,6 +1,7 @@
 import { Predicate } from "effect";
 
-import { describeValue, dedent, isScalar, type Scalar } from "./template.ts";
+import { describeValue, dedent, isScalar } from "./template.ts";
+import type { Scalar } from "./template.ts";
 
 /**
  * The metadata of a change whose shape is not known statically.

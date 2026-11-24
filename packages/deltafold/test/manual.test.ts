@@ -330,8 +330,8 @@ describe("Manual handlers", () => {
 			);
 
 			expect(events).toEqual([]);
-			expect(error._tag).toBe("InteractionUnavailable");
-			if (error._tag !== "InteractionUnavailable") return;
+			expect(error._tag).toBe("deltafold/InteractionUnavailable");
+			if (error._tag !== "deltafold/InteractionUnavailable") return;
 			expect(error.occurrences.map((occurrence) => occurrence.id)).toEqual([
 				"1-to-2/rotate-billing-key",
 			]);
@@ -351,8 +351,8 @@ describe("Manual handlers", () => {
 			);
 
 			expect(events).toEqual([]);
-			expect(error._tag).toBe("HandlerCoverageError");
-			if (error._tag !== "HandlerCoverageError") return;
+			expect(error._tag).toBe("deltafold/HandlerCoverageError");
+			if (error._tag !== "deltafold/HandlerCoverageError") return;
 			expect(error.issues.map((issue) => [issue._tag, issue.actionId])).toEqual([
 				["Missing", "rotate-billing-key"],
 			]);
@@ -426,8 +426,8 @@ describe("Manual handlers", () => {
 			);
 
 			expect(events).toEqual(["before", "ask:rotate-billing-key"]);
-			expect(error._tag).toBe("ExecutionFailed");
-			if (error._tag !== "ExecutionFailed") return;
+			expect(error._tag).toBe("deltafold/ExecutionFailed");
+			if (error._tag !== "deltafold/ExecutionFailed") return;
 			expect(error.declined).toEqual([]);
 			expect(error.failures.map((failure) => failure.occurrence.id)).toEqual([
 				"1-to-2/rotate-billing-key",
@@ -463,8 +463,8 @@ describe("Manual handlers", () => {
 			);
 
 			expect(events).toEqual(["before", "ask:rotate-billing-key"]);
-			expect(error._tag).toBe("ExecutionFailed");
-			if (error._tag !== "ExecutionFailed") return;
+			expect(error._tag).toBe("deltafold/ExecutionFailed");
+			if (error._tag !== "deltafold/ExecutionFailed") return;
 			expect(error.failures).toEqual([]);
 			expect(error.declined.map((entry) => entry.occurrence.id)).toEqual([
 				"1-to-2/rotate-billing-key",
@@ -558,8 +558,8 @@ describe("Manual handlers", () => {
 			yield* TestClock.adjust("1 second");
 			const error = yield* Fiber.join(fiber);
 
-			expect(error._tag).toBe("ExecutionInterrupted");
-			if (error._tag !== "ExecutionInterrupted") return;
+			expect(error._tag).toBe("deltafold/ExecutionInterrupted");
+			if (error._tag !== "deltafold/ExecutionInterrupted") return;
 			expect(error.reason).toBe("timeout");
 			expect(outcomes(error.report)["rotate-billing-key"]).toEqual({
 				_tag: "Interrupted",
@@ -729,8 +729,8 @@ describe("Manual handlers", () => {
 				[closed, PromptClosed],
 				[thrown, Interaction.UnexpectedInteractionError],
 			] as const) {
-				expect(error._tag).toBe("ExecutionFailed");
-				if (error._tag !== "ExecutionFailed") continue;
+				expect(error._tag).toBe("deltafold/ExecutionFailed");
+				if (error._tag !== "deltafold/ExecutionFailed") continue;
 				const outcome = outcomes(error.report)["rotate-billing-key"];
 				expect(outcome).toMatchObject({ _tag: "Failed", phase: "confirmation" });
 				expect(outcome?._tag === "Failed" && outcome.error).toBeInstanceOf(expected);
@@ -755,12 +755,12 @@ describe("Manual handlers", () => {
 			]) {
 				const error = yield* Effect.flip(Executor.effect(plan, { handlers, interaction }));
 
-				expect(error._tag).toBe("ExecutionFailed");
-				if (error._tag !== "ExecutionFailed") continue;
+				expect(error._tag).toBe("deltafold/ExecutionFailed");
+				if (error._tag !== "deltafold/ExecutionFailed") continue;
 				const outcome = outcomes(error.report)["rotate-billing-key"];
 				expect(outcome).toMatchObject({ _tag: "Failed", phase: "confirmation" });
 				expect(outcome?._tag === "Failed" && outcome.error).toMatchObject({
-					_tag: "UnexpectedInteractionError",
+					_tag: "deltafold/UnexpectedInteractionError",
 					reason: "invalid-answer",
 					cause: undefined,
 				});
@@ -813,8 +813,8 @@ describe("Manual handlers", () => {
 			);
 
 			expect(new Set(asked)).toEqual(new Set(["first", "second"]));
-			expect(error._tag).toBe("ExecutionFailed");
-			if (error._tag !== "ExecutionFailed") return;
+			expect(error._tag).toBe("deltafold/ExecutionFailed");
+			if (error._tag !== "deltafold/ExecutionFailed") return;
 			expect(outcomes(error.report)).toEqual({
 				first: { _tag: "Declined" },
 				second: { _tag: "Completed", performer: "manual", confirmation: "asserted" },

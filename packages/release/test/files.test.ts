@@ -173,7 +173,7 @@ export const version = Version.make("1.6.0", {
 
 			const error = yield* Effect.flip(ReleaseFiles.apply(prepared));
 			expect(error).toMatchObject({
-				_tag: "StalePlan",
+				_tag: "@deltafold/release/StalePlan",
 				paths: [".changes/late.ts", "docs/guide.md"],
 			});
 			expect(files.has("packages/widgets/versions/1.6.0.ts")).toBe(false);
@@ -191,7 +191,7 @@ export const version = Version.make("1.6.0", {
 			const error = yield* Effect.flip(ReleaseFiles.apply(prepared));
 
 			expect(error).toMatchObject({
-				_tag: "ApplyFailed",
+				_tag: "@deltafold/release/ApplyFailed",
 				path: "packages/react/package.json",
 				restored: [
 					"packages/widgets/package.json",
@@ -233,8 +233,8 @@ export const version = Version.make("1.6.0", {
 
 		return Effect.gen(function* () {
 			const error = yield* Effect.flip(ReleaseFiles.prepare(result.success, options));
-			expect(error._tag).toBe("PrepareError");
-			if (error._tag !== "PrepareError") return;
+			expect(error._tag).toBe("@deltafold/release/PrepareError");
+			if (error._tag !== "@deltafold/release/PrepareError") return;
 			expect(error.issues.map((entry) => entry.reason)).toEqual([
 				"UnsupportedRelocation",
 				"UnplannedPending",
@@ -327,12 +327,12 @@ describe("dependency updates", () => {
 		return Effect.gen(function* () {
 			const staleError = yield* Effect.flip(ReleaseFiles.prepare(stale, options));
 			expect(
-				staleError._tag === "PrepareError" &&
+				staleError._tag === "@deltafold/release/PrepareError" &&
 					staleError.issues.map((entry) => entry.reason),
 			).toEqual(["StaleRequirement"]);
 			const unselectedError = yield* Effect.flip(ReleaseFiles.prepare(unselected, options));
 			expect(
-				unselectedError._tag === "PrepareError" &&
+				unselectedError._tag === "@deltafold/release/PrepareError" &&
 					unselectedError.issues.map((entry) => entry.reason),
 			).toEqual(["StaleRequirement", "MissingSelection"]);
 		}).pipe(provide);
@@ -414,7 +414,7 @@ describe("resolving input from manifests", () => {
 				}),
 			);
 			expect(
-				error._tag === "PrepareError" &&
+				error._tag === "@deltafold/release/PrepareError" &&
 					error.issues.map((entry) => [entry.reason, entry.subjects]),
 			).toEqual([
 				["StaleSource", ["apps/docs/package.json"]],
@@ -495,7 +495,7 @@ describe("generated version files", () => {
 		return Effect.gen(function* () {
 			const error = yield* Effect.flip(ReleaseFiles.prepare(result.success, options));
 			expect(
-				error._tag === "PrepareError"
+				error._tag === "@deltafold/release/PrepareError"
 					? error.issues.filter((entry) => entry.reason === "VersionFileName")
 					: [],
 			).toMatchObject([
@@ -544,9 +544,9 @@ describe("apply safety", () => {
 			const error = yield* Effect.flip(ReleaseFiles.apply(prepared));
 
 			expect(error).toMatchObject({
-				_tag: "ApplyFailed",
+				_tag: "@deltafold/release/ApplyFailed",
 				path: "packages/widgets/package.json",
-				cause: { _tag: "ChangedDuringApply" },
+				cause: { _tag: "@deltafold/release/ChangedDuringApply" },
 				restored: [
 					"packages/react/versions/index.ts",
 					"packages/react/versions/1.6.0.ts",
@@ -575,7 +575,7 @@ describe("apply safety", () => {
 			const error = yield* Effect.flip(ReleaseFiles.apply(prepared));
 
 			expect(error).toMatchObject({
-				_tag: "ApplyFailed",
+				_tag: "@deltafold/release/ApplyFailed",
 				path: "packages/react/package.json",
 				restored: [
 					"packages/widgets/package.json",
@@ -586,7 +586,7 @@ describe("apply safety", () => {
 				unrestored: [
 					{
 						path: "packages/widgets/versions/1.6.0.ts",
-						cause: { _tag: "ChangedDuringApply" },
+						cause: { _tag: "@deltafold/release/ChangedDuringApply" },
 					},
 				],
 			});
@@ -604,7 +604,7 @@ describe("apply safety", () => {
 			const error = yield* Effect.flip(ReleaseFiles.apply(prepared));
 
 			expect(error).toMatchObject({
-				_tag: "ApplyFailed",
+				_tag: "@deltafold/release/ApplyFailed",
 				path: "packages/react/package.json",
 				restored: [
 					"packages/widgets/package.json",
@@ -614,7 +614,10 @@ describe("apply safety", () => {
 					"packages/widgets/versions/1.6.0.ts",
 				],
 				unrestored: [
-					{ path: "packages/react/package.json", cause: { _tag: "ChangedDuringApply" } },
+					{
+						path: "packages/react/package.json",
+						cause: { _tag: "@deltafold/release/ChangedDuringApply" },
+					},
 				],
 			});
 			expect(files.get("packages/react/package.json")).toBe('{"name":');
@@ -639,10 +642,13 @@ describe("apply safety", () => {
 			const error = yield* Effect.flip(ReleaseFiles.apply(prepared));
 
 			expect(error).toMatchObject({
-				_tag: "ApplyFailed",
+				_tag: "@deltafold/release/ApplyFailed",
 				path: "packages/react/package.json",
 				unrestored: [
-					{ path: "packages/react/package.json", cause: { _tag: "ChangedDuringApply" } },
+					{
+						path: "packages/react/package.json",
+						cause: { _tag: "@deltafold/release/ChangedDuringApply" },
+					},
 				],
 			});
 			expect(files.get("packages/react/package.json")).toBe("EXTERNAL EDIT\n");
@@ -666,7 +672,7 @@ describe("apply safety", () => {
 			const prepared = yield* ReleaseFiles.prepare(plan, options);
 			const error = yield* Effect.flip(ReleaseFiles.apply(prepared));
 
-			expect(error).toMatchObject({ _tag: "ApplyFailed", unrestored: [] });
+			expect(error).toMatchObject({ _tag: "@deltafold/release/ApplyFailed", unrestored: [] });
 			expect(new Map(files)).toEqual(before);
 		}).pipe(provide);
 	});
@@ -692,7 +698,9 @@ const trailing = (body: string) => memoryFs({ ...workspace(), ".changes/retries.
 const reasons = (body: string) =>
 	Effect.gen(function* () {
 		const error = yield* Effect.flip(ReleaseFiles.prepare(plan, options));
-		return error._tag === "PrepareError" ? error.issues.map((entry) => entry.reason) : [];
+		return error._tag === "@deltafold/release/PrepareError"
+			? error.issues.map((entry) => entry.reason)
+			: [];
 	}).pipe(trailing(body).provide);
 
 describe("preparation details", () => {
@@ -799,7 +807,9 @@ describe("preparation details", () => {
 	it.effect("refuses extensionless imports of pending modules the release removes", () =>
 		Effect.gen(function* () {
 			const error = yield* Effect.flip(ReleaseFiles.prepare(plan, options));
-			expect(error._tag === "PrepareError" ? error.issues : []).toMatchObject([
+			expect(
+				error._tag === "@deltafold/release/PrepareError" ? error.issues : [],
+			).toMatchObject([
 				{
 					reason: "UnsupportedRelocation",
 					subjects: [".changes/retries.ts", ".changes/headers"],
@@ -826,7 +836,9 @@ describe("preparation details", () => {
 					pending: [".changes/retries.ts", ".changes/*.tsx"],
 				}),
 			);
-			expect(error._tag === "PrepareError" ? error.issues : []).toContainEqual(
+			expect(
+				error._tag === "@deltafold/release/PrepareError" ? error.issues : [],
+			).toContainEqual(
 				expect.objectContaining({
 					reason: "UnsupportedRelocation",
 					subjects: [".changes/retries.ts", ".changes/headers.js"],
@@ -989,7 +1001,9 @@ export const versions = [v1_6_0, v1_7_0] as const;
 				ReleaseFiles.prepare(planned(widgets, "1.5.2", [retries]), pending),
 			);
 			expect(
-				error._tag === "PrepareError" ? error.issues.map((entry) => entry.reason) : [],
+				error._tag === "@deltafold/release/PrepareError"
+					? error.issues.map((entry) => entry.reason)
+					: [],
 			).toEqual(["InvalidVersionIndex"]);
 			expect(current.get(index)).toBe("export const versions = [];\n");
 		}).pipe(provide);
@@ -1005,7 +1019,7 @@ export const versions = [v1_6_0, v1_7_0] as const;
 			);
 			current.set(index, "// another writer\n");
 			const error = yield* Effect.flip(ReleaseFiles.apply(prepared));
-			expect(error).toMatchObject({ _tag: "StalePlan", paths: [index] });
+			expect(error).toMatchObject({ _tag: "@deltafold/release/StalePlan", paths: [index] });
 			expect(current.has("packages/widgets/versions/1.6.0.ts")).toBe(false);
 		}).pipe(provide);
 	});
@@ -1032,7 +1046,9 @@ export const versions = [v1_6_0, v1_7_0] as const;
 
 		return Effect.gen(function* () {
 			const error = yield* Effect.flip(ReleaseFiles.prepare(shared.success, pending));
-			expect(error._tag === "PrepareError" ? error.issues : []).toContainEqual(
+			expect(
+				error._tag === "@deltafold/release/PrepareError" ? error.issues : [],
+			).toContainEqual(
 				expect.objectContaining({
 					reason: "SharedVersionsDirectory",
 					subjects: ["packages/widgets/versions", "@acme/widgets", "@acme/widgets-react"],
@@ -1082,7 +1098,9 @@ export const versions = [v1_6_0, v1_7_0] as const;
 					ReleaseFiles.prepare(planned(widgets, "1.5.2", [retries]), pending),
 				).pipe(provide);
 				expect(
-					error._tag === "PrepareError" ? error.issues.map((entry) => entry.reason) : [],
+					error._tag === "@deltafold/release/PrepareError"
+						? error.issues.map((entry) => entry.reason)
+						: [],
 				).toEqual(["InvalidVersionIndex"]);
 			}
 		}),

@@ -1,5 +1,7 @@
-import { ReleaseChange, ReleaseFiles, type Release } from "@deltafold/release";
-import { History, Package, Version, type Change } from "deltafold";
+import { ReleaseChange, ReleaseFiles } from "@deltafold/release";
+import type { Release } from "@deltafold/release";
+import { History, Package, Version } from "deltafold";
+import type { Change } from "deltafold";
 
 export type ProjectMetadata = ReleaseChange.Metadata & { readonly area: "api" | "docs" };
 

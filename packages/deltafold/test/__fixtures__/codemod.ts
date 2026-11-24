@@ -2,7 +2,8 @@
 // Handler.promise contract and declares its own service; it is not a codemod engine.
 import { Context } from "effect";
 
-import { Handler, type Action } from "deltafold";
+import { Handler } from "deltafold";
+import type { Action } from "deltafold";
 
 export type SourceFiles = {
 	readonly list: (include: ReadonlyArray<string>) => Promise<ReadonlyArray<string>>;

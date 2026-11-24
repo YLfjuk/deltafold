@@ -1,4 +1,5 @@
-import { Array as Arr, Effect, type FileSystem, Order } from "effect";
+import { Array as Arr, Effect, Order } from "effect";
+import type { FileSystem } from "effect";
 
 import type { Paths } from "./paths.ts";
 

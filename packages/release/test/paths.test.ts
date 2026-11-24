@@ -161,7 +161,7 @@ describe("locations", () => {
 				}),
 			);
 			expect(
-				outside._tag === "PrepareError" &&
+				outside._tag === "@deltafold/release/PrepareError" &&
 					outside.issues.map((entry) => [entry.reason, entry.subjects]),
 			).toEqual([
 				["OutsideWorkspace", ["../../escape/*.ts"]],
@@ -193,7 +193,9 @@ describe("drive-relative paths", () => {
 						pending: [],
 					}),
 				).pipe(provide);
-				expect(error._tag === "PrepareError" ? error.issues : []).toContainEqual(
+				expect(
+					error._tag === "@deltafold/release/PrepareError" ? error.issues : [],
+				).toContainEqual(
 					expect.objectContaining({
 						reason: "OutsideWorkspace",
 						subjects: ["C:../escape.json"],

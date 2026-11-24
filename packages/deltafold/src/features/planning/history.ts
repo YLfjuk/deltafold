@@ -7,18 +7,17 @@ import type { Plan } from "../../foundation/plan.ts";
 import type * as Rule from "../../foundation/rule.ts";
 import type * as Shortcut from "../../foundation/shortcut.ts";
 import type { Version } from "../../foundation/version.ts";
-import { InvalidHistory, type ResolveError, type UnknownVersion } from "./resolve-error.ts";
+import { InvalidHistory } from "./resolve-error.ts";
+import type { ResolveError, UnknownVersion } from "./resolve-error.ts";
 import {
 	destinations,
 	lookup as lookupVersion,
 	makeContext,
 	resolve as resolveRoute,
-	type Context,
-	type Destination,
-	type ResolveOptions,
-	type RoutePolicy,
 } from "./resolve.ts";
-import { validate as validateDeclarations, type Issue } from "./validate.ts";
+import type { Context, Destination, ResolveOptions, RoutePolicy } from "./resolve.ts";
+import { validate as validateDeclarations } from "./validate.ts";
+import type { Issue } from "./validate.ts";
 
 export * from "./resolve-error.ts";
 export type { Destination, Issue, ResolveOptions, RoutePolicy };

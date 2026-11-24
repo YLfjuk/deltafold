@@ -1,6 +1,6 @@
 import { Result } from "effect";
 
-import * as GenConfig from "../../configs/gen.config.ts";
+import * as GenConfig from "../../configs/gen.ts";
 
 /** One version the index imports: the module's version id and the name it exports. */
 export type IndexEntry = { readonly id: string; readonly exportName: string };

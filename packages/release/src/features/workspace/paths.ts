@@ -1,4 +1,5 @@
-import { issue, type Issue } from "../../foundation/error.ts";
+import { issue } from "../../foundation/error.ts";
+import type { Issue } from "../../foundation/error.ts";
 
 // Path arithmetic on forward-slash paths. An absolute path keeps its prefix: "/" on POSIX,
 // "C:/" for a Windows drive (the letter is upper-cased), or "//" for a UNC share.

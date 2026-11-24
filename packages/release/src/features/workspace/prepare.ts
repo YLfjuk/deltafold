@@ -1,12 +1,15 @@
-import { Array as Arr, Effect, FileSystem, Order, type PlatformError } from "effect";
+import { Array as Arr, Effect, FileSystem, Order } from "effect";
+import type { PlatformError } from "effect";
 
-import { issue, PrepareError, type Issue } from "../../foundation/error.ts";
-import { findRange, jsonContent, locate } from "../../foundation/npm/manifest.ts";
-import type { Plan, PlannedVersion, Replacement } from "../planning/release.ts";
+import { issue, PrepareError } from "../../foundation/error.ts";
+import type { Issue } from "../../foundation/error.ts";
+import { findRange, jsonContent, locate } from "../../foundation/npm/index.ts";
+import type { Release } from "../planning/index.ts";
 import type { Edit, Prepared, PrepareOptions, ReplacementReport } from "./files.ts";
 import { globAll } from "./glob.ts";
 import { join, paths, relative } from "./paths.ts";
-import { render, scan, type Declaration } from "./source.ts";
+import { render, scan } from "./source.ts";
+import type { Declaration } from "./source.ts";
 import { parseIndex, renderIndex } from "./version-index.ts";
 
 const occurrences = (text: string, token: string): ReadonlyArray<number> => {
@@ -32,7 +35,7 @@ const plainFileName = /^(?!\.{1,2}$)[^/\\:\0]+$/;
  * @since 0.0.1
  */
 export const prepare = (
-	plan: Plan,
+	plan: Release.Plan,
 	options: PrepareOptions,
 ): Effect.Effect<Prepared, PrepareError | PlatformError.PlatformError, FileSystem.FileSystem> =>
 	Effect.gen(function* () {
@@ -58,10 +61,7 @@ export const prepare = (
 		const fromBase = (path: string) => resolved(location.fromBase(path));
 		const fromRoot = (path: string) => resolved(location.fromRoot(path));
 		const allFromBase = (patterns: ReadonlyArray<string>) =>
-			patterns.flatMap((pattern) => {
-				const path = fromBase(pattern);
-				return path === undefined ? [] : [path];
-			});
+			patterns.flatMap((pattern) => fromBase(pattern) ?? []);
 		const globs: Array<Prepared["globs"][number]> = [];
 		const exportName = plan.exportName;
 
@@ -142,7 +142,7 @@ export const prepare = (
 		};
 
 		// Version modules, written before anything is consumed.
-		const registration = (entry: PlannedVersion) => {
+		const registration = (entry: Release.PlannedVersion) => {
 			const files = plan.files.get(entry.package);
 			return files === undefined ? undefined : { files };
 		};
@@ -343,7 +343,10 @@ export const prepare = (
 
 		// Literal replacements.
 		const reports: Array<ReplacementReport> = [];
-		const claimed = new Map<string, Array<{ start: number; end: number; rule: Replacement }>>();
+		const claimed = new Map<
+			string,
+			Array<{ start: number; end: number; rule: Release.Replacement }>
+		>();
 		for (const rule of plan.replacements) {
 			const patterns = allFromBase(rule.files);
 			const exclude = allFromBase(rule.exclude ?? []);
@@ -389,14 +392,13 @@ export const prepare = (
 		for (const [path, ranges] of claimed) {
 			const original = (yield* read(path)) ?? "";
 			let text = original;
-			const applicable = ranges
-				.map((range) => ({
-					...range,
-					version: plan.versions.find(
-						(entry) => entry.package === range.rule.versionOf.name,
-					)?.version.id,
-				}))
-				.filter((range) => range.version !== undefined);
+			const applicable = ranges.flatMap((range) => {
+				const version = plan.versions.find(
+					(entry) => entry.package === range.rule.versionOf.name,
+				)?.version.id;
+
+				return version === undefined ? [] : { ...range, version };
+			});
 			const descending = Arr.sort(
 				applicable,
 				Order.flip(

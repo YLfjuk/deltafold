@@ -59,7 +59,7 @@ export type Calculation<V, D> = {
  *
  * @since 0.0.1
  */
-export interface VersionStrategy<M extends object, V, I = undefined, D = undefined> {
+export type VersionStrategy<M extends object, V, I = undefined, D = undefined> = {
 	(context: Context<M, V, I>): Calculation<V, D>;
 	readonly [TypeId]: typeof TypeId;
 	readonly name: string;
@@ -69,7 +69,7 @@ export interface VersionStrategy<M extends object, V, I = undefined, D = undefin
 	 * passes its output to the strategy; asynchronous validation is refused.
 	 */
 	readonly input: StandardSchemaV1<unknown, I> | undefined;
-}
+};
 
 /**
  * Any version strategy.

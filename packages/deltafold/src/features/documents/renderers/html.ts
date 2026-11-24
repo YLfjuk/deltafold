@@ -1,7 +1,7 @@
 import { toHtml } from "hast-util-to-html";
 import { toHast } from "mdast-util-to-hast";
 
-import type { Document } from "../features/documents/document.ts";
+import type { Document } from "../document.ts";
 import { toMdast } from "./mdast.ts";
 
 /**

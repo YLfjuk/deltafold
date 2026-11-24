@@ -242,10 +242,7 @@ const sharedLine = (participants: ReadonlyArray<Participant<object>>, purpose: s
 			subjects(unshaped),
 		);
 	}
-	const lines = participants.flatMap((participant) => {
-		const line = ownLine(participant);
-		return line === undefined ? [] : [line];
-	});
+	const lines = participants.flatMap((participant) => ownLine(participant) ?? []);
 	const [first] = lines;
 	if (first === undefined || lines.some((line) => !sameLine(line, first))) {
 		return failWith(
@@ -254,7 +251,7 @@ const sharedLine = (participants: ReadonlyArray<Participant<object>>, purpose: s
 			subjects(participants),
 		);
 	}
-	const baselines = lines.flatMap((line) => (line.baseline === undefined ? [] : [line.baseline]));
+	const baselines = lines.flatMap((line) => line.baseline ?? []);
 
 	return {
 		...lines.reduce((best, line) => (line.counter > best.counter ? line : best), first),
@@ -581,9 +578,9 @@ export const prereleaseChanges = (
 					change,
 					versions,
 					reverts: presentOnLine(change.reverts.map((reverted) => reverted.id)),
-					revertedBy: [...found.values()]
-						.filter((other) => other.change.reverts.some((r) => r.id === change.id))
-						.map((other) => other.change.id),
+					revertedBy: [...found.values()].flatMap((other) =>
+						other.change.reverts.some((r) => r.id === change.id) ? other.change.id : [],
+					),
 				})),
 			};
 		},

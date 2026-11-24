@@ -1,7 +1,5 @@
 import { Predicate } from "effect";
 
-// Reading and editing npm package.json manifests as text.
-
 /** The dependency fields that become requirements. */
 export const fields = [
 	"dependencies",
@@ -36,7 +34,7 @@ export const readManifest = (text: string): Manifest | undefined => {
 		if (!Predicate.isObject(value)) return [];
 
 		return Object.entries(value).flatMap(([dependency, range]) =>
-			typeof range === "string" ? [{ field, dependency, range }] : [],
+			typeof range === "string" ? { field, dependency, range } : [],
 		);
 	});
 

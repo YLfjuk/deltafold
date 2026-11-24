@@ -1,7 +1,7 @@
 import { Predicate } from "effect";
 
 import { Changelog, Document } from "deltafold/changelog";
-import * as PackageConfig from "../configs/package.config.ts";
+import * as PackageConfig from "../configs/package.ts";
 import { Bump } from "./semver-strategy.ts";
 
 /**

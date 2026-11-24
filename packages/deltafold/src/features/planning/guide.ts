@@ -40,9 +40,13 @@ export const resolveGuide = (
 			}));
 		}
 
-		const children = (step._tag === "Sequence" ? step.children : step.branches)
-			.map((child) => renderStep(child))
-			.filter((items) => items.length > 0);
+		const children = (step._tag === "Sequence" ? step.children : step.branches).flatMap(
+			(child): ReadonlyArray<ReadonlyArray<GuideItem>> => {
+				const items = renderStep(child);
+
+				return items.length > 0 ? [items] : [];
+			},
+		);
 		if (children.length === 0) return [];
 
 		return [{ _tag: "Group", kind: step._tag, children }];

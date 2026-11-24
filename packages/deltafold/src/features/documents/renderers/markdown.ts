@@ -1,6 +1,6 @@
 import { toMarkdown } from "mdast-util-to-markdown";
 
-import type { Document } from "../features/documents/document.ts";
+import type { Document } from "../document.ts";
 import { toMdast } from "./mdast.ts";
 
 /**

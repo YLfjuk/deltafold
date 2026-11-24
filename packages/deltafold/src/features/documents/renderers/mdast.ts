@@ -1,12 +1,8 @@
 import type * as Mdast from "mdast";
 import { normalizeUri, sanitizeUri } from "micromark-util-sanitize-uri";
 
-import {
-	DocumentError,
-	type Block,
-	type Document,
-	type Inline,
-} from "../features/documents/document.ts";
+import { DocumentError } from "../document.ts";
+import type { Block, Document, Inline } from "../document.ts";
 
 /** Link schemes kept in rendered output. Relative URLs are always kept. */
 const safeSchemes = /^(https?|mailto)$/i;

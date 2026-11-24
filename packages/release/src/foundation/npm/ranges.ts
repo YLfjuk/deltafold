@@ -1,9 +1,7 @@
 import { Result, SemVer, SemVerRange } from "effect";
 
-// Dependency ranges in the forms release planning can rewrite: `^x.y.z`, `~x.y.z`, and an
-// exact `x.y.z`. `workspace:` ranges are resolved by the package manager at publish time.
-
 export type Form =
+	// Package managers resolve `workspace:` ranges at publish time.
 	| { readonly _tag: "Workspace" }
 	| {
 			readonly _tag: "Rewritable";

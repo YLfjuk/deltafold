@@ -1,4 +1,5 @@
-import { Data, Predicate, type Pipeable } from "effect";
+import { Data, Predicate } from "effect";
+import type { Pipeable } from "effect";
 
 import type { Version } from "../../foundation/version.ts";
 import type { Package } from "../package.ts";
@@ -272,12 +273,10 @@ export const append =
  *
  * @since 0.0.1
  */
-export class DocumentError extends Data.TaggedError("DocumentError")<{
+export class DocumentError extends Data.TaggedError("deltafold/DocumentError")<{
 	readonly reason: "duplicate-section" | "heading-level" | "reserved-id";
 	readonly message: string;
 }> {}
-
-// Plugins.
 
 /**
  * Release-scoped plugins run once per included release.
@@ -349,9 +348,5 @@ export const makePlugin = <M>(id: string, options: PluginOptions<M>): Plugin<M> 
 	...options,
 });
 
-/**
- * `Document.Plugin.make`
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export const Plugin = { make: makePlugin } as const;

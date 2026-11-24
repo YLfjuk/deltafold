@@ -1,5 +1,6 @@
-import type { Plan, Files } from "../planning/release.ts";
-import { join, type Location } from "./paths.ts";
+import type { Release } from "../planning/index.ts";
+import { join } from "./paths.ts";
+import type { Location } from "./paths.ts";
 import type { Snapshot } from "./resolve.ts";
 
 export { apply } from "./apply.ts";
@@ -50,7 +51,7 @@ export type PreviousSource = {
 export const at = (
 	dir: string,
 	options: { readonly manifest: string; readonly versions?: string; readonly index?: boolean },
-): Files => ({
+): Release.Files => ({
 	manifest: join(dir, options.manifest),
 	versions: join(dir, options.versions ?? ".deltafold/versions"),
 	...(options.index === undefined ? {} : { index: options.index }),
@@ -94,7 +95,7 @@ export type ReplacementReport = {
  */
 export type Prepared = {
 	readonly _tag: "PreparedRelease";
-	readonly plan: Plan;
+	readonly plan: Release.Plan;
 	readonly edits: ReadonlyArray<Edit>;
 	readonly replacements: ReadonlyArray<ReplacementReport>;
 	/** Where the files are; apply uses the same location. */

@@ -39,11 +39,11 @@
 			"default": "./dist/changelog.js"
 		},
 		"./html": {
-			"@deltafold/dev.src": "./src/renderers/html.ts",
+			"@deltafold/dev.src": "./src/features/documents/renderers/html.ts",
 			"default": "./dist/html.js"
 		},
 		"./markdown": {
-			"@deltafold/dev.src": "./src/renderers/markdown.ts",
+			"@deltafold/dev.src": "./src/features/documents/renderers/markdown.ts",
 			"default": "./dist/markdown.js"
 		},
 		"./package.json": "./package.json"

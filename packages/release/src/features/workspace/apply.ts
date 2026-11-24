@@ -1,4 +1,5 @@
-import { Array as Arr, Effect, FileSystem, Order, type PlatformError } from "effect";
+import { Array as Arr, Effect, FileSystem, Order } from "effect";
+import type { PlatformError } from "effect";
 
 import { ApplyFailed, ChangedDuringApply, StalePlan } from "../../foundation/error.ts";
 import type { Applied, Edit, Prepared } from "./files.ts";
@@ -125,7 +126,7 @@ export const apply = (
 		}
 
 		return {
-			written: done.filter((edit) => edit.after !== null).map((edit) => edit.path),
-			removed: done.filter((edit) => edit.after === null).map((edit) => edit.path),
+			written: done.flatMap((edit) => (edit.after !== null ? edit.path : [])),
+			removed: done.flatMap((edit) => (edit.after === null ? edit.path : [])),
 		};
 	});

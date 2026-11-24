@@ -30,7 +30,7 @@ export type Performer = "automated" | "manual";
  *
  * @since 0.2.0
  */
-export class VerificationFailed extends Data.TaggedError("VerificationFailed")<{
+export class VerificationFailed extends Data.TaggedError("deltafold/VerificationFailed")<{
 	readonly actionId: string;
 	readonly kind: string;
 }> {
@@ -46,7 +46,7 @@ export class VerificationFailed extends Data.TaggedError("VerificationFailed")<{
  *
  * @since 0.0.1
  */
-export class UnexpectedHandlerError extends Data.TaggedError("UnexpectedHandlerError")<{
+export class UnexpectedHandlerError extends Data.TaggedError("deltafold/UnexpectedHandlerError")<{
 	readonly actionId: string;
 	readonly kind: string;
 	readonly phase: Phase;
@@ -132,7 +132,11 @@ const notAPreparation = () =>
 export type Step<E, R> =
 	| Skip
 	| { readonly _tag: "Apply"; readonly apply: Effect.Effect<void, E, R> }
-	| { readonly _tag: "Confirm"; readonly verify: Effect.Effect<void, E, R> | undefined };
+	| {
+			/** @since 0.2.0 */
+			readonly _tag: "Confirm";
+			readonly verify: Effect.Effect<void, E, R> | undefined;
+	  };
 
 const applyStep = <E, R>(apply: Effect.Effect<void, E, R>): Step<E, R> => ({
 	_tag: "Apply",
@@ -151,14 +155,24 @@ const TypeId = "~deltafold/Handler";
 export type Handler<out A extends Action.Any, out E = never, out R = never> = {
 	readonly [TypeId]: typeof TypeId;
 	readonly action: A;
-	/** A `manual` handler has no phases of its own: a person does the work. */
+	/**
+	 * A `manual` handler has no phases of its own: a person does the work.
+	 *
+	 * @since 0.2.0
+	 */
 	readonly performer: Performer;
-	/** Whether the handler has a prepare phase. */
+	/**
+	 * Whether the handler has a prepare phase.
+	 *
+	 * @since 0.1.0
+	 */
 	readonly prepares: boolean;
 	/**
 	 * Runs the prepare phase, if any, and resolves to the next step. Both phases share
 	 * `scope`, the occurrence's scope, so resources acquired while preparing stay open
 	 * until the executor closes it after the occurrence ends.
+	 *
+	 * @since 0.1.0
 	 */
 	readonly prepare: (scope: Scope.Scope) => Effect.Effect<Step<E, R>, E, R>;
 };
@@ -243,7 +257,8 @@ export type PromisePhases<Payload, T extends Preparation<unknown>, S extends Ser
 /**
  * Recognizes a declared rejection: a schema, or a type guard such as an `instanceof`
  * check. Guards must declare their parameter type, for example
- * `(cause: unknown): cause is NotFound => cause instanceof NotFound`.
+ * `(cause: unknown): cause is NotFound => cause instanceof NotFound`. Pass a schema
+ * directly rather than `Schema.is(schema)`, whose generic signature defeats inference.
  *
  * @since 0.0.1
  */
@@ -310,6 +325,11 @@ export function promise<
 	apply: (payload: A["payload"], context: PromiseContext<S>) => PromiseLike<unknown>,
 	options?: PromiseOptions<S, G>,
 ): PromiseHandler<A, S, G[number]>;
+/**
+ * Implements an action with Promise `prepare` and `apply` callbacks.
+ *
+ * @since 0.1.0
+ */
 export function promise<
 	A extends Action.Any,
 	T extends Preparation<unknown> = Skip,
@@ -420,6 +440,11 @@ export function effect<A extends Action.Any, E = never, R = never>(
 	action: A,
 	apply: (payload: A["payload"]) => Effect.Effect<unknown, E, R>,
 ): Handler<A, E, Exclude<R, Scope.Scope>>;
+/**
+ * Implements an action with Effect `prepare` and `apply` phases.
+ *
+ * @since 0.1.0
+ */
 export function effect<
 	A extends Action.Any,
 	T extends Preparation<unknown> = Skip,

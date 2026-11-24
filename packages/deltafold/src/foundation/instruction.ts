@@ -2,7 +2,8 @@ import { Predicate } from "effect";
 
 import type * as Action from "./action.ts";
 import { isAction, isRef } from "./action.ts";
-import { describeValue, dedent, isScalar, type Scalar } from "./template.ts";
+import { describeValue, dedent, isScalar } from "./template.ts";
+import type { Scalar } from "./template.ts";
 
 /**
  * Literal prose.

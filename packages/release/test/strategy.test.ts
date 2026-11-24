@@ -11,13 +11,8 @@ import {
 	PlanError,
 } from "@deltafold/release";
 import { History, Package, Version } from "deltafold";
-import {
-	headers,
-	ProjectChange,
-	retries,
-	timeout,
-	type ProjectMetadata,
-} from "./__fixtures__/packages.ts";
+import { headers, ProjectChange, retries, timeout } from "./__fixtures__/packages.ts";
+import type { ProjectMetadata } from "./__fixtures__/packages.ts";
 
 const schemaOf = <I>(
 	validate: (value: unknown) => StandardSchemaV1.Result<I> | Promise<StandardSchemaV1.Result<I>>,

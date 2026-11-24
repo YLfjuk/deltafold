@@ -1,16 +1,6 @@
 import { describe, expect, expectTypeOf, it, vi } from "@effect/vitest";
-import {
-	Cause,
-	Context,
-	Duration,
-	Effect,
-	Exit,
-	Fiber,
-	Layer,
-	Option,
-	Result,
-	Schema,
-} from "effect";
+import type { Duration } from "effect";
+import { Cause, Context, Effect, Exit, Fiber, Layer, Option, Result, Schema } from "effect";
 import { TestClock } from "effect/testing";
 
 import { Action, Executor, Handler, History, Migration, Plan, Rule, Version } from "deltafold";
@@ -253,8 +243,8 @@ describe("Executor behavior", () => {
 			);
 
 			expect(events).toEqual([]);
-			expect(error._tag).toBe("HandlerCoverageError");
-			if (error._tag !== "HandlerCoverageError") return;
+			expect(error._tag).toBe("deltafold/HandlerCoverageError");
+			if (error._tag !== "deltafold/HandlerCoverageError") return;
 			expect(error.issues.map((issue) => [issue._tag, issue.actionId])).toEqual([
 				["Missing", "rename-export"],
 				["Missing", "rename-source"],
@@ -290,7 +280,7 @@ describe("Executor behavior", () => {
 				}),
 			);
 
-			expect(error._tag === "HandlerCoverageError" && error.issues).toEqual([
+			expect(error._tag === "deltafold/HandlerCoverageError" && error.issues).toEqual([
 				{
 					_tag: "Missing",
 					occurrenceId: "combine(1-to-2/a+2-to-3/b)/a-and-b",
@@ -326,7 +316,8 @@ describe("Executor behavior", () => {
 			);
 
 			expect(
-				error._tag === "HandlerCoverageError" && error.issues.map((issue) => issue._tag),
+				error._tag === "deltafold/HandlerCoverageError" &&
+					error.issues.map((issue) => issue._tag),
 			).toEqual(["Duplicate", "Mismatched"]);
 		}),
 	);
@@ -369,8 +360,8 @@ describe("Executor behavior", () => {
 			);
 
 			expect(events).toEqual(["first"]);
-			expect(error._tag).toBe("ExecutionFailed");
-			if (error._tag !== "ExecutionFailed") return;
+			expect(error._tag).toBe("deltafold/ExecutionFailed");
+			if (error._tag !== "deltafold/ExecutionFailed") return;
 			expect(outcomes(error.report)).toEqual({
 				first: "Completed",
 				skipped: "Skipped",
@@ -385,7 +376,7 @@ describe("Executor behavior", () => {
 			const [failed] = error.failures;
 			expect(failed?.outcome).toMatchObject({ _tag: "Failed", phase: "prepare" });
 			expect(failed?.outcome._tag === "Failed" && failed.outcome.error).toMatchObject({
-				_tag: "UnexpectedHandlerError",
+				_tag: "deltafold/UnexpectedHandlerError",
 				actionId: "rejected",
 				phase: "prepare",
 			});
@@ -419,12 +410,13 @@ describe("Executor behavior", () => {
 			);
 
 			const errorOf = (error: typeof first | typeof second) =>
-				error._tag === "ExecutionFailed" && error.failures[0]?.outcome._tag === "Failed"
+				error._tag === "deltafold/ExecutionFailed" &&
+				error.failures[0]?.outcome._tag === "Failed"
 					? error.failures[0].outcome.error
 					: undefined;
 			expect(errorOf(first)).toBeInstanceOf(Codemod.TransformRejected);
 			expect(errorOf(second)).toMatchObject({
-				_tag: "UnexpectedHandlerError",
+				_tag: "deltafold/UnexpectedHandlerError",
 				actionId: "unexpected",
 				kind: "test.touch",
 				phase: "apply",
@@ -474,7 +466,7 @@ describe("Executor behavior", () => {
 			const error = yield* Fiber.join(fiber);
 
 			expect(events).toEqual(["slow started", "slow finished"]);
-			expect(error._tag === "ExecutionFailed" && outcomes(error.report)).toEqual({
+			expect(error._tag === "deltafold/ExecutionFailed" && outcomes(error.report)).toEqual({
 				fails: "Failed",
 				"after-failure": "Unattempted",
 				slow: "Completed",
@@ -514,8 +506,11 @@ describe("Executor behavior", () => {
 			yield* TestClock.adjust("2 seconds");
 			const error = yield* Fiber.join(fiber);
 
-			expect(error).toMatchObject({ _tag: "ExecutionInterrupted", reason: "timeout" });
-			if (error._tag !== "ExecutionInterrupted") return;
+			expect(error).toMatchObject({
+				_tag: "deltafold/ExecutionInterrupted",
+				reason: "timeout",
+			});
+			if (error._tag !== "deltafold/ExecutionInterrupted") return;
 			expect(error.report.occurrences.map((entry) => entry.outcome)).toEqual([
 				{ _tag: "Interrupted", phase: "apply", reason: "timeout", settled: true },
 				{ _tag: "Completed", performer: "automated" },
@@ -721,7 +716,7 @@ describe("Executor admission, cancellation, and settlement", () => {
 			const error = yield* Fiber.join(fiber);
 
 			expect(
-				error._tag === "ExecutionInterrupted" &&
+				error._tag === "deltafold/ExecutionInterrupted" &&
 					error.report.occurrences.map((entry) => entry.outcome),
 			).toEqual([
 				{ _tag: "Interrupted", phase: "apply", reason: "timeout", settled: false },
@@ -771,7 +766,9 @@ describe("Executor admission, cancellation, and settlement", () => {
 				const error = yield* Fiber.join(fiber);
 
 				expect(peak).toBe(1);
-				expect(error._tag === "ExecutionFailed" && outcomes(error.report)).toEqual({
+				expect(
+					error._tag === "deltafold/ExecutionFailed" && outcomes(error.report),
+				).toEqual({
 					a: "Completed",
 					b: "Failed",
 					c: "Unattempted",
@@ -946,7 +943,7 @@ describe("Executor admission, cancellation, and settlement", () => {
 
 		expect(evaluated).toEqual([]);
 		expect(cancelled).toMatchObject({
-			_tag: "ExecutionInterrupted",
+			_tag: "deltafold/ExecutionInterrupted",
 			reason: "cancelled",
 			report: { mode: "dry-run", status: "interrupted" },
 		});

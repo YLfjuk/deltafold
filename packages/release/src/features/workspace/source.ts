@@ -1,7 +1,8 @@
 import type { Version } from "deltafold";
-import * as GenConfig from "../../configs/gen.config.ts";
-import { issue, type Issue } from "../../foundation/error.ts";
-import type { DependencyUpdate } from "../planning/release.ts";
+import * as GenConfig from "../../configs/gen.ts";
+import { issue } from "../../foundation/error.ts";
+import type { Issue } from "../../foundation/error.ts";
+import type { Release } from "../planning/index.ts";
 import * as paths from "./paths.ts";
 
 /**
@@ -256,7 +257,7 @@ export type RenderInput = {
 	readonly declarations: ReadonlyArray<Declaration>;
 	readonly exportName: string;
 	/** Range edits in the package's manifest, recorded as release metadata. */
-	readonly dependencies: ReadonlyArray<DependencyUpdate>;
+	readonly dependencies: ReadonlyArray<Release.DependencyUpdate>;
 	/** Pending modules this release removes. Imports between them cannot be relocated. */
 	readonly consumed: ReadonlyArray<string>;
 };

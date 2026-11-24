@@ -31,7 +31,9 @@ export type Request<A extends Action.Any = Action.Any> = {
  *
  * @since 0.2.0
  */
-export class UnexpectedInteractionError extends Data.TaggedError("UnexpectedInteractionError")<{
+export class UnexpectedInteractionError extends Data.TaggedError(
+	"deltafold/UnexpectedInteractionError",
+)<{
 	readonly occurrenceId: string;
 	readonly reason: "rejected" | "invalid-answer";
 	/** The rejection. Always `undefined` for an invalid answer. */

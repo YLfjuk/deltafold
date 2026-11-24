@@ -1,8 +1,8 @@
 # Release design
 
-Status: accepted direction, with a private prototype in `packages/release`.
-Examples are API sketches; the prototype's exact interfaces may change. Open
-questions and prototype findings are listed at the end.
+Status: implemented in `@deltafold/release` (`packages/release`) from the
+accepted design direction. Early examples are sketches; open questions and
+implementation findings are listed at the end.
 
 ## Ownership
 
@@ -416,11 +416,10 @@ for generation and in-memory validation without imposing it on core.
 
 ## Prototype findings
 
-The prototype in `packages/release` is private and unpublished. It builds on
-headless `Change` from the core. Its public exports carry `@since @next`. When the package
-first receives a version, the version step replaces `@next` with that version on
-the APIs the release includes, before publishing; tags that already name a
-version keep it.
+`packages/release` is published as `@deltafold/release` (starting at `0.0.1`).
+It builds on headless `Change` from the core. Released exports carry their
+release `@since` version; unreleased additions carry `@since @next`, which the
+version step replaces before publishing.
 
 These contracts worked as accepted:
 

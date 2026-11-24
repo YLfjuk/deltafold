@@ -1,13 +1,7 @@
-/** @since 0.0.1 */
-export * as DependentsPolicy from "./features/planning/dependents-policy.ts";
-/** @since 0.0.1 */
-export * as Release from "./features/planning/release.ts";
+export { DependentsPolicy, Release } from "./features/planning/index.ts";
 /** @since 0.0.1 */
 export * as ReleaseChange from "./features/release-change.ts";
-/** @since 0.0.1 */
-export * as ReleaseFiles from "./features/workspace/files.ts";
-/** @since 0.0.1 */
-export * as ReleaseSource from "./features/workspace/source.ts";
+export { ReleaseFiles, ReleaseSource } from "./features/workspace/index.ts";
 /** @since 0.0.1 */
 export * as SemVerStrategy from "./features/semver-strategy.ts";
 /** @since 0.0.1 */

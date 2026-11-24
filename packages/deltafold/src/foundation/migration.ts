@@ -3,8 +3,10 @@ import { Predicate } from "effect";
 import type * as Action from "./action.ts";
 import { isAction, isParallel, isRef, isSequence } from "./action.ts";
 import type * as Change from "./change.ts";
-import { instruction, isInstruction, type Text } from "./instruction.ts";
-import { describeValue, dedent, isScalar, type Scalar } from "./template.ts";
+import { instruction, isInstruction } from "./instruction.ts";
+import type { Text } from "./instruction.ts";
+import { describeValue, dedent, isScalar } from "./template.ts";
+import type { Scalar } from "./template.ts";
 import type { Version } from "./version.ts";
 
 export { instruction };
@@ -100,7 +102,6 @@ const checkStep = (value: unknown, context: string): void => {
 	validateStep(value, context);
 };
 
-/** Builds content from a tagged template. */
 const content = (
 	strings: ReadonlyArray<string>,
 	values: ReadonlyArray<unknown>,

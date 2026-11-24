@@ -1,4 +1,5 @@
-import { type Cause, Effect, Exit, Predicate } from "effect";
+import { Effect, Exit, Predicate } from "effect";
+import type { Cause } from "effect";
 
 import type * as Plan from "../../foundation/plan.ts";
 import type { InterruptReason, Outcome, Report } from "./executor.ts";

@@ -1,10 +1,11 @@
 import { Array as Arr, Order, Predicate, Result } from "effect";
 import type { StandardSchemaV1 } from "effect/StandardSchema";
 
-import { Package, Version, type Change } from "deltafold";
+import { Package, Version } from "deltafold";
+import type { Change } from "deltafold";
 import { isDiagnostic } from "../../foundation/diagnostic.ts";
 import { issue, PlanError } from "../../foundation/error.ts";
-import { form, rewrite } from "../../foundation/npm/ranges.ts";
+import { form, rewrite } from "../../foundation/npm/index.ts";
 import * as VersionStrategy from "../../foundation/version-strategy.ts";
 import type { Policy, Proposal, Requirement } from "./dependents-policy.ts";
 
@@ -459,14 +460,15 @@ const previousVersions = (
 		);
 	}
 	if (ambiguous.length > 0) {
-		const described = members
-			.filter((member) => member.previous === undefined && heads(member.package).length > 1)
-			.map(
-				(member) =>
-					`${member.package.name} has several heads (${heads(member.package)
-						.map((version) => version.id)
-						.join(", ")})`,
-			);
+		const described = members.flatMap((member) => {
+			if (member.previous !== undefined) return [];
+			const memberHeads = heads(member.package);
+			if (memberHeads.length <= 1) return [];
+
+			return `${member.package.name} has several heads (${memberHeads
+				.map((version) => version.id)
+				.join(", ")})`;
+		});
 		fail(
 			"PreviousRequired",
 			`${described.join("; ")}. State { package, previous } to choose one.`,
@@ -927,9 +929,7 @@ const buildPlan = (release: LooseRelease, input: LooseInput, owner: Release): Pl
 		explanations: [
 			...entries.flatMap((entry) =>
 				entry.previousFrom === "history-head"
-					? [
-							`${entry.selection.package.name}: no previous stated; using the only head of its history, ${entry.previous.id}.`,
-						]
+					? `${entry.selection.package.name}: no previous stated; using the only head of its history, ${entry.previous.id}.`
 					: [],
 			),
 			...calculated.explanations,
@@ -948,9 +948,7 @@ const buildPlan = (release: LooseRelease, input: LooseInput, owner: Release): Pl
 							);
 				return later.length === 0
 					? []
-					: [
-							`Note: ${planned.package}@${from?.id} already has later versions (${later.map((version) => version.id).join(", ")}); ${planned.version.id} forks beside them. Check the manifest or previous version if this is not intended.`,
-						];
+					: `Note: ${planned.package}@${from?.id} already has later versions (${later.map((version) => version.id).join(", ")}); ${planned.version.id} forks beside them. Check the manifest or previous version if this is not intended.`;
 			}),
 		],
 	};

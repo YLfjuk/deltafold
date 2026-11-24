@@ -1,12 +1,6 @@
 import type { Version } from "../../foundation/version.ts";
-import {
-	isBlock,
-	SectionValue,
-	type Anchor,
-	type Block,
-	type PluginOutput,
-	type Section,
-} from "./document.ts";
+import { isBlock, SectionValue } from "./document.ts";
+import type { Anchor, Block, PluginOutput, Section } from "./document.ts";
 
 /** Marks a section as the section of one release. */
 export const asRelease = (section: Section, version: Version): Section =>
@@ -21,12 +15,11 @@ export const insertAll = (
 	contributions: ReadonlyArray<Contribution>,
 ): Section => {
 	const at = (part: Anchor["part"], position: Anchor["position"]) =>
-		contributions
-			.filter(
-				(contribution) =>
-					contribution.at.part === part && contribution.at.position === position,
-			)
-			.flatMap((contribution) => contribution.blocks);
+		contributions.flatMap((contribution) =>
+			contribution.at.part === part && contribution.at.position === position
+				? contribution.blocks
+				: [],
+		);
 
 	return new SectionValue({
 		...section,

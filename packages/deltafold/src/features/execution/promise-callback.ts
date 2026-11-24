@@ -52,10 +52,11 @@ export const adaptPromise = <S extends ServiceMap, G extends ReadonlyArray<Error
 		(context) =>
 			// oxlint-disable-next-line typescript/no-unsafe-type-assertion
 			Object.fromEntries(
-				Reflect.ownKeys(services).map((name) => [
-					name,
-					Context.get(context, services[name]!),
-				]),
+				Reflect.ownKeys(services).flatMap((name) => {
+					const service = services[name];
+
+					return service === undefined ? [] : [[name, Context.get(context, service)]];
+				}),
 			) as { readonly [K in keyof S]: S[K]["Service"] },
 	);
 

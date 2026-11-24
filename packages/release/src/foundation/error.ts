@@ -69,7 +69,7 @@ export const issue = (reason: Reason, message: string, subjects: ReadonlyArray<s
  *
  * @since 0.0.1
  */
-export class PlanError extends Data.TaggedError("PlanError")<Issue> {}
+export class PlanError extends Data.TaggedError("@deltafold/release/PlanError")<Issue> {}
 
 /**
  * Preparation found problems. Every independent problem is listed, and nothing was
@@ -77,7 +77,7 @@ export class PlanError extends Data.TaggedError("PlanError")<Issue> {}
  *
  * @since 0.0.1
  */
-export class PrepareError extends Data.TaggedError("PrepareError")<{
+export class PrepareError extends Data.TaggedError("@deltafold/release/PrepareError")<{
 	readonly issues: ReadonlyArray<Issue>;
 }> {}
 
@@ -87,7 +87,7 @@ export class PrepareError extends Data.TaggedError("PrepareError")<{
  *
  * @since 0.0.1
  */
-export class StalePlan extends Data.TaggedError("StalePlan")<{
+export class StalePlan extends Data.TaggedError("@deltafold/release/StalePlan")<{
 	readonly paths: ReadonlyArray<string>;
 }> {}
 
@@ -101,7 +101,7 @@ export class StalePlan extends Data.TaggedError("StalePlan")<{
  *
  * @since 0.0.1
  */
-export class ApplyFailed extends Data.TaggedError("ApplyFailed")<{
+export class ApplyFailed extends Data.TaggedError("@deltafold/release/ApplyFailed")<{
 	readonly path: string;
 	readonly cause: unknown;
 	readonly restored: ReadonlyArray<string>;
@@ -113,6 +113,6 @@ export class ApplyFailed extends Data.TaggedError("ApplyFailed")<{
  *
  * @since 0.0.1
  */
-export class ChangedDuringApply extends Data.TaggedError("ChangedDuringApply")<{
+export class ChangedDuringApply extends Data.TaggedError("@deltafold/release/ChangedDuringApply")<{
 	readonly path: string;
 }> {}

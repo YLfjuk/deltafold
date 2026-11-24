@@ -69,7 +69,7 @@ export const depthLimit = 256;
 
 const occurrencesOf = (items: ReadonlyArray<Item>): ReadonlyArray<Occurrence> =>
 	items.flatMap((item) => {
-		if (item._tag === "Occ") return [item.occurrence];
+		if (item._tag === "Occ") return item.occurrence;
 		if (item._tag === "Par") return item.branches.flatMap(occurrencesOf);
 
 		return [];
