@@ -11,8 +11,7 @@ import {
 } from "typescript-7.1/ast/is";
 
 import { TypeScript } from "@deltafold/typescript";
-import type { Handler } from "deltafold";
-import { Action } from "deltafold";
+import { Action, Handler } from "deltafold";
 import { nameForm } from "../src/edits.ts";
 import {
 	fixture,
@@ -20,6 +19,7 @@ import {
 	outcomeOf,
 	readFiles,
 	transformFailed,
+	writeFiles,
 } from "./__fixtures__/workspace.ts";
 
 type RenameImport = {
@@ -263,6 +263,14 @@ layer(NodeFileSystem.layer)("TypeScript.File", (it) => {
 				["src/aliased.tsx", "Unsupported"],
 				["src/unrelated.ts", "UnexpectedHandlerError"],
 			]);
+			const unexpected = failed.failures[1]?.cause;
+			expect(unexpected).toBeInstanceOf(Handler.UnexpectedHandlerError);
+			expect(unexpected).toMatchObject({
+				actionId: renameCreateClient.id,
+				kind: renameCreateClient.kind,
+				phase: "prepare",
+				cause: new Error("boom"),
+			});
 			expect(
 				TypeScript.causes(failed, Unsupported).map((failure) => failure.cause.file),
 			).toEqual(["src/aliased.tsx"]);
@@ -292,6 +300,42 @@ layer(NodeFileSystem.layer)("TypeScript.File", (it) => {
 			expect(error.failures.map((failure) => failure.cause._tag)).toEqual([
 				"@deltafold/typescript/EditRejected",
 			]);
+		}),
+	);
+
+	it.effect("wraps an Effect transform's defect in Handler.UnexpectedHandlerError", () =>
+		Effect.gen(function* () {
+			const dying = TypeScript.File.effect(renameCreateClient, () => Effect.die("boom"), {
+				include: () => ["src/esm.ts"],
+			});
+			const root = yield* fixture(files);
+			const [failure] = transformFailed(yield* outcomeOf(root, dying)).failures;
+
+			expect(failure?.cause).toBeInstanceOf(Handler.UnexpectedHandlerError);
+			expect(failure?.cause).toMatchObject({ phase: "prepare", cause: "boom" });
+		}),
+	);
+
+	it.effect("never edits a file outside the root through a brace pattern", () =>
+		Effect.gen(function* () {
+			const base = yield* fixture({ "secret.ts": "export const secret = 1;\n", ...files });
+			const escaping = TypeScript.File.promise(
+				renameCreateClient,
+				async ({ sourceFile, edit }) => [
+					edit.insertBefore(sourceFile.statements[0] ?? sourceFile, "// x\n"),
+				],
+				{ include: () => ["{../secret.ts,src/esm.ts}"] },
+			);
+			const project = `${base}/project`;
+			yield* writeFiles(project, files);
+
+			expect(yield* outcomeOf(project, escaping)).toMatchObject({
+				_tag: "Failed",
+				error: { _tag: "@deltafold/typescript/ReadFailed", reason: "pattern" },
+			});
+			expect(yield* readFiles(base, ["secret.ts"])).toEqual({
+				"secret.ts": "export const secret = 1;\n",
+			});
 		}),
 	);
 
@@ -649,6 +693,7 @@ layer(NodeFileSystem.layer)("TypeScript.File", (it) => {
 				include: ({ include }) => include,
 				errors: [isMissing],
 			});
+			expectTypeOf<Handler.UnexpectedHandlerError>().toExtend<TypeScript.AdapterCause>();
 			expectTypeOf(guarded).toEqualTypeOf<
 				Handler.Handler<
 					typeof renameCreateClient,

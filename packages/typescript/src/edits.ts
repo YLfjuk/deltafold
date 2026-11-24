@@ -13,11 +13,8 @@ import { EditRejected } from "./errors.ts";
  * @since @next
  */
 export type TextEdit = {
-	/** @since @next */
 	readonly pos: number;
-	/** @since @next */
 	readonly end: number;
-	/** @since @next */
 	readonly newText: string;
 };
 
@@ -35,40 +32,21 @@ export type FileEdit = TextEdit & { readonly path: string };
  * @since @next
  */
 export type Edits = {
-	/** @since @next */
 	readonly replace: (node: Node, text: string) => FileEdit;
-	/**
-	 * Removes a node and keeps its leading comments and whitespace.
-	 *
-	 * @since @next
-	 */
+	/** Removes a node and keeps its leading comments and whitespace. */
 	readonly remove: (node: Node) => FileEdit;
-	/**
-	 * Inserts text before a node's first token.
-	 *
-	 * @since @next
-	 */
+	/** Inserts text before a node's first token. */
 	readonly insertBefore: (node: Node, text: string) => FileEdit;
-	/**
-	 * Inserts text after a node's last character.
-	 *
-	 * @since @next
-	 */
+	/** Inserts text after a node's last character. */
 	readonly insertAfter: (node: Node, text: string) => FileEdit;
 	/**
 	 * Renames a property or member at a name node, such as a find-references result.
 	 * Shorthand forms keep the local name, so `const { a1 } = value` becomes
 	 * `const { a2: a1 } = value`, and string-literal names keep their quotes. Other
 	 * name positions throw `EditRejected`.
-	 *
-	 * @since @next
 	 */
 	readonly rename: (name: Node, newName: string) => FileEdit;
-	/**
-	 * A node's text, without its leading comments and whitespace.
-	 *
-	 * @since @next
-	 */
+	/** A node's text, without its leading comments and whitespace. */
 	readonly text: (node: Node) => string;
 };
 

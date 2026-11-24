@@ -87,11 +87,7 @@ export type Internals = {
  * @since @next
  */
 export type Workspace = {
-	/**
-	 * The absolute, `/`-separated root that payload globs are relative to.
-	 *
-	 * @since @next
-	 */
+	/** The absolute, `/`-separated root that payload globs are relative to. */
 	readonly root: string;
 	/**
 	 * Locks root-relative paths until the current scope closes. This package's handlers
@@ -99,8 +95,6 @@ export type Workspace = {
 	 * take the same locks. `./a.ts` and `a.ts` share a lock. It takes locks in sorted
 	 * order, and waiting for one can be interrupted. Locks are not reentrant: a fiber
 	 * that locks a path it already holds waits until it is interrupted.
-	 *
-	 * @since @next
 	 */
 	readonly lock: (paths: ReadonlyArray<string>) => Effect.Effect<void, never, Scope.Scope>;
 	readonly [InternalId]: Internals;
@@ -115,6 +109,24 @@ export const internals = (workspace: Workspace): Internals => workspace[Internal
 export const temporarySuffix = ".deltafold-tmp";
 
 const toPosix = (path: string) => path.replaceAll("\\", "/");
+
+/**
+ * Whether a glob pattern is absolute or can leave the root: a leading `/` or drive
+ * letter, or a `..` segment anywhere, including inside braces such as `{../a,b}`.
+ * Backslashes count as separators.
+ */
+const escapesRoot = (pattern: string) => {
+	const posix = toPosix(pattern);
+
+	return /^(\/|[A-Za-z]:)/.test(posix) || /(^|[/{,])\.\.($|[/},])/.test(posix);
+};
+
+const swapCase = (text: string) =>
+	Array.from(text, (char) => {
+		const lower = char.toLowerCase();
+
+		return char === lower ? char.toUpperCase() : lower;
+	}).join("");
 
 /** Decodes UTF-8 file bytes and keeps a leading byte order mark. */
 const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
@@ -134,9 +146,10 @@ export const make = (options: {
 		const realRoot = yield* fs.realPath(resolved).pipe(Effect.orElseSucceed(() => resolved));
 		const root = toPosix(realRoot).replace(/\/$/, "");
 
-		// The root in another case resolves to the root only on a case-insensitive file system.
-		const upper = realRoot.toUpperCase();
-		const probe = upper === realRoot ? realRoot.toLowerCase() : upper;
+		// The root with its last segment in another case resolves to the root only when the
+		// root's own directory ignores case.
+		const leaf = path.basename(realRoot);
+		const probe = path.join(path.dirname(realRoot), swapCase(leaf));
 		const caseSensitive =
 			probe === realRoot ||
 			!(yield* fs.realPath(probe).pipe(
@@ -179,21 +192,14 @@ export const make = (options: {
 
 		const match = (actionId: string, include: ReadonlyArray<string>) =>
 			Effect.gen(function* () {
-				const patterns: Array<readonly [string, string]> = [];
 				for (const pattern of include) {
-					const normalized = toPosix(path.normalize(pattern));
-					if (
-						path.isAbsolute(pattern) ||
-						normalized === ".." ||
-						normalized.startsWith("../")
-					)
+					if (escapesRoot(pattern))
 						return yield* readFailed(actionId, pattern, "pattern")();
-					patterns.push([pattern, normalized]);
 				}
 				const found = new Set<string>();
-				for (const [pattern, normalized] of patterns) {
+				for (const pattern of include) {
 					const matches = yield* fs
-						.glob(normalized, {
+						.glob(toPosix(pattern), {
 							root: realRoot,
 							exclude: ["**/node_modules", "**/node_modules/**"],
 						})
@@ -206,6 +212,10 @@ export const make = (options: {
 				const files: Array<string> = [];
 				for (const relative of Arr.sort(found, Order.String)) {
 					const target = absolute(relative);
+					// A second guard: no match may resolve outside the root, whatever the pattern.
+					if (!canonical(target).startsWith(`${canonical(root)}/`)) {
+						return yield* readFailed(actionId, relative, "pattern")();
+					}
 					const info = yield* fs
 						.stat(target)
 						.pipe(Effect.mapError(readFailed(actionId, relative, "unreadable")));

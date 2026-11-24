@@ -171,21 +171,33 @@ layer(NodeFileSystem.layer)("TypeScript.Workspace", (it) => {
 		}),
 	);
 
-	it.effect("matches patterns with parent segments that stay under the root", () =>
+	it.effect("matches patterns with `.` segments", () =>
 		Effect.gen(function* () {
 			const root = yield* fixture({ "src/a.ts": "", "b.ts": "" });
 			const matched = yield* withWorkspace(root, (workspace) =>
-				internals(workspace).match("test", ["./src/../*.ts", "src/./*.ts"]),
+				internals(workspace).match("test", ["./src/*.ts", "src/./*.ts"]),
 			);
 
-			expect(matched).toEqual(["b.ts", "src/a.ts"]);
+			expect(matched).toEqual(["src/a.ts"]);
 		}),
 	);
 
 	it.effect("refuses patterns that are absolute or leave the root", () =>
 		Effect.gen(function* () {
 			const root = yield* fixture({ "src/a.ts": "" });
-			for (const pattern of ["/src/*.ts", "../*.ts", "src/../../*.ts"]) {
+			for (const pattern of [
+				"/src/*.ts",
+				"\\src\\*.ts",
+				"C:/src/*.ts",
+				"C:src/*.ts",
+				"C:../secret.ts",
+				"../*.ts",
+				"src/../*.ts",
+				"src\\..\\..\\secret.ts",
+				"**/../*.ts",
+				"{../secret.ts,src/a.ts}",
+				"src/{a,../..}/*.ts",
+			]) {
 				const exit = yield* withWorkspace(root, (workspace) =>
 					internals(workspace).match("test", [pattern]),
 				).pipe(Effect.exit);

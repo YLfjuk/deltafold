@@ -19,31 +19,15 @@ import type { Workspace } from "./workspace.ts";
  * @since @next
  */
 export type Context<Payload> = {
-	/** @since @next */
 	readonly payload: Payload;
-	/**
-	 * The root-relative, `/`-separated path of the file.
-	 *
-	 * @since @next
-	 */
+	/** The root-relative, `/`-separated path of the file. */
 	readonly path: string;
-	/** @since @next */
 	readonly sourceFile: SourceFile;
-	/**
-	 * The compiler project that the file belongs to.
-	 *
-	 * @since @next
-	 */
+	/** The compiler project that the file belongs to. */
 	readonly project: Info;
-	/** @since @next */
 	readonly program: Program;
-	/** @since @next */
 	readonly checker: Checker;
-	/**
-	 * Edit helpers that accept nodes of this file only.
-	 *
-	 * @since @next
-	 */
+	/** Edit helpers that accept nodes of this file only. */
 	readonly edit: Edits;
 };
 
@@ -56,13 +40,8 @@ export type PromiseContext<
 	Payload,
 	S extends Handler.ServiceMap = NoServices,
 > = Context<Payload> & {
-	/**
-	 * Aborted when the action is interrupted.
-	 *
-	 * @since @next
-	 */
+	/** Aborted when the action is interrupted. */
 	readonly signal: AbortSignal;
-	/** @since @next */
 	readonly services: ResolvedServices<S>;
 };
 

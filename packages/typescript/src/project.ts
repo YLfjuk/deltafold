@@ -29,18 +29,8 @@ import type { Workspace } from "./workspace.ts";
  * @since @next
  */
 export type Info =
-	| {
-			/** @since @next */
-			readonly kind: "configured";
-			/** @since @next */
-			readonly config: string;
-	  }
-	| {
-			/** @since @next */
-			readonly kind: "inferred";
-			/** @since @next */
-			readonly id: string;
-	  };
+	| { readonly kind: "configured"; readonly config: string }
+	| { readonly kind: "inferred"; readonly id: string };
 
 /**
  * One use of a symbol in a file the transform may edit.
@@ -48,23 +38,11 @@ export type Info =
  * @since @next
  */
 export type Reference = {
-	/**
-	 * The root-relative, `/`-separated path of the file.
-	 *
-	 * @since @next
-	 */
+	/** The root-relative, `/`-separated path of the file. */
 	readonly path: string;
-	/**
-	 * The name node, such as the `a1` in `value.a1`.
-	 *
-	 * @since @next
-	 */
+	/** The name node, such as the `a1` in `value.a1`. */
 	readonly node: Node;
-	/**
-	 * Where the name appears.
-	 *
-	 * @since @next
-	 */
+	/** Where the name appears. */
 	readonly form: NameForm;
 };
 
@@ -75,26 +53,16 @@ export type Reference = {
  * @since @next
  */
 export type Context<Payload> = {
-	/** @since @next */
 	readonly payload: Payload;
-	/** @since @next */
 	readonly project: Info;
 	/**
 	 * The project's matched files, as root-relative paths. The transform may edit only
 	 * these files, and it does not run while any of them has syntax errors.
-	 *
-	 * @since @next
 	 */
 	readonly files: ReadonlyArray<string>;
-	/**
-	 * Reads every file of the project, including installed declarations.
-	 *
-	 * @since @next
-	 */
+	/** Reads every file of the project, including installed declarations. */
 	readonly program: Program;
-	/** @since @next */
 	readonly checker: Checker;
-	/** @since @next */
 	readonly edit: Edits;
 };
 
@@ -107,26 +75,15 @@ export type PromiseContext<
 	Payload,
 	S extends Handler.ServiceMap = NoServices,
 > = Context<Payload> & {
-	/**
-	 * Loads one of `files`.
-	 *
-	 * @since @next
-	 */
+	/** Loads one of `files`. */
 	readonly sourceFile: (path: string) => Promise<SourceFile>;
 	/**
 	 * Finds the uses of a symbol in `files` with the compiler's find-references. It leaves
 	 * out uses in installed packages, unmatched files, and other projects.
-	 *
-	 * @since @next
 	 */
 	readonly references: (symbol: Symbol) => Promise<ReadonlyArray<Reference>>;
-	/**
-	 * Aborted when the action is interrupted.
-	 *
-	 * @since @next
-	 */
+	/** Aborted when the action is interrupted. */
 	readonly signal: AbortSignal;
-	/** @since @next */
 	readonly services: ResolvedServices<S>;
 };
 
@@ -136,19 +93,13 @@ export type PromiseContext<
  * @since @next
  */
 export type EffectContext<Payload> = Context<Payload> & {
-	/**
-	 * Loads one of `files`.
-	 *
-	 * @since @next
-	 */
+	/** Loads one of `files`. */
 	readonly sourceFile: (
 		path: string,
 	) => Effect.Effect<SourceFile, Handler.UnexpectedHandlerError>;
 	/**
 	 * Finds the uses of a symbol in `files` with the compiler's find-references. It leaves
 	 * out uses in installed packages, unmatched files, and other projects.
-	 *
-	 * @since @next
 	 */
 	readonly references: (
 		symbol: Symbol,
@@ -161,11 +112,7 @@ export type EffectContext<Payload> = Context<Payload> & {
  * @since @next
  */
 export type Options<Payload> = {
-	/**
-	 * Globs, relative to the run's root, that select the action's files.
-	 *
-	 * @since @next
-	 */
+	/** Globs, relative to the run's root, that select the action's files. */
 	readonly include: (payload: Payload) => ReadonlyArray<string>;
 };
 
@@ -179,17 +126,9 @@ export type PromiseOptions<
 	S extends Handler.ServiceMap,
 	G extends ReadonlyArray<Handler.ErrorGuard>,
 > = Options<Payload> & {
-	/**
-	 * Effect services that the transform receives as `services`. The handler requires them.
-	 *
-	 * @since @next
-	 */
+	/** Effect services that the transform receives as `services`. The handler requires them. */
 	readonly services?: S;
-	/**
-	 * Guards for errors that keep their own type. Others become `Handler.UnexpectedHandlerError`.
-	 *
-	 * @since @next
-	 */
+	/** Guards for errors that keep their own type. Others become `Handler.UnexpectedHandlerError`. */
 	readonly errors?: G;
 };
 
