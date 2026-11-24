@@ -110,7 +110,7 @@ export type EffectContext<Payload> = Context<Payload> & {
 };
 
 /**
- * Options of a project transform.
+ * Options of a transform.
  *
  * @since @next
  */
@@ -120,7 +120,7 @@ export type Options<Payload> = {
 };
 
 /**
- * Options of a Promise project transform.
+ * Options of a Promise transform.
  *
  * @since @next
  */

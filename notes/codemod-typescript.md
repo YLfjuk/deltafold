@@ -210,8 +210,9 @@ it received.
 
 The context holds:
 
-- `project`: a configured project with its root-relative tsconfig path, or an
-  inferred project with a stable identifier
+- `project`: a configured project with its tsconfig path, relative to the root
+  when the tsconfig is under it and absolute otherwise, or an inferred project
+  with a stable identifier
 - `files`: the project's matched files as root-relative paths, which are also the
   only files the transform may edit
 - `sourceFile(path)`: loads one of those files on demand
@@ -302,9 +303,12 @@ disagree. It can be revisited if the core gains a signal for step boundaries.
 
 - `TransformFailed<E>` means no file of the action was written. The adapter runs
   every transform of the action, then fails once. Its `failures` list every
-  failure with its `project` and its `cause`, sorted. A failure of a file
-  transform also carries the file's `path`. Optional `errors` guards or schemas,
-  in `Handler.promise` syntax, keep matched causes as they are. Unmatched causes
+  failure with its `project` and its `cause`, sorted. A failure that concerns
+  one file also carries its `path`: syntax errors, a failed file transform, or
+  edits rejected for that file. A project transform's own error, or an edit it
+  returns for a file outside its project, names only the project. Optional
+  `errors` guards or schemas, in `Handler.promise` syntax, keep matched causes as
+  they are. Unmatched causes
   are wrapped in the tagged `TypeScript.UnknownError`. Without guards, the cause
   type is `UnknownError`. The `effect` constructors use their own `E | UnknownError`, and
   defects become `UnknownError`. `TypeScript.causes(error, guard)` returns the

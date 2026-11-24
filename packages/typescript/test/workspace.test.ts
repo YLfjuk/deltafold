@@ -1,10 +1,24 @@
+import { symlink } from "node:fs/promises";
+
 import * as NodeFileSystem from "@effect/platform-node-shared/NodeFileSystem";
+import * as NodePath from "@effect/platform-node-shared/NodePath";
 import { expect, layer } from "@effect/vitest";
-import { Array as Arr, Deferred, Effect, Exit, Fiber, FileSystem, Order, Scope } from "effect";
+import {
+	Array as Arr,
+	Deferred,
+	Effect,
+	Exit,
+	Fiber,
+	FileSystem,
+	Layer,
+	Order,
+	PlatformError,
+	Scope,
+} from "effect";
 
 import { TypeScript } from "@deltafold/typescript";
 import { TypeScriptNode } from "@deltafold/typescript/node";
-import { internals } from "../src/workspace.ts";
+import { internals, make } from "../src/workspace.ts";
 import { fixture, listFiles, readFiles } from "./__fixtures__/workspace.ts";
 
 const withWorkspace = <A, E>(
@@ -20,6 +34,71 @@ const withWorkspace = <A, E>(
 		// oxlint-disable-next-line effecttsgo/strict-effect-provide
 		Effect.provide(TypeScriptNode.layer({ root })),
 	);
+
+/**
+ * Builds a workspace whose file system fails to rename onto `failing`. Write tests use
+ * no compiler.
+ */
+const withFailingRename = <A, E>(
+	root: string,
+	failing: string,
+	use: (workspace: TypeScript.Workspace) => Effect.Effect<A, E, Scope.Scope>,
+) =>
+	Effect.scoped(
+		Effect.flatMap(
+			make({ root, compiler: { open: () => Effect.die("The test opens no snapshot") } }),
+			use,
+		),
+	).pipe(
+		// oxlint-disable-next-line effecttsgo/strict-effect-provide
+		Effect.provide(
+			Layer.mergeAll(
+				Layer.effect(
+					FileSystem.FileSystem,
+					Effect.map(FileSystem.FileSystem, (fs) => ({
+						...fs,
+						rename: (from: string, to: string) =>
+							to.endsWith(`/${failing}`)
+								? Effect.fail(
+										PlatformError.systemError({
+											_tag: "Busy",
+											module: "FileSystem",
+											method: "rename",
+											pathOrDescriptor: to,
+										}),
+									)
+								: fs.rename(from, to),
+					})),
+				),
+				NodePath.layer,
+			).pipe(Layer.provide(NodeFileSystem.layer)),
+		),
+	);
+
+/**
+ * Whether this machine lets the tests create file links. Windows refuses them without
+ * extra privileges; any other failure fails the probe.
+ */
+const canLinkFiles = await Effect.runPromise(
+	Effect.scoped(
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+			const directory = yield* fs.makeTempDirectoryScoped({ prefix: "deltafold-link-" });
+			yield* fs.writeFileString(`${directory}/target`, "");
+
+			return yield* fs.symlink(`${directory}/target`, `${directory}/link`).pipe(
+				Effect.as(true),
+				Effect.catchIf(
+					(error) => error.reason._tag === "PermissionDenied",
+					() => Effect.succeed(false),
+				),
+			);
+		}),
+	).pipe(
+		// oxlint-disable-next-line effecttsgo/strict-effect-provide
+		Effect.provide(NodeFileSystem.layer),
+	),
+);
 
 /** Lets forked fibers run until they block. */
 const settle = Effect.gen(function* () {
@@ -106,22 +185,35 @@ layer(NodeFileSystem.layer)("TypeScript.Workspace", (it) => {
 		}),
 	);
 
-	it.effect("refuses symbolic links", () =>
+	it.effect.skipIf(!canLinkFiles)("refuses symbolic links", () =>
 		Effect.gen(function* () {
 			const root = yield* fixture({ "src/a.ts": "export {};\n" });
 			const fs = yield* FileSystem.FileSystem;
-			const linked = yield* fs.symlink(`${root}/src/a.ts`, `${root}/src/link.ts`).pipe(
-				Effect.as(true),
-				Effect.orElseSucceed(() => false),
-			);
-			// Creating links needs extra privileges on some Windows machines.
-			if (!linked) return;
+			yield* fs.symlink(`${root}/src/a.ts`, `${root}/src/link.ts`).pipe(Effect.orDie);
 
 			const exit = yield* withWorkspace(root, (workspace) =>
 				internals(workspace).match("test", ["src/*.ts"]),
 			).pipe(Effect.exit);
+			// oxlint-disable-next-line vitest/no-standalone-expect -- it.effect.skipIf registers this test.
 			expect(exit).toMatchObject(
 				Exit.fail({ _tag: "ReadFailed", reason: "link", path: "src/link.ts" }),
+			);
+		}),
+	);
+
+	it.effect("refuses files inside a linked directory", () =>
+		Effect.gen(function* () {
+			const root = yield* fixture({ "outside/a.ts": "export {};\n", "src/b.ts": "" });
+			// A junction on Windows, which needs no extra privileges; a directory link elsewhere.
+			yield* Effect.promise(() =>
+				symlink(`${root}/outside`, `${root}/src/linked`, "junction"),
+			);
+
+			const exit = yield* withWorkspace(root, (workspace) =>
+				internals(workspace).match("test", ["src/linked/*.ts"]),
+			).pipe(Effect.exit);
+			expect(exit).toMatchObject(
+				Exit.fail({ _tag: "ReadFailed", reason: "link", path: "src/linked/a.ts" }),
 			);
 		}),
 	);
@@ -176,6 +268,40 @@ layer(NodeFileSystem.layer)("TypeScript.Workspace", (it) => {
 			expect(yield* readFiles(root, ["a.ts", "b.ts", "c.ts"])).toEqual({
 				"a.ts": "a\n",
 				"b.ts": "changed\n",
+				"c.ts": "c\n",
+			});
+			expect(Arr.sort(yield* listFiles(root), Order.String)).toEqual([
+				"a.ts",
+				"b.ts",
+				"c.ts",
+			]);
+		}),
+	);
+
+	it.effect("reports written, failed, and pending files when a rename fails", () =>
+		Effect.gen(function* () {
+			const root = yield* fixture({ "a.ts": "a\n", "b.ts": "b\n", "c.ts": "c\n" });
+			const exit = yield* withFailingRename(root, "b.ts", (workspace) =>
+				internals(workspace).write("rename", [
+					{ path: "a.ts", expected: "a\n", text: "A\n" },
+					{ path: "b.ts", expected: "b\n", text: "B\n" },
+					{ path: "c.ts", expected: "c\n", text: "C\n" },
+				]),
+			).pipe(Effect.exit);
+
+			expect(exit).toMatchObject(
+				Exit.fail({
+					_tag: "WriteFailed",
+					actionId: "rename",
+					writtenPaths: ["a.ts"],
+					failed: { path: "b.ts", status: "unknown" },
+					pendingPaths: ["c.ts"],
+				}),
+			);
+			// Nothing is rolled back, and no temporary file is left.
+			expect(yield* readFiles(root, ["a.ts", "b.ts", "c.ts"])).toEqual({
+				"a.ts": "A\n",
+				"b.ts": "b\n",
 				"c.ts": "c\n",
 			});
 			expect(Arr.sort(yield* listFiles(root), Order.String)).toEqual([
@@ -267,6 +393,37 @@ layer(NodeFileSystem.layer)("TypeScript.Workspace", (it) => {
 					// The interrupted waiter took no permit: the lock is free once released.
 					yield* release;
 					expect(yield* stillWaiting(workspace.lock(["a.ts"]))).toBe(false);
+				}),
+			);
+		}),
+	);
+
+	it.effect("takes locks in sorted order whatever order the paths are given in", () =>
+		Effect.gen(function* () {
+			const root = yield* fixture({ "a.ts": "", "b.ts": "" });
+			yield* withWorkspace(root, (workspace) =>
+				Effect.gen(function* () {
+					const { release } = yield* holdLock(workspace, "a.ts");
+					const waiter = yield* Effect.forkChild(
+						Effect.scoped(workspace.lock(["b.ts", "a.ts"])),
+					);
+					yield* settle;
+
+					// The waiter waits for a.ts before it takes b.ts.
+					expect(yield* stillWaiting(workspace.lock(["b.ts"]))).toBe(false);
+					yield* Fiber.interrupt(waiter);
+					yield* release;
+				}),
+			);
+		}),
+	);
+
+	it.effect("takes one lock for aliases of a path in one call", () =>
+		Effect.gen(function* () {
+			const root = yield* fixture({ "a.ts": "" });
+			yield* withWorkspace(root, (workspace) =>
+				Effect.gen(function* () {
+					expect(yield* stillWaiting(workspace.lock(["a.ts", "./a.ts"]))).toBe(false);
 				}),
 			);
 		}),

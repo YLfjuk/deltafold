@@ -25,6 +25,14 @@ repository's
 pnpm add @deltafold/typescript deltafold effect
 ```
 
+Transforms that import the compiler's AST helpers or types, such as
+`typescript-7.1/ast/is` in the examples below, also need the compiler installed
+under the same alias:
+
+```sh
+pnpm add typescript-7.1@npm:typescript@7.1.0-beta
+```
+
 `@deltafold/typescript/node` runs the compiler as a child process and needs
 Node.js 22.19 or later. Type checking needs DOM or Node.js types for the
 `AbortSignal` that Promise transforms receive.
@@ -150,12 +158,17 @@ root, and a library's migration once per package root.
 
 ## Errors
 
-| Error             | Meaning                                                                                                                                |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `TransformFailed` | One or more transforms failed; nothing was written. `failures` lists each with its `project`, `path` for file transforms, and `cause`. |
-| `WriteFailed`     | Writing failed. It lists the written, failed, and pending paths. A file that changed after it was read fails here.                     |
-| `ReadFailed`      | A pattern, a link, or a file could not be read before any transform ran.                                                               |
-| `CompilerFailed`  | The TypeScript compiler failed to start or crashed.                                                                                    |
+| Error             | Meaning                                                                                                                                          |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `TransformFailed` | One or more transforms failed; nothing was written. `failures` lists each with its `project`, its `path` when it concerns one file, and `cause`. |
+| `WriteFailed`     | Writing failed. It lists the written, failed, and pending paths. A conflict found before renaming fails here before any file is replaced.        |
+| `ReadFailed`      | A pattern, a link, or a file could not be read before any transform ran.                                                                         |
+| `CompilerFailed`  | The TypeScript compiler failed to start or crashed.                                                                                              |
+
+A failure concerns one file, and has a `path`, when the file has syntax errors,
+when a file transform fails, or when the adapter rejects the edits for that file.
+A project transform's own error, or an edit it returns for a file outside its
+project, names only the project.
 
 A cause is the error a transform declared with `errors`, `UnknownError` for anything
 else, `SyntaxErrors` for a matched file that does not parse, or `EditRejected` for

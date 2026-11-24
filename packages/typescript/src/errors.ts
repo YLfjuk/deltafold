@@ -50,8 +50,10 @@ export class SyntaxErrors extends Data.TaggedError("SyntaxErrors")<{
 }
 
 /**
- * One failed transform. A file transform's failure names its file in `path`; a
- * project transform's failure names only its project.
+ * One failure of a transform. `path` names the file when the failure concerns one: a
+ * file with syntax errors, a failed file transform, or edits the adapter rejected for
+ * that file. A project transform's own error, or an edit it returns for a file outside
+ * its project, names only the project.
  *
  * @since @next
  */
@@ -122,9 +124,9 @@ export type WriteStatus = "not-written" | "unknown";
 
 /**
  * Writing the action's files failed. `writtenPaths` were replaced, `failed` names the
- * file that failed, and `pendingPaths` were not attempted. A file that changed after
- * it was read is a conflict and fails here before any file is replaced. Nothing is
- * rolled back.
+ * file that failed, and `pendingPaths` were not attempted. A conflict found before
+ * renaming, such as a file that changed after it was read, fails here before any file
+ * is replaced. Nothing is rolled back.
  *
  * @since @next
  */

@@ -92,11 +92,7 @@ const memberKinds = new Set<SyntaxKind>([
 	SyntaxKind.EnumMember,
 ]);
 
-/**
- * Classifies a name node by its parent.
- *
- * @since @next
- */
+/** Classifies a name node by its parent. */
 export const nameForm = (name: Node): NameForm => {
 	const parent = name.parent;
 	if (parent === undefined) return "other";

@@ -1,7 +1,7 @@
 {
 	"name": "@deltafold/typescript",
 	"version": "0.0.0",
-	"description": "deltafold handlers that edit TypeScript and JSON files with the TypeScript compiler API.",
+	"description": "deltafold handlers that edit TypeScript, JavaScript, and JSON files with the TypeScript compiler API.",
 	"keywords": [
 		"codemod",
 		"deltafold",

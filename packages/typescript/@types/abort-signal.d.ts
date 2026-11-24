@@ -1,5 +1,5 @@
-// The library targets ES2022 without DOM or Node types, but Promise handlers receive the
-// AbortSignal that Effect.tryPromise creates, and runPromise accepts one for cancellation.
+// The library targets ES2022 without DOM or Node types, but Promise transforms receive
+// the AbortSignal that Effect.tryPromise creates.
 // Without these declarations, AbortSignal parameters silently become an error type. They
 // cover what the package uses, merge with the full DOM or Node declarations in consumer
 // projects, and are not part of the published bundle.

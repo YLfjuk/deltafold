@@ -21,7 +21,7 @@ import { byCodePoint, compareCodePoints, ordering } from "./paths.ts";
 import type { Info } from "./project.ts";
 import { type Internals, internals, type Opened, Workspace, type Write } from "./workspace.ts";
 
-/** Named Effect services that Promise transforms declare. */
+/** The service map of a Promise transform that declares no services. */
 // oxlint-disable-next-line typescript/no-generated-empty-object-type -- Transforms without services declare an empty service map.
 export type NoServices = Record<never, never>;
 

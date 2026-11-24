@@ -1,6 +1,6 @@
 import * as NodeFileSystem from "@effect/platform-node-shared/NodeFileSystem";
-import { expect, expectTypeOf, layer } from "@effect/vitest";
-import { Context, Effect, Schema } from "effect";
+import { expect, expectTypeOf, layer, vi } from "@effect/vitest";
+import { Array as Arr, Context, Effect, Order, Schema, Scope } from "effect";
 import { type Node, type SourceFile, SyntaxKind } from "typescript-7.1/ast";
 import {
 	isImportDeclaration,
@@ -11,6 +11,7 @@ import {
 
 import { TypeScript } from "@deltafold/typescript";
 import { Action, type Handler } from "deltafold";
+import { nameForm } from "../src/edits.ts";
 import {
 	fixture,
 	listFiles,
@@ -103,6 +104,35 @@ const jsonKeys = (node: Node, name: string): Array<Node> => {
 	return found;
 };
 
+/** The nodes named `name` under `node`: identifiers and string literals. */
+const namesCalled = (node: Node, name: string): Array<Node> => {
+	const found: Array<Node> = [];
+	const visit = (child: Node): void => {
+		if (
+			(child.kind === SyntaxKind.Identifier || child.kind === SyntaxKind.StringLiteral) &&
+			// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Identifiers and string literals have text.
+			(child as Node & { readonly text: string }).text === name
+		) {
+			found.push(child);
+		}
+		child.forEachChild(visit);
+	};
+	visit(node);
+
+	return found;
+};
+
+/** Renames every name `a1` whose form is one of `forms` to `a2`. */
+const renameA1In = (forms: ReadonlyArray<TypeScript.NameForm>) =>
+	TypeScript.File.promise(
+		renameCreateClient,
+		async ({ sourceFile, edit }) =>
+			namesCalled(sourceFile, "a1")
+				.filter((name) => forms.includes(nameForm(name)))
+				.map((name) => edit.rename(name, "a2")),
+		{ include: () => ["src/*.ts"] },
+	);
+
 const handler = TypeScript.File.promise(
 	renameCreateClient,
 	async ({ sourceFile, edit, payload }) => renameImports(sourceFile, edit, payload),
@@ -172,8 +202,24 @@ layer(NodeFileSystem.layer)("TypeScript.File", (it) => {
 				"src/broken.ts": 'import { createClient } from "@acme/widgets";\nconst = ;\n',
 			};
 			const root = yield* fixture(broken);
-			const outcome = yield* outcomeOf(root, handler);
+			const visited: Array<string> = [];
+			const recording = TypeScript.File.promise(
+				renameCreateClient,
+				async ({ path, sourceFile, edit, payload }) => {
+					visited.push(path);
 
+					return renameImports(sourceFile, edit, payload);
+				},
+				{ include: ({ include }) => include },
+			);
+			const outcome = yield* outcomeOf(root, recording);
+
+			expect(visited).not.toContain("src/broken.ts");
+			expect(Arr.sort(visited, Order.String)).toEqual([
+				"src/aliased.tsx",
+				"src/esm.ts",
+				"src/unrelated.ts",
+			]);
 			expect(outcome._tag).toBe("Failed");
 			const { failures } = transformFailed(outcome);
 			expect(failures.map((failure) => [failure.path, failure.cause._tag])).toEqual([
@@ -414,6 +460,135 @@ layer(NodeFileSystem.layer)("TypeScript.File", (it) => {
 		}),
 	);
 
+	it.effect("refuses edits for another file, returned or built from its nodes", () =>
+		Effect.gen(function* () {
+			const sources = {
+				"tsconfig.json": tsconfig,
+				"src/a.ts": "export const a = 1;\n",
+				"src/b.ts": "export const b = 2;\n",
+			};
+			const root = yield* fixture(sources);
+			const returning = TypeScript.File.promise(
+				renameCreateClient,
+				async ({ path }) =>
+					path === "src/a.ts"
+						? [{ path: "src/b.ts", pos: 0, end: 0, newText: "// a\n" }]
+						: [],
+				{ include: () => ["src/*.ts"] },
+			);
+			const building = TypeScript.File.effect(
+				renameCreateClient,
+				({ path, program, edit }) =>
+					Effect.gen(function* () {
+						if (path !== "src/a.ts") return [];
+						const other = yield* Effect.promise(() =>
+							program.getSourceFile(`${root}/src/b.ts`),
+						);
+
+						return [edit.replace(other!.statements[0]!, "export const b = 3;")];
+					}),
+				{ include: () => ["src/*.ts"] },
+			);
+
+			for (const escaping of [returning, building]) {
+				const { failures } = transformFailed(yield* outcomeOf(root, escaping));
+				expect(failures.map((failure) => [failure.path, failure.cause._tag])).toEqual([
+					["src/a.ts", "EditRejected"],
+				]);
+			}
+			expect(yield* readFiles(root, Object.keys(sources))).toEqual(sources);
+		}),
+	);
+
+	it.effect("renames shorthand properties and element access keys, and refuses other names", () =>
+		Effect.gen(function* () {
+			const source =
+				'const a1 = 1;\nexport const short = { a1 };\ndeclare const record: Record<string, number>;\nexport const read = record["a1"];\n';
+			const root = yield* fixture({ "tsconfig.json": tsconfig, "src/forms.ts": source });
+			const { failures } = transformFailed(yield* outcomeOf(root, renameA1In(["other"])));
+			expect(failures.map((failure) => [failure.path, failure.cause._tag])).toEqual([
+				["src/forms.ts", "EditRejected"],
+			]);
+			expect(yield* readFiles(root, ["src/forms.ts"])).toEqual({ "src/forms.ts": source });
+
+			expect(
+				yield* outcomeOf(root, renameA1In(["shorthand-property", "element-access"])),
+			).toEqual({ _tag: "Completed", performer: "automated" });
+			expect(yield* readFiles(root, ["src/forms.ts"])).toEqual({
+				"src/forms.ts":
+					'const a1 = 1;\nexport const short = { a2: a1 };\ndeclare const record: Record<string, number>;\nexport const read = record["a2"];\n',
+			});
+		}),
+	);
+
+	it.effect("fails JSON and JSON with comments that do not parse", () =>
+		Effect.gen(function* () {
+			const broken = {
+				"config.json": '{ "timeout": }\n',
+				"settings.jsonc": '{\n\t// c\n\t"timeout": ,\n}\n',
+			};
+			const root = yield* fixture(broken);
+			const rename = TypeScript.File.promise(
+				renameTimeout,
+				async ({ sourceFile, edit, payload }) =>
+					jsonKeys(sourceFile, payload.from).map((key) => edit.rename(key, payload.to)),
+				{ include: () => ["*.json", "*.jsonc"] },
+			);
+
+			const { failures } = transformFailed(yield* outcomeOf(root, rename));
+			expect(failures.map((failure) => [failure.path, failure.cause._tag])).toEqual([
+				["config.json", "SyntaxErrors"],
+				["settings.jsonc", "SyntaxErrors"],
+			]);
+			expect(yield* readFiles(root, Object.keys(broken))).toEqual(broken);
+		}),
+	);
+
+	it.effect("tries another hidden name for a .jsonc file while one is taken", () =>
+		Effect.gen(function* () {
+			// Math.random() returning 0.5 gives the token "i".
+			const jsonFiles = {
+				"config.jsonc": '{\n\t// c\n\t"timeout": 1,\n}\n',
+				".config.jsonc.i.deltafold.json": '{ "timeout": 2 }\n',
+			};
+			const root = yield* fixture(jsonFiles);
+			const rename = TypeScript.File.promise(
+				renameTimeout,
+				async ({ sourceFile, edit, payload }) =>
+					jsonKeys(sourceFile, payload.from).map((key) => edit.rename(key, payload.to)),
+				{ include: () => ["*.jsonc"] },
+			);
+
+			const random = vi.spyOn(Math, "random");
+			try {
+				random.mockReturnValue(0.5);
+				const exhausted = yield* outcomeOf(root, rename);
+				expect(exhausted).toMatchObject({
+					_tag: "Failed",
+					error: { _tag: "CompilerFailed", stage: "snapshot" },
+				});
+				expect(random).toHaveBeenCalledTimes(16);
+				expect(yield* readFiles(root, Object.keys(jsonFiles))).toEqual(jsonFiles);
+
+				random.mockReset();
+				random.mockReturnValueOnce(0.5).mockReturnValueOnce(0.25);
+				expect(yield* outcomeOf(root, rename)).toEqual({
+					_tag: "Completed",
+					performer: "automated",
+				});
+			} finally {
+				random.mockRestore();
+			}
+			expect(yield* readFiles(root, Object.keys(jsonFiles))).toEqual({
+				...jsonFiles,
+				"config.jsonc": '{\n\t// c\n\t"requestTimeout": 1,\n}\n',
+			});
+			expect(Arr.sort(yield* listFiles(root), Order.String)).toEqual(
+				Arr.sort(Object.keys(jsonFiles), Order.String),
+			);
+		}),
+	);
+
 	it.effect("types the handler from its options", () =>
 		Effect.sync(() => {
 			class NotFound extends Schema.TaggedError<
@@ -439,6 +614,61 @@ layer(NodeFileSystem.layer)("TypeScript.File", (it) => {
 				>
 			>();
 			expectTypeOf(typed).toEqualTypeOf<
+				Handler.Handler<
+					typeof renameCreateClient,
+					TypeScript.Errors<NotFound>,
+					TypeScript.Workspace | Context.Service.Identifier<typeof Clock>
+				>
+			>();
+
+			class Missing extends Error {
+				readonly missing = true;
+			}
+			const isMissing = (cause: unknown): cause is Missing => cause instanceof Missing;
+			const guarded = TypeScript.File.promise(renameCreateClient, async () => [], {
+				include: ({ include }) => include,
+				errors: [isMissing],
+			});
+			expectTypeOf(guarded).toEqualTypeOf<
+				Handler.Handler<
+					typeof renameCreateClient,
+					TypeScript.Errors<Missing>,
+					TypeScript.Workspace
+				>
+			>();
+			expectTypeOf(
+				TypeScript.causes(
+					new TypeScript.TransformFailed<Missing>({
+						actionId: "a",
+						root: "/",
+						failures: [],
+					}),
+					isMissing,
+				),
+			).toEqualTypeOf<ReadonlyArray<TypeScript.Failure<Missing>>>();
+
+			const scoped = Effect.gen(function* () {
+				yield* Scope.Scope;
+				yield* Clock;
+
+				return yield* new NotFound();
+			});
+			expectTypeOf(
+				TypeScript.File.effect(renameCreateClient, () => scoped, {
+					include: ({ include }) => include,
+				}),
+			).toEqualTypeOf<
+				Handler.Handler<
+					typeof renameCreateClient,
+					TypeScript.Errors<NotFound>,
+					TypeScript.Workspace | Context.Service.Identifier<typeof Clock>
+				>
+			>();
+			expectTypeOf(
+				TypeScript.Project.effect(renameCreateClient, () => scoped, {
+					include: ({ include }) => include,
+				}),
+			).toEqualTypeOf<
 				Handler.Handler<
 					typeof renameCreateClient,
 					TypeScript.Errors<NotFound>,

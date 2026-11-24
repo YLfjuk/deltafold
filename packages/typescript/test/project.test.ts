@@ -231,4 +231,49 @@ layer(NodeFileSystem.layer)("TypeScript.Project", (it) => {
 			]);
 		}),
 	);
+
+	it.effect("skips a project whose matched files have syntax errors and writes nothing", () =>
+		Effect.gen(function* () {
+			const seen: Array<string> = [];
+			const recording = TypeScript.Project.promise(
+				renameA1,
+				async (context) => {
+					seen.push(
+						context.project.kind === "configured" ? context.project.config : "inferred",
+					);
+					for (const path of context.files) await context.sourceFile(path);
+					const member = await findMember(
+						context.program,
+						context.checker,
+						context.payload,
+					);
+					if (member === undefined) return [];
+
+					return (await context.references(member)).map((reference) =>
+						context.edit.rename(reference.node, context.payload.to),
+					);
+				},
+				{ include: ({ include }) => include },
+			);
+			const broken = { ...files, "packages/cli/src/broken.ts": "const = ;\n" };
+			const root = yield* fixture(broken);
+			const outcome = yield* outcomeOf(root, recording);
+
+			expect(seen).toEqual(["packages/app/tsconfig.json"]);
+			expect(
+				transformFailed(outcome).failures.map((failure) => [
+					failure.project,
+					failure.path,
+					failure.cause._tag,
+				]),
+			).toEqual([
+				[
+					{ kind: "configured", config: "packages/cli/tsconfig.json" },
+					"packages/cli/src/broken.ts",
+					"SyntaxErrors",
+				],
+			]);
+			expect(yield* readFiles(root, Object.keys(broken))).toEqual(broken);
+		}),
+	);
 });
