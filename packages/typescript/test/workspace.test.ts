@@ -171,10 +171,21 @@ layer(NodeFileSystem.layer)("TypeScript.Workspace", (it) => {
 		}),
 	);
 
-	it.effect("refuses absolute patterns and patterns with parent segments", () =>
+	it.effect("matches patterns with parent segments that stay under the root", () =>
+		Effect.gen(function* () {
+			const root = yield* fixture({ "src/a.ts": "", "b.ts": "" });
+			const matched = yield* withWorkspace(root, (workspace) =>
+				internals(workspace).match("test", ["./src/../*.ts", "src/./*.ts"]),
+			);
+
+			expect(matched).toEqual(["b.ts", "src/a.ts"]);
+		}),
+	);
+
+	it.effect("refuses patterns that are absolute or leave the root", () =>
 		Effect.gen(function* () {
 			const root = yield* fixture({ "src/a.ts": "" });
-			for (const pattern of ["/src/*.ts", "C:/src/*.ts", "src/../*.ts"]) {
+			for (const pattern of ["/src/*.ts", "../*.ts", "src/../../*.ts"]) {
 				const exit = yield* withWorkspace(root, (workspace) =>
 					internals(workspace).match("test", [pattern]),
 				).pipe(Effect.exit);

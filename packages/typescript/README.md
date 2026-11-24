@@ -1,15 +1,14 @@
 # @deltafold/typescript
 
-Handlers for [deltafold](https://github.com/YLfjuk/deltafold/tree/main/packages/deltafold)
-that edit TypeScript, JavaScript, and JSON files with the TypeScript 7.1 compiler
-API. A transform receives a parsed file, or a whole compiler project, and returns
-text edits. The handler computes the edits in its prepare phase and writes them in
-its apply phase, so a dry run shows whether any file would change without writing.
+[deltafold](https://github.com/YLfjuk/deltafold/tree/main/packages/deltafold)
+handlers that edit TypeScript, JavaScript, and JSON files with the TypeScript 7.1
+compiler API. You write a transform that takes a parsed file, or a whole compiler
+project, and returns text edits. The handler computes the edits in its prepare
+phase and writes them in its apply phase, so a dry run shows which actions would
+change files without writing any.
 
-The package is experimental. It depends on TypeScript 7.1.0-beta, installed under
-the alias `typescript-7.1`, until TypeScript 7.1 is stable. The design is in the
-repository's
-[codemod notes](https://github.com/YLfjuk/deltafold/blob/main/notes/codemod-typescript.md).
+The package is experimental. Until TypeScript 7.1 is stable, it depends on
+TypeScript 7.1.0-beta under the alias `typescript-7.1`.
 
 - [Install](#install)
 - [Edit each file](#edit-each-file)
@@ -25,28 +24,31 @@ repository's
 pnpm add @deltafold/typescript deltafold effect
 ```
 
-Transforms that import the compiler's AST helpers or types, such as
-`typescript-7.1/ast/is` in the examples below, also need the compiler installed
-under the same alias:
+If your transforms import the compiler's AST helpers or types, such as
+`typescript-7.1/ast/is` in the examples below, install the compiler under the same
+alias:
 
 ```sh
 pnpm add typescript-7.1@npm:typescript@7.1.0-beta
 ```
 
-`@deltafold/typescript/node` runs the compiler as a child process and needs
-Node.js 22.19 or later. Type checking needs DOM or Node.js types for the
-`AbortSignal` that Promise transforms receive.
+The package has two entry points:
 
-- `@deltafold/typescript`: the `TypeScript` module with the handler constructors,
-  edit types, errors, and the `TypeScript.Workspace` service.
-- `@deltafold/typescript/node`: `TypeScriptNode.layer`, which provides the
-  workspace with Node's file system and the compiler.
+- `@deltafold/typescript` exports the `TypeScript` module: the handler
+  constructors, edit types, errors, and the `TypeScript.Workspace` service.
+- `@deltafold/typescript/node` exports `TypeScriptNode.layer`, which provides the
+  workspace with Node's file system and the compiler. It runs the compiler as a
+  child process and needs Node.js 22.19 or later.
+
+Promise transforms receive an `AbortSignal`, so type checking needs DOM or Node.js
+types.
 
 ## Edit each file
 
 `TypeScript.File.promise` runs a transform once per matched file. The transform
-returns edits for its own file, against the text it received. The `edit` helpers
-take syntax nodes and start at a node's first token, after its leading comments.
+returns edits for that file, with offsets into the text it received. The `edit`
+helpers take syntax nodes and start at the node's first token, after any leading
+comments.
 
 ```ts
 import { isImportDeclaration, isNamedImports, isStringLiteral } from "typescript-7.1/ast/is";
@@ -86,15 +88,16 @@ const renameImports = TypeScript.File.promise(
 ```
 
 The transform also receives `path`, `project`, `program`, `checker`, `signal`, and
-the `services` it declares. `TypeScript.File.effect` takes an Effect transform that
-keeps its own errors and services.
+the `services` it declares. `TypeScript.File.effect` takes an Effect transform
+instead, which keeps its own error and service types.
 
 ## Edit a whole project
 
-`TypeScript.Project.promise` runs a transform once per compiler project, with that
-project's matched files. `references(symbol)` runs the compiler's find-references
-and returns the uses in those files only, so a field can be renamed wherever a
-value of its type flows, whatever the variables are called.
+`TypeScript.Project.promise` runs a transform once per compiler project and
+passes it that project's matched files. `references(symbol)` runs the compiler's
+find-references and returns the uses in those files. With it, a transform can
+rename a field everywhere a value of its type flows, whatever the variables are
+called.
 
 ```ts
 const renameField = TypeScript.Project.promise(
@@ -111,18 +114,18 @@ const renameField = TypeScript.Project.promise(
 );
 ```
 
-Each edit carries the root-relative path of its file. An edit to a file outside the
-project's matched files fails the action. `edit.rename` keeps local names in
-shorthand forms, so `const { a1 } = value` becomes `const { a2: a1 } = value`, and
-refuses name positions it does not support.
+Each edit carries the root-relative path of its file, and an edit to a file
+outside the project's matched files fails the action. `edit.rename` keeps the local
+name in shorthand forms, so `const { a1 } = value` becomes
+`const { a2: a1 } = value`. It throws for name positions it does not support.
 
-Files outside every tsconfig file form an inferred project; `project.kind` tells the
-transform which kind it received.
+Files outside every tsconfig file form an inferred project. `project.kind` tells
+the transform which kind it has.
 
 ## Run the handlers
 
-Handlers from this package are ordinary deltafold handlers, and a plan can mix them
-with `Handler.promise` and `Handler.effect` handlers. They require
+These are ordinary deltafold handlers, so a plan can mix them with
+`Handler.promise` and `Handler.effect` handlers. They require
 `TypeScript.Workspace`:
 
 ```ts
@@ -135,55 +138,61 @@ await Executor.runPromise(plan, {
 });
 ```
 
-Payload globs are relative to `root`. Run a tool's migration once at the repository
-root, and a library's migration once per package root.
+Payload globs are relative to `root`. Run a tool's migration once at the
+repository root, and a library's migration once in each package that uses the
+library.
 
 ## Files, locks, and writes
 
-- Globs never match inside `node_modules`. The compiler still reads installed type
-  declarations, but migrations edit only the developer's files.
-- Patterns that are absolute or contain `..`, symbolic links, and junctions are
-  refused.
-- A handler locks every matched file before it reads them and holds the locks until
-  its action ends. Custom handlers can take the same locks with
+- Globs never match inside `node_modules`. Transforms can still read installed
+  type declarations through the compiler, but they edit only your files.
+- The handler refuses absolute patterns, patterns that leave the root, symbolic
+  links, and junctions.
+- A handler locks every matched file before reading it and keeps the locks until
+  its action ends. A custom handler can take the same locks with
   `workspace.lock(paths)`.
-- Offsets are UTF-16 positions in the text without its byte order mark. Edits in one
-  file all refer to the text the transform received. Overlapping edits are refused;
-  identical replacements are kept once.
-- A byte order mark and line endings are kept. Edited JSON must still parse in the
-  original's dialect.
-- Writes go through temporary files: every file is staged, every original is checked
-  against the content that was read, and then each is renamed into place. Nothing is
-  rolled back.
+- Offsets are UTF-16 positions in the text without its byte order mark. All edits
+  for a file refer to the text the transform received. The handler refuses
+  overlapping edits and applies identical replacements once.
+- The handler keeps the byte order mark and line endings. Edited JSON must still
+  parse in the original's dialect.
+- The handler writes a temporary file for each changed file, checks that no
+  original changed since it was read, and then renames each temporary file over
+  its original. It rolls nothing back.
 
 ## Errors
 
-| Error             | Meaning                                                                                                                                          |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `TransformFailed` | One or more transforms failed; nothing was written. `failures` lists each with its `project`, its `path` when it concerns one file, and `cause`. |
-| `WriteFailed`     | Writing failed. It lists the written, failed, and pending paths. A conflict found before renaming fails here before any file is replaced.        |
-| `ReadFailed`      | A pattern, a link, or a file could not be read before any transform ran.                                                                         |
-| `CompilerFailed`  | The TypeScript compiler failed to start or crashed.                                                                                              |
+| Error             | Meaning                                                                                                                        |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `TransformFailed` | At least one transform failed, and no file was written. `failures` lists each failure with its `project`, `path`, and `cause`. |
+| `WriteFailed`     | Writing failed. It lists the written, failed, and pending paths. A file found changed since it was read fails here.            |
+| `ReadFailed`      | A pattern, a link, or a file could not be read before any transform ran.                                                       |
+| `CompilerFailed`  | The TypeScript compiler failed to start or crashed.                                                                            |
 
-A failure concerns one file, and has a `path`, when the file has syntax errors,
-when a file transform fails, or when the adapter rejects the edits for that file.
+A failure's `path` names the file when the failure concerns one: a file with
+syntax errors, a failed file transform, or edits the handler refused for that file.
 A project transform's own error, or an edit it returns for a file outside its
-project, names only the project.
+project, has no `path`.
 
-A cause is the error a transform declared with `errors`, `UnknownError` for anything
-else, `SyntaxErrors` for a matched file that does not parse, or `EditRejected` for
-edits the adapter refuses. `TypeScript.causes(error, guard)` selects the failures a
-guard recognizes.
+A cause is one of these:
+
+- an error the transform declared with `errors`
+- `Handler.UnexpectedHandlerError` from deltafold, for any other error
+- `SyntaxErrors`, for a matched file that does not parse
+- `EditRejected`, for edits the handler refuses
+
+`TypeScript.causes(error, guard)` returns the failures whose cause a guard
+recognizes.
 
 ## What find-references misses
 
-The compiler does not report every use of a property. Check these by hand or in your
-transform:
+The compiler does not report every use of a property. Check these cases by hand
+or in your transform:
 
-- `{ ...value, a1: 2 }`: still compiles after a rename but no longer overrides the
+- `{ ...value, a1: 2 }` still compiles after a rename, but no longer overrides the
   field.
 - Values typed as a union, such as `A | B`.
 - String literals typed as `keyof A`.
 - Generic code constrained by shape, such as `<T extends { a1: number }>`. The
-  compiler reports these after the rename.
+  compiler reports these as errors after the rename.
 - Values typed `any`.

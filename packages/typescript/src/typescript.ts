@@ -24,7 +24,6 @@ export {
 	type ReadReason,
 	SyntaxErrors,
 	TransformFailed,
-	UnknownError,
 	WriteFailed,
 	type WriteStatus,
 } from "./errors.ts";

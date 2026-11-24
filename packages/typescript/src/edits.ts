@@ -8,7 +8,7 @@ import { ordering } from "./paths.ts";
 /**
  * Replaces the text from `pos` to `end` with `newText`. Offsets are UTF-16 positions in
  * the file text without its byte order mark, as `SourceFile.text` holds it. Language
- * service methods, such as `getImportAdderEdits`, return edits of this shape.
+ * service methods such as `getImportAdderEdits` return edits of this shape too.
  *
  * @since @next
  */
@@ -26,24 +26,24 @@ export type TextEdit = {
 export type FileEdit = TextEdit & { readonly path: string };
 
 /**
- * Builds edits from syntax nodes. A node's `pos` includes its leading comments and
- * whitespace, so the helpers start at the node's first token instead.
+ * Builds edits from syntax nodes. The helpers start at a node's first token, because
+ * its `pos` includes leading comments and whitespace.
  *
  * @since @next
  */
 export type Edits = {
 	/** Replaces a node's text. */
 	readonly replace: (node: Node, text: string) => FileEdit;
-	/** Removes a node's text, without its leading comments and whitespace. */
+	/** Removes a node and keeps its leading comments and whitespace. */
 	readonly remove: (node: Node) => FileEdit;
 	/** Inserts text before a node's first token. */
 	readonly insertBefore: (node: Node, text: string) => FileEdit;
 	/** Inserts text after a node's last character. */
 	readonly insertAfter: (node: Node, text: string) => FileEdit;
 	/**
-	 * Renames a property or member at a name node, such as a find-references result. It
-	 * keeps local names in shorthand forms, so `const { a1 } = value` becomes
-	 * `const { a2: a1 } = value`, and keeps the quotes of string-literal names. Other
+	 * Renames a property or member at a name node, such as a find-references result.
+	 * Shorthand forms keep the local name, so `const { a1 } = value` becomes
+	 * `const { a2: a1 } = value`, and string-literal names keep their quotes. Other
 	 * name positions throw `EditRejected`.
 	 */
 	readonly rename: (name: Node, newName: string) => FileEdit;
@@ -52,8 +52,7 @@ export type Edits = {
 };
 
 /**
- * Where a find-references result appears. `rename` supports every form except
- * `"other"`.
+ * Where a name appears. `rename` supports every form except `"other"`.
  *
  * @since @next
  */
@@ -129,8 +128,8 @@ export const nameForm = (name: Node): NameForm => {
 };
 
 /**
- * Creates edit helpers. `pathOf` maps a source file to the root-relative path of a file
- * the transform may edit, and throws `EditRejected` for any other file.
+ * Creates edit helpers. `pathOf` returns the root-relative path of a source file the
+ * transform may edit, and throws `EditRejected` for any other file.
  */
 export const makeEdits = (pathOf: (sourceFile: SourceFile) => string): Edits => {
 	const locate = (node: Node) => {

@@ -23,17 +23,6 @@ export const byCodePoint: Order.Order<string> = (a, b) => ordering(compareCodePo
 /** Replaces backslashes with `/`. */
 export const toPosix = (path: string) => path.replaceAll("\\", "/");
 
-/**
- * Whether a glob pattern stays under the root: it is relative and has no `..`
- * segment.
- */
-export const isContainedPattern = (pattern: string) => {
-	const posix = toPosix(pattern);
-	if (posix.startsWith("/") || /^[A-Za-z]:/.test(posix)) return false;
-
-	return !posix.split("/").includes("..");
-};
-
 /** Swaps the case of every letter, to probe whether a file system ignores case. */
 export const swapCase = (text: string) =>
 	Array.from(text, (char) => {

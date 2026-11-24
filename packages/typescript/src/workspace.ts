@@ -13,7 +13,7 @@ import {
 import type { Snapshot } from "typescript-7.1/async";
 
 import { CompilerFailed, ReadFailed, WriteFailed } from "./errors.ts";
-import { byCodePoint, isContainedPattern, swapCase, toPosix } from "./paths.ts";
+import { byCodePoint, swapCase, toPosix } from "./paths.ts";
 
 /** A file to open in a snapshot: its absolute, `/`-separated path and its text without a byte order mark. */
 export type OpenFile = {
@@ -88,12 +88,11 @@ export type Workspace = {
 	/** The absolute, `/`-separated root that payload globs are relative to. */
 	readonly root: string;
 	/**
-	 * Holds the locks of root-relative paths until the current scope closes. Handlers of
-	 * this package lock every file they may write; a custom handler that writes the same
-	 * files can take the same locks. Paths are normalized first, so `./a.ts` and `a.ts`
-	 * share a lock. Locks are acquired in sorted order, waiting for one can be
-	 * interrupted, and they are not reentrant: a fiber that locks a path it already
-	 * holds waits until it is interrupted.
+	 * Locks root-relative paths until the current scope closes. This package's handlers
+	 * lock every file they may write, and a custom handler that writes the same files can
+	 * take the same locks. `./a.ts` and `a.ts` share a lock. It takes locks in sorted
+	 * order, and waiting for one can be interrupted. Locks are not reentrant: a fiber
+	 * that locks a path it already holds waits until it is interrupted.
 	 */
 	readonly lock: (paths: ReadonlyArray<string>) => Effect.Effect<void, never, Scope.Scope>;
 	readonly [InternalId]: Internals;
@@ -174,14 +173,21 @@ export const make = (options: {
 
 		const match = (actionId: string, include: ReadonlyArray<string>) =>
 			Effect.gen(function* () {
+				const patterns: Array<readonly [string, string]> = [];
 				for (const pattern of include) {
-					if (!isContainedPattern(pattern))
+					const normalized = toPosix(path.normalize(pattern));
+					if (
+						path.isAbsolute(pattern) ||
+						normalized === ".." ||
+						normalized.startsWith("../")
+					)
 						return yield* readFailed(actionId, pattern, "pattern")();
+					patterns.push([pattern, normalized]);
 				}
 				const found = new Set<string>();
-				for (const pattern of include) {
+				for (const [pattern, normalized] of patterns) {
 					const matches = yield* fs
-						.glob(toPosix(pattern), {
+						.glob(normalized, {
 							root: realRoot,
 							exclude: ["**/node_modules", "**/node_modules/**"],
 						})

@@ -254,7 +254,7 @@ layer(NodeFileSystem.layer)("TypeScript.File", (it) => {
 			const failed = transformFailed(outcome);
 			expect(failed.failures.map((failure) => [failure.path, failure.cause._tag])).toEqual([
 				["src/aliased.tsx", "Unsupported"],
-				["src/unrelated.ts", "UnknownError"],
+				["src/unrelated.ts", "UnexpectedHandlerError"],
 			]);
 			expect(
 				TypeScript.causes(failed, Unsupported).map((failure) => failure.cause.file),
@@ -382,7 +382,7 @@ layer(NodeFileSystem.layer)("TypeScript.File", (it) => {
 
 	it.effect("opens a .jsonc file under a name that no matched file has", () =>
 		Effect.gen(function* () {
-			// The real JSON file has the hidden name that an earlier release derived for config.jsonc.
+			// A real file whose name looks like a hidden alias of config.jsonc.
 			const jsonFiles = {
 				"config.jsonc": '{\n\t// c\n\t"timeout": 1,\n}\n',
 				".config.jsonc.deltafold.json": '{ "timeout": 2 }\n',

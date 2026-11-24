@@ -42,8 +42,7 @@ export default defineConfig({
 	},
 	test: {
 		include: ["test/**/*.test.ts"],
-		// Integration tests start the native TypeScript compiler.
-		testTimeout: 60_000,
-		hookTimeout: 60_000,
+		// Most tests start the native TypeScript compiler, which can take seconds on CI.
+		testTimeout: 30_000,
 	},
 });

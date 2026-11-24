@@ -4,20 +4,6 @@ import type { Handler } from "deltafold";
 import type { Info } from "./project.ts";
 
 /**
- * A transform threw or failed with a value that none of its error guards recognized,
- * or an Effect transform died. `cause` is the original value.
- *
- * @since @next
- */
-export class UnknownError extends Data.TaggedError("UnknownError")<{
-	readonly cause: unknown;
-}> {
-	override get message() {
-		return "A transform failed with an unrecognized error";
-	}
-}
-
-/**
  * The adapter refused the edits for a file: an edit outside the text, overlapping
  * edits, an edit to a file the transform may not change, a name position that
  * `edit.rename` does not support, or edited JSON that no longer parses.
@@ -36,7 +22,7 @@ export class EditRejected extends Data.TaggedError("EditRejected")<{
 
 /**
  * A matched file has syntax errors, so its transform did not run. A project
- * transform does not run while any of its project's matched files has them.
+ * transform does not run while any matched file of its project has syntax errors.
  *
  * @since @next
  */
@@ -51,9 +37,9 @@ export class SyntaxErrors extends Data.TaggedError("SyntaxErrors")<{
 
 /**
  * One failure of a transform. `path` names the file when the failure concerns one: a
- * file with syntax errors, a failed file transform, or edits the adapter rejected for
- * that file. A project transform's own error, or an edit it returns for a file outside
- * its project, names only the project.
+ * file with syntax errors, a failed file transform, or edits refused for that file. A
+ * project transform's own error, or an edit it returns for a file outside its project,
+ * has no `path`.
  *
  * @since @next
  */
@@ -64,16 +50,18 @@ export type Failure<C> = {
 };
 
 /**
- * The adapter's own failure causes, which every transform can produce.
+ * Causes that any transform can produce. `Handler.UnexpectedHandlerError` wraps an
+ * error that none of the transform's guards recognized, or an Effect transform's
+ * defect.
  *
  * @since @next
  */
-export type AdapterCause = UnknownError | EditRejected | SyntaxErrors;
+export type AdapterCause = Handler.UnexpectedHandlerError | EditRejected | SyntaxErrors;
 
 /**
  * At least one transform of the action failed, and no file was written. Every
- * transform of the action runs before the action fails, so `failures` lists all of
- * them, sorted by path and project. `E` is the error type a transform declared.
+ * transform runs before the action fails, so `failures` lists all failures, sorted by
+ * path and project. `E` is the error type the transform declared.
  *
  * @since @next
  */
@@ -90,8 +78,8 @@ export class TransformFailed<out E = never> extends Data.TaggedError("TransformF
 }
 
 /**
- * Selects the failures of a `TransformFailed` whose cause a guard recognizes: a
- * schema, or a type guard.
+ * Returns the failures whose cause a guard recognizes. The guard is a schema or a type
+ * guard.
  *
  * @since @next
  */
@@ -124,9 +112,8 @@ export type WriteStatus = "not-written" | "unknown";
 
 /**
  * Writing the action's files failed. `writtenPaths` were replaced, `failed` names the
- * file that failed, and `pendingPaths` were not attempted. A conflict found before
- * renaming, such as a file that changed after it was read, fails here before any file
- * is replaced. Nothing is rolled back.
+ * file that failed, and `pendingPaths` were not attempted. A file found changed since
+ * it was read fails here before any file is replaced. Nothing is rolled back.
  *
  * @since @next
  */
@@ -174,7 +161,7 @@ export class ReadFailed extends Data.TaggedError("ReadFailed")<{
 }
 
 /**
- * The stage at which the compiler failed.
+ * When the compiler failed: while opening a snapshot, or on a later request.
  *
  * @since @next
  */

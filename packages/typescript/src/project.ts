@@ -15,6 +15,7 @@ import {
 	runEffect,
 	runPromise,
 	type ServiceIds,
+	unexpected,
 	type Unit,
 	type UnitResult,
 } from "./engine.ts";
@@ -24,14 +25,13 @@ import {
 	type Errors,
 	type Failure,
 	type GuardedError,
-	UnknownError,
 } from "./errors.ts";
 import type { Workspace } from "./workspace.ts";
 
 /**
- * The compiler project that a transform received: a configured project with the path of
- * its tsconfig file, relative to the root when it is under the root, or an inferred
- * project for files outside every tsconfig file.
+ * The compiler project a transform runs for: a configured project with the path of its
+ * tsconfig file, relative to the root when the file is under it, or an inferred project
+ * for files outside every tsconfig file.
  *
  * @since @next
  */
@@ -63,11 +63,11 @@ export type Context<Payload> = {
 	readonly payload: Payload;
 	readonly project: Info;
 	/**
-	 * The project's matched files, as root-relative paths. They are the only files the
-	 * transform may edit. Files with syntax errors stop the transform from running.
+	 * The project's matched files, as root-relative paths. The transform may edit only
+	 * these files, and it does not run while any of them has syntax errors.
 	 */
 	readonly files: ReadonlyArray<string>;
-	/** The project's program. It reads every file of the project, including installed declarations. */
+	/** Reads every file of the project, including installed declarations. */
 	readonly program: Program;
 	readonly checker: Checker;
 	readonly edit: Edits;
@@ -85,8 +85,8 @@ export type PromiseContext<
 	/** Loads one of `files`. */
 	readonly sourceFile: (path: string) => Promise<SourceFile>;
 	/**
-	 * Finds the uses of a symbol with the compiler's find-references, limited to `files`.
-	 * Uses in installed packages, unmatched files, and other projects' files are left out.
+	 * Finds the uses of a symbol in `files` with the compiler's find-references. It leaves
+	 * out uses in installed packages, unmatched files, and other projects.
 	 */
 	readonly references: (symbol: Symbol) => Promise<ReadonlyArray<Reference>>;
 	/** Aborted when the action is interrupted. */
@@ -101,12 +101,16 @@ export type PromiseContext<
  */
 export type EffectContext<Payload> = Context<Payload> & {
 	/** Loads one of `files`. */
-	readonly sourceFile: (path: string) => Effect.Effect<SourceFile, UnknownError>;
+	readonly sourceFile: (
+		path: string,
+	) => Effect.Effect<SourceFile, Handler.UnexpectedHandlerError>;
 	/**
-	 * Finds the uses of a symbol with the compiler's find-references, limited to `files`.
-	 * Uses in installed packages, unmatched files, and other projects' files are left out.
+	 * Finds the uses of a symbol in `files` with the compiler's find-references. It leaves
+	 * out uses in installed packages, unmatched files, and other projects.
 	 */
-	readonly references: (symbol: Symbol) => Effect.Effect<ReadonlyArray<Reference>, UnknownError>;
+	readonly references: (
+		symbol: Symbol,
+	) => Effect.Effect<ReadonlyArray<Reference>, Handler.UnexpectedHandlerError>;
 };
 
 /**
@@ -115,7 +119,7 @@ export type EffectContext<Payload> = Context<Payload> & {
  * @since @next
  */
 export type Options<Payload> = {
-	/** Globs relative to the run's root that select the files of the action. */
+	/** Globs, relative to the run's root, that select the action's files. */
 	readonly include: (payload: Payload) => ReadonlyArray<string>;
 };
 
@@ -129,9 +133,9 @@ export type PromiseOptions<
 	S extends Handler.ServiceMap,
 	G extends ReadonlyArray<Handler.ErrorGuard>,
 > = Options<Payload> & {
-	/** Effect services resolved for the transform and added to the handler requirements. */
+	/** Effect services that the transform receives as `services`. The handler requires them. */
 	readonly services?: S;
-	/** Guards for rejections that keep their own type. Other rejections become `UnknownError`. */
+	/** Guards for errors that keep their own type. Others become `Handler.UnexpectedHandlerError`. */
 	readonly errors?: G;
 };
 
@@ -190,14 +194,11 @@ const operations = (unit: Unit): Operations => {
 	};
 };
 
-/** Turns a Promise operation into an Effect that fails with `UnknownError`. */
+/** Turns a Promise operation into an Effect that fails with `Handler.UnexpectedHandlerError`. */
 const liftPromise =
-	<I, O>(call: (input: I) => Promise<O>) =>
+	<I, O>(action: Action.Any, call: (input: I) => Promise<O>) =>
 	(input: I) =>
-		Effect.tryPromise({
-			try: () => call(input),
-			catch: (cause) => (cause instanceof UnknownError ? cause : new UnknownError({ cause })),
-		});
+		Effect.tryPromise({ try: () => call(input), catch: (cause) => unexpected(action, cause) });
 
 const checkPaths = <C>(
 	unit: Unit,
@@ -251,10 +252,9 @@ const project = <A extends Action.Any, C, R>(
 
 /**
  * Edits the matched files with a Promise transform that runs once per compiler project.
- * The transform returns edits that carry their file's path; each file's edits refer to
- * its text as the transform received it. The handler computes every edit while
- * preparing, so a dry run reports whether any matched file would change, and writes
- * them when it applies.
+ * Each edit carries its file's path, with offsets into the text the transform received.
+ * The handler computes the edits in its prepare phase and writes them in its apply
+ * phase, so a dry run shows whether any file would change.
  *
  * @example
  * ```ts
@@ -300,14 +300,15 @@ export const promise = <
 						signal,
 						services,
 					}),
-				classify(options.errors ?? []),
+				classify(action, options.errors ?? []),
 			);
 		}),
 	);
 
 /**
  * Edits the matched files with an Effect transform that runs once per compiler project.
- * The transform keeps its own errors and services; a defect becomes `UnknownError`.
+ * The transform keeps its own error and service types. A defect becomes
+ * `Handler.UnexpectedHandlerError`.
  *
  * @since @next
  */
@@ -321,6 +322,7 @@ export const effect = <A extends Action.Any, E = never, R = never>(
 	project<A, E, R>(action, options, (unit) => {
 		const { sourceFile, references } = operations(unit);
 		return runEffect(
+			action,
 			Effect.suspend(() =>
 				transform({
 					payload: action.payload,
@@ -329,8 +331,8 @@ export const effect = <A extends Action.Any, E = never, R = never>(
 					program: unit.project.program,
 					checker: unit.project.checker,
 					edit: unit.edits(unit.files),
-					sourceFile: liftPromise(sourceFile),
-					references: liftPromise(references),
+					sourceFile: liftPromise(action, sourceFile),
+					references: liftPromise(action, references),
 				}),
 			),
 		);

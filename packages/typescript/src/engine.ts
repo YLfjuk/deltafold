@@ -13,7 +13,6 @@ import {
 	ReadFailed,
 	SyntaxErrors,
 	TransformFailed,
-	UnknownError,
 	type WriteFailed,
 } from "./errors.ts";
 import { checkJson, isJsonPath } from "./jsonc.ts";
@@ -204,9 +203,9 @@ const loadUnits = (
 	});
 
 /**
- * The prepare phase shared by file and project transforms: match, lock, read, open a
- * snapshot, run the transforms, and compute the files to write. The snapshot closes
- * when preparation ends; the locks stay with the occurrence until it ends.
+ * The prepare phase of file and project transforms: match, lock, read, open a snapshot,
+ * run the transforms, and compute the files to write. The snapshot closes when the
+ * phase ends. The locks stay until the occurrence ends.
  */
 export const prepare = <C, R>(
 	action: Action.Any,
@@ -304,17 +303,26 @@ export const apply = (
 		yield* internals(service).write(actionId, pending.writes);
 	});
 
-/** Keeps adapter causes and recognized errors; wraps the rest in `UnknownError`. */
+/** Wraps a cause that no guard recognized, as `Handler.promise` does. */
+export const unexpected = (action: Action.Any, cause: unknown) =>
+	new Handler.UnexpectedHandlerError({
+		actionId: action.id,
+		kind: action.kind,
+		phase: "prepare",
+		cause,
+	});
+
+/** Keeps `EditRejected` and recognized errors; wraps the rest with `unexpected`. */
 export const classify =
-	<G extends ReadonlyArray<Handler.ErrorGuard>>(guards: G) =>
-	(cause: unknown): GuardedError<G[number]> | UnknownError | EditRejected => {
+	<G extends ReadonlyArray<Handler.ErrorGuard>>(action: Action.Any, guards: G) =>
+	(cause: unknown): GuardedError<G[number]> | Handler.UnexpectedHandlerError | EditRejected => {
 		if (cause instanceof EditRejected) return cause;
 		const declared = guards.some((guard) =>
 			Schema.isSchema(guard) ? Schema.is(guard)(cause) : guard(cause),
 		);
 
 		// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- A guard recognized the cause.
-		return declared ? (cause as GuardedError<G[number]>) : new UnknownError({ cause });
+		return declared ? (cause as GuardedError<G[number]>) : unexpected(action, cause);
 	};
 
 /** Resolves a Promise transform's declared services. */
@@ -348,24 +356,24 @@ export const runPromise = <T, C>(
 	);
 
 /**
- * Runs an Effect transform. Its failures keep their type; a defect becomes
- * `UnknownError`, or stays an `EditRejected` thrown by an edit helper. Interruption
- * stays interruption.
+ * Runs an Effect transform. Its failures keep their type. A defect is wrapped with
+ * `unexpected`, except an `EditRejected` thrown by an edit helper.
  */
 export const runEffect = <T, E, R>(
+	action: Action.Any,
 	transform: Effect.Effect<T, E, R>,
-): Effect.Effect<Result.Result<T, E | UnknownError | EditRejected>, never, R> =>
+): Effect.Effect<Result.Result<T, E | Handler.UnexpectedHandlerError | EditRejected>, never, R> =>
 	Effect.result(
 		Effect.catchCause(
 			transform,
-			(cause): Effect.Effect<never, E | UnknownError | EditRejected> => {
+			(cause): Effect.Effect<never, E | Handler.UnexpectedHandlerError | EditRejected> => {
 				if (Cause.hasInterrupts(cause)) return Effect.failCause(Cause.interrupt());
 				const failure = Cause.findErrorOption(cause);
 				if (Option.isSome(failure)) return Effect.fail(failure.value);
 				const defect = Cause.squash(cause);
 
 				return Effect.fail(
-					defect instanceof EditRejected ? defect : new UnknownError({ cause: defect }),
+					defect instanceof EditRejected ? defect : unexpected(action, defect),
 				);
 			},
 		),

@@ -141,9 +141,9 @@ const contextOf = <Payload>(
 
 /**
  * Edits the matched files with a Promise transform that runs once per file. The
- * transform returns edits for its own file, against the text it received. The handler
- * computes every edit while preparing, so a dry run reports whether any matched file
- * would change, and writes them when it applies.
+ * transform returns edits for its file, with offsets into the text it received. The
+ * handler computes the edits in its prepare phase and writes them in its apply phase,
+ * so a dry run shows whether any file would change.
  *
  * @example
  * ```ts
@@ -178,14 +178,15 @@ export const promise = <
 						signal,
 						services,
 					}),
-				classify(options.errors ?? []),
+				classify(action, options.errors ?? []),
 			),
 		),
 	);
 
 /**
  * Edits the matched files with an Effect transform that runs once per file. The
- * transform keeps its own errors and services; a defect becomes `UnknownError`.
+ * transform keeps its own error and service types. A defect becomes
+ * `Handler.UnexpectedHandlerError`.
  *
  * @since @next
  */
@@ -196,6 +197,7 @@ export const effect = <A extends Action.Any, E = never, R = never>(
 ): Handler.Handler<A, Errors<E>, Workspace | Exclude<R, Scope.Scope>> =>
 	file<A, E, R>(action, options, (unit, path, sourceFile) =>
 		runEffect(
+			action,
 			Effect.suspend(() => transform(contextOf(unit, action.payload, path, sourceFile))),
 		),
 	);
