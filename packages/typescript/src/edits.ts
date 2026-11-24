@@ -1,9 +1,8 @@
-import { Array as Arr } from "effect";
+import { Array as Arr, Order } from "effect";
 import { type Node, type SourceFile, SyntaxKind } from "typescript-7.1/ast";
 import { skipTrivia } from "typescript-7.1/ast/scanner";
 
 import { EditRejected } from "./errors.ts";
-import { ordering } from "./paths.ts";
 
 /**
  * Replaces the text from `pos` to `end` with `newText`. Offsets are UTF-16 positions in
@@ -192,6 +191,12 @@ export const makeEdits = (pathOf: (sourceFile: SourceFile) => string): Edits => 
 
 const isInsertion = (edit: TextEdit) => edit.pos === edit.end;
 
+/** Orders edits by offset, with insertions before a replacement at the same offset. */
+const byOffset = Order.combine(
+	Order.mapInput(Order.Number, (edit: TextEdit) => edit.pos),
+	Order.mapInput(Order.Number, (edit: TextEdit) => (isInsertion(edit) ? 0 : 1)),
+);
+
 const sameEdit = (a: TextEdit, b: TextEdit) =>
 	a.pos === b.pos && a.end === b.end && a.newText === b.newText;
 
@@ -226,16 +231,8 @@ export const applyEdits = (
 		unique.push(edit);
 	}
 
-	// Ties keep their returned order, so insertions at one offset stay in sequence.
-	const sorted = Arr.sort(
-		unique.map((edit, index) => ({ edit, index })),
-		(a: { readonly edit: TextEdit; readonly index: number }, b: typeof a) =>
-			ordering(
-				a.edit.pos - b.edit.pos ||
-					Number(isInsertion(b.edit)) - Number(isInsertion(a.edit)) ||
-					a.index - b.index,
-			),
-	).map(({ edit }) => edit);
+	// The sort is stable, so insertions at one offset keep their returned order.
+	const sorted = Arr.sort(unique, byOffset);
 
 	let output = "";
 	let cursor = 0;

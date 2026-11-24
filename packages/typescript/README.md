@@ -1,22 +1,14 @@
 # @deltafold/typescript
 
 [deltafold](https://github.com/YLfjuk/deltafold/tree/main/packages/deltafold)
-handlers that edit TypeScript, JavaScript, and JSON files with the TypeScript 7.1
-compiler API. You write a transform that takes a parsed file, or a whole compiler
-project, and returns text edits. The handler computes the edits in its prepare
-phase and writes them in its apply phase, so a dry run shows which actions would
-change files without writing any.
+handlers that edit TypeScript, JavaScript, and JSON files. You write a transform
+that takes a parsed file, or a whole compiler project, and returns text edits. The
+transform works with syntax trees, programs, and checkers from the TypeScript 7.1
+compiler API. The handler computes the edits in its prepare phase and writes them
+in its apply phase, so a dry run shows which actions would change files without
+writing any.
 
-The package is experimental. Until TypeScript 7.1 is stable, it depends on
-TypeScript 7.1.0-beta under the alias `typescript-7.1`.
-
-- [Install](#install)
-- [Edit each file](#edit-each-file)
-- [Edit a whole project](#edit-a-whole-project)
-- [Run the handlers](#run-the-handlers)
-- [Files, locks, and writes](#files-locks-and-writes)
-- [Errors](#errors)
-- [What find-references misses](#what-find-references-misses)
+The package is experimental.
 
 ## Install
 
@@ -186,13 +178,18 @@ recognizes.
 
 ## What find-references misses
 
-The compiler does not report every use of a property. Check these cases by hand
-or in your transform:
+`references` uses TypeScript's own find-references, which misses some uses of a
+property. Editors that rename through TypeScript miss the same ones.
 
-- `{ ...value, a1: 2 }` still compiles after a rename, but no longer overrides the
-  field.
-- Values typed as a union, such as `A | B`.
-- String literals typed as `keyof A`.
-- Generic code constrained by shape, such as `<T extends { a1: number }>`. The
-  compiler reports these as errors after the rename.
-- Values typed `any`.
+Two of them change behavior without a compiler error, so check for them in your
+transform or by hand:
+
+- An object literal without a declared type that spreads a value and sets the old
+  key, such as `{ ...value, a1: 2 }`. After the rename it adds a field instead of
+  overriding one.
+- Values typed `any`, such as `anyValue.a1`.
+
+The compiler reports the others as errors after the rename:
+
+- String literals typed as `keyof A`, such as `const key: keyof A = "a1"`.
+- Generic code constrained by shape, such as `<T extends { a1: number }>`.

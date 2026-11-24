@@ -1,4 +1,4 @@
-import { Array as Arr, Cause, Context, Effect, Option, Result, Schema, Scope } from "effect";
+import { Array as Arr, Cause, Context, Effect, Option, Order, Result, Schema, Scope } from "effect";
 import type { SourceFile } from "typescript-7.1/ast";
 import type { Project as CompilerProject } from "typescript-7.1/async";
 
@@ -16,7 +16,6 @@ import {
 	type WriteFailed,
 } from "./errors.ts";
 import { checkJson, isJsonPath } from "./jsonc.ts";
-import { byCodePoint, compareCodePoints, ordering } from "./paths.ts";
 import type { Info } from "./project.ts";
 import { type Internals, internals, type Opened, Workspace, type Write } from "./workspace.ts";
 
@@ -82,11 +81,10 @@ const projectInfo = (workspace: Internals, root: string, project: CompilerProjec
 
 const infoKey = (info: Info) => (info.kind === "configured" ? info.config : `inferred:${info.id}`);
 
-const compareFailures = <C>(a: Failure<C>, b: Failure<C>) =>
-	ordering(
-		compareCodePoints(a.path ?? "", b.path ?? "") ||
-			compareCodePoints(infoKey(a.project), infoKey(b.project)),
-	);
+const byPathAndProject = Order.combine(
+	Order.mapInput(Order.String, (failure: Failure<unknown>) => failure.path ?? ""),
+	Order.mapInput(Order.String, (failure: Failure<unknown>) => infoKey(failure.project)),
+);
 
 const loadUnits = (
 	actionId: string,
@@ -252,7 +250,7 @@ export const prepare = <C, R>(
 			return yield* new TransformFailed<C>({
 				actionId: action.id,
 				root,
-				failures: Arr.sort(failures, compareFailures<C | AdapterCause>),
+				failures: Arr.sort(failures, byPathAndProject),
 			});
 		}
 
@@ -264,7 +262,7 @@ export const prepare = <C, R>(
 		}
 		const writes: Array<Write> = [];
 		const rejected: Array<Failure<EditRejected>> = [];
-		for (const path of Arr.sort(byPath.keys(), byCodePoint)) {
+		for (const path of Arr.sort(byPath.keys(), Order.String)) {
 			const raw = raws.get(path)!;
 			const { bom, text } = splitByteOrderMark(raw);
 			const applied = applyEdits(path, text, byPath.get(path)!);

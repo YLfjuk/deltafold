@@ -5,6 +5,7 @@ import {
 	Effect,
 	FileSystem,
 	Layer,
+	Order,
 	Path,
 	RcMap,
 	Scope,
@@ -13,7 +14,6 @@ import {
 import type { Snapshot } from "typescript-7.1/async";
 
 import { CompilerFailed, ReadFailed, WriteFailed } from "./errors.ts";
-import { byCodePoint, swapCase, toPosix } from "./paths.ts";
 
 /** A file to open in a snapshot: its absolute, `/`-separated path and its text without a byte order mark. */
 export type OpenFile = {
@@ -111,6 +111,9 @@ export const internals = (workspace: Workspace): Internals => workspace[Internal
 /** The suffix of the write step's temporary files. Matching never selects them. */
 export const temporarySuffix = ".deltafold-tmp";
 
+/** Replaces backslashes with `/`. */
+const toPosix = (path: string) => path.replaceAll("\\", "/");
+
 /** Decodes UTF-8 file bytes and keeps a leading byte order mark. */
 const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
 
@@ -130,7 +133,9 @@ export const make = (options: {
 		const realRoot = yield* fs.realPath(resolved).pipe(Effect.orElseSucceed(() => resolved));
 		const root = toPosix(realRoot).replace(/\/$/, "");
 
-		const probe = swapCase(realRoot);
+		// The root in another case resolves to the root only on a case-insensitive file system.
+		const upper = realRoot.toUpperCase();
+		const probe = upper === realRoot ? realRoot.toLowerCase() : upper;
 		const caseSensitive =
 			probe === realRoot ||
 			!(yield* fs.realPath(probe).pipe(
@@ -152,7 +157,7 @@ export const make = (options: {
 			Effect.gen(function* () {
 				const keys = Arr.sort(
 					new Set(paths.map((relative) => canonical(absolute(relative)))),
-					byCodePoint,
+					Order.String,
 				);
 				for (const key of keys) {
 					const semaphore = yield* RcMap.get(semaphores, key);
@@ -198,7 +203,7 @@ export const make = (options: {
 				}
 
 				const files: Array<string> = [];
-				for (const relative of Arr.sort(found, byCodePoint)) {
+				for (const relative of Arr.sort(found, Order.String)) {
 					const target = absolute(relative);
 					const info = yield* fs
 						.stat(target)
