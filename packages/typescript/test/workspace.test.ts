@@ -36,12 +36,12 @@ const withWorkspace = <A, E>(
 	);
 
 /**
- * Builds a workspace whose file system fails to rename onto `failing`. Write tests use
- * no compiler.
+ * Builds a workspace on Node's file system with some of its operations replaced. These
+ * tests open no compiler snapshot.
  */
-const withFailingRename = <A, E>(
+const withFileSystem = <A, E>(
 	root: string,
-	failing: string,
+	replace: (fs: FileSystem.FileSystem) => Partial<FileSystem.FileSystem>,
 	use: (workspace: TypeScript.Workspace) => Effect.Effect<A, E, Scope.Scope>,
 ) =>
 	Effect.scoped(
@@ -55,20 +55,7 @@ const withFailingRename = <A, E>(
 			Layer.mergeAll(
 				Layer.effect(
 					FileSystem.FileSystem,
-					Effect.map(FileSystem.FileSystem, (fs) => ({
-						...fs,
-						rename: (from: string, to: string) =>
-							to.endsWith(`/${failing}`)
-								? Effect.fail(
-										PlatformError.systemError({
-											_tag: "Busy",
-											module: "FileSystem",
-											method: "rename",
-											pathOrDescriptor: to,
-										}),
-									)
-								: fs.rename(from, to),
-					})),
+					Effect.map(FileSystem.FileSystem, (fs) => ({ ...fs, ...replace(fs) })),
 				),
 				NodePath.layer,
 			).pipe(Layer.provide(NodeFileSystem.layer)),
@@ -99,6 +86,21 @@ const canLinkFiles = await Effect.runPromise(
 		Effect.provide(NodeFileSystem.layer),
 	),
 );
+
+/** Fails renames onto `b.ts`. */
+const failRename = (fs: FileSystem.FileSystem) => ({
+	rename: (from: string, to: string) =>
+		to.endsWith("/b.ts")
+			? Effect.fail(
+					PlatformError.systemError({
+						_tag: "Busy",
+						module: "FileSystem",
+						method: "rename",
+						pathOrDescriptor: to,
+					}),
+				)
+			: fs.rename(from, to),
+});
 
 /** Lets forked fibers run until they block. */
 const settle = Effect.gen(function* () {
@@ -184,8 +186,22 @@ layer(NodeFileSystem.layer)("TypeScript.Workspace", (it) => {
 
 	it.effect("refuses patterns that are absolute or leave the root", () =>
 		Effect.gen(function* () {
-			const root = yield* fixture({ "src/a.ts": "" });
+			const base = yield* fixture({
+				"outside.ts": "",
+				"project/src/a.ts": "",
+				"project-sibling/secret.ts": "",
+			});
+			const root = `${base}/project`;
 			for (const pattern of [
+				`{${base}/outside.ts,src/a.ts}`,
+				"{/etc/hosts,src/a.ts}",
+				"{C:/Windows/win.ini,src/a.ts}",
+				"{C:src/a.ts,src/a.ts}",
+				"{src/a.ts,/nonexistent.ts}",
+				"{.,}./secret.ts",
+				".{.,}/secret.ts",
+				"{.,}./project/src/a.ts",
+				"../project-sibling/secret.ts",
 				"/src/*.ts",
 				"\\src\\*.ts",
 				"C:/src/*.ts",
@@ -206,6 +222,37 @@ layer(NodeFileSystem.layer)("TypeScript.Workspace", (it) => {
 						_tag: "@deltafold/typescript/ReadFailed",
 						reason: "pattern",
 						path: pattern,
+					}),
+				);
+			}
+		}),
+	);
+
+	it.effect("matches brace patterns that stay under the root", () =>
+		Effect.gen(function* () {
+			const root = yield* fixture({ "src/a/x.ts": "", "src/b/y.ts": "", "src/c/z.ts": "" });
+			const matched = yield* withWorkspace(root, (workspace) =>
+				internals(workspace).match("test", ["src/{a,b}/*.ts"]),
+			);
+
+			expect(matched).toEqual(["src/a/x.ts", "src/b/y.ts"]);
+		}),
+	);
+
+	it.effect("refuses glob results outside the root, whatever the pattern", () =>
+		Effect.gen(function* () {
+			const root = yield* fixture({ "src/a.ts": "" });
+			for (const result of ["../secret.ts", "/etc/hosts", "C:/outside.ts"]) {
+				const exit = yield* withFileSystem(
+					root,
+					() => ({ glob: () => Effect.succeed([result]) }),
+					(workspace) => internals(workspace).match("test", ["src/*.ts"]),
+				).pipe(Effect.exit);
+				expect(exit).toMatchObject(
+					Exit.fail({
+						_tag: "@deltafold/typescript/ReadFailed",
+						reason: "pattern",
+						path: result,
 					}),
 				);
 			}
@@ -316,7 +363,7 @@ layer(NodeFileSystem.layer)("TypeScript.Workspace", (it) => {
 	it.effect("reports written, failed, and pending files when a rename fails", () =>
 		Effect.gen(function* () {
 			const root = yield* fixture({ "a.ts": "a\n", "b.ts": "b\n", "c.ts": "c\n" });
-			const exit = yield* withFailingRename(root, "b.ts", (workspace) =>
+			const exit = yield* withFileSystem(root, failRename, (workspace) =>
 				internals(workspace).write("rename", [
 					{ path: "a.ts", expected: "a\n", text: "A\n" },
 					{ path: "b.ts", expected: "b\n", text: "B\n" },

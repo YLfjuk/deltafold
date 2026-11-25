@@ -13,6 +13,7 @@ import {
 } from "effect";
 import type { Snapshot } from "typescript-7.1/async";
 
+import * as PackageConfig from "./configs/package.ts";
 import { CompilerFailed, ReadFailed, WriteFailed } from "./errors.ts";
 
 /** A file to open in a snapshot: its absolute, `/`-separated path and its text without a byte order mark. */
@@ -43,7 +44,7 @@ export type Compiler = {
 
 /** A compiler that could not open a snapshot, with the original failure. */
 export class CompilerUnavailable extends Data.TaggedError(
-	"@deltafold/typescript/CompilerUnavailable",
+	`${PackageConfig.name}/CompilerUnavailable`,
 )<{
 	readonly cause: unknown;
 }> {}
@@ -55,7 +56,7 @@ export type Write = {
 	readonly text: string;
 };
 
-const InternalId = "~@deltafold/typescript/Workspace";
+const InternalId = `~${PackageConfig.name}/Workspace` as const;
 
 /** Workspace operations that only the handlers of this package use. */
 export type Internals = {
@@ -101,7 +102,7 @@ export type Workspace = {
 };
 
 /** @since @next */
-export const Workspace = Context.Service<Workspace>("@deltafold/typescript/Workspace");
+export const Workspace = Context.Service<Workspace>(`${PackageConfig.name}/Workspace`);
 
 export const internals = (workspace: Workspace): Internals => workspace[InternalId];
 
@@ -111,15 +112,43 @@ export const temporarySuffix = ".deltafold-tmp";
 const toPosix = (path: string) => path.replaceAll("\\", "/");
 
 /**
- * Whether a glob pattern is absolute or can leave the root: a leading `/` or drive
- * letter, or a `..` segment anywhere, including inside braces such as `{../a,b}`.
- * Backslashes count as separators.
+ * The patterns a brace pattern stands for: `a/{b,c}.ts` stands for `a/b.ts` and
+ * `a/c.ts`. An unclosed `{` stays literal.
  */
-const escapesRoot = (pattern: string) => {
-	const posix = toPosix(pattern);
+const expandBraces = (pattern: string): ReadonlyArray<string> => {
+	const open = pattern.indexOf("{");
+	if (open === -1) return [pattern];
+	const head = pattern.slice(0, open);
+	const alternatives: Array<string> = [];
+	let depth = 0;
+	let from = open + 1;
+	for (let index = open; index < pattern.length; index++) {
+		const char = pattern.charAt(index);
+		if (char === "{") depth++;
+		else if (char === "," && depth === 1) {
+			alternatives.push(pattern.slice(from, index));
+			from = index + 1;
+		} else if (char === "}" && --depth === 0) {
+			alternatives.push(pattern.slice(from, index));
+			const tail = pattern.slice(index + 1);
 
-	return /^(\/|[A-Za-z]:)/.test(posix) || /(^|[/{,])\.\.($|[/},])/.test(posix);
+			return alternatives.flatMap((alternative) => expandBraces(head + alternative + tail));
+		}
+	}
+
+	return expandBraces(pattern.slice(open + 1)).map((rest) => `${head}{${rest}`);
 };
+
+/**
+ * Whether a glob pattern, or a path a glob returned, is absolute or can leave the root:
+ * any brace alternative that starts with `/` or a drive letter, or has a `..` segment.
+ * `{.,}./a` stands for `../a`, so it leaves the root. Backslashes count as separators.
+ */
+const escapesRoot = (pattern: string) =>
+	expandBraces(toPosix(pattern)).some(
+		(alternative) =>
+			/^(\/|[A-Za-z]:)/.test(alternative) || alternative.split("/").includes(".."),
+	);
 
 const swapCase = (text: string) =>
 	Array.from(text, (char) => {
@@ -213,7 +242,10 @@ export const make = (options: {
 				for (const relative of Arr.sort(found, Order.String)) {
 					const target = absolute(relative);
 					// A second guard: no match may resolve outside the root, whatever the pattern.
-					if (!canonical(target).startsWith(`${canonical(root)}/`)) {
+					if (
+						escapesRoot(relative) ||
+						!canonical(target).startsWith(`${canonical(root)}/`)
+					) {
 						return yield* readFailed(actionId, relative, "pattern")();
 					}
 					const info = yield* fs

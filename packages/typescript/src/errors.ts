@@ -1,6 +1,7 @@
 import { Data, Schema } from "effect";
 
 import type { Handler } from "deltafold";
+import * as PackageConfig from "./configs/package.ts";
 import type { Info } from "./project.ts";
 
 /**
@@ -10,7 +11,7 @@ import type { Info } from "./project.ts";
  *
  * @since @next
  */
-export class EditRejected extends Data.TaggedError("@deltafold/typescript/EditRejected")<{
+export class EditRejected extends Data.TaggedError(`${PackageConfig.name}/EditRejected`)<{
 	readonly path: string;
 	readonly reason: string;
 	readonly ranges: ReadonlyArray<{ readonly pos: number; readonly end: number }>;
@@ -26,7 +27,7 @@ export class EditRejected extends Data.TaggedError("@deltafold/typescript/EditRe
  *
  * @since @next
  */
-export class SyntaxErrors extends Data.TaggedError("@deltafold/typescript/SyntaxErrors")<{
+export class SyntaxErrors extends Data.TaggedError(`${PackageConfig.name}/SyntaxErrors`)<{
 	readonly path: string;
 	readonly messages: ReadonlyArray<string>;
 }> {
@@ -66,7 +67,7 @@ export type AdapterCause = Handler.UnexpectedHandlerError | EditRejected | Synta
  * @since @next
  */
 export class TransformFailed<out E = never> extends Data.TaggedError(
-	"@deltafold/typescript/TransformFailed",
+	`${PackageConfig.name}/TransformFailed`,
 )<{
 	readonly actionId: string;
 	readonly root: string;
@@ -119,7 +120,7 @@ export type WriteStatus = "not-written" | "unknown";
  *
  * @since @next
  */
-export class WriteFailed extends Data.TaggedError("@deltafold/typescript/WriteFailed")<{
+export class WriteFailed extends Data.TaggedError(`${PackageConfig.name}/WriteFailed`)<{
 	readonly actionId: string;
 	readonly root: string;
 	readonly writtenPaths: ReadonlyArray<string>;
@@ -137,9 +138,9 @@ export class WriteFailed extends Data.TaggedError("@deltafold/typescript/WriteFa
 }
 
 /**
- * Why a target could not be read: a pattern that is absolute or leaves the root, a
- * symbolic link or junction, a file that cannot be read, or a file that changed while
- * the compiler loaded it.
+ * Why a target could not be read: a pattern that is absolute, contains a `..` segment,
+ * or resolves outside the root, a symbolic link or junction, a file that cannot be read,
+ * or a file that changed while the compiler loaded it.
  *
  * @since @next
  */
@@ -150,7 +151,7 @@ export type ReadReason = "pattern" | "link" | "unreadable" | "changed";
  *
  * @since @next
  */
-export class ReadFailed extends Data.TaggedError("@deltafold/typescript/ReadFailed")<{
+export class ReadFailed extends Data.TaggedError(`${PackageConfig.name}/ReadFailed`)<{
 	readonly actionId: string;
 	readonly root: string;
 	readonly path: string;
@@ -175,7 +176,7 @@ export type CompilerStage = "snapshot" | "request";
  *
  * @since @next
  */
-export class CompilerFailed extends Data.TaggedError("@deltafold/typescript/CompilerFailed")<{
+export class CompilerFailed extends Data.TaggedError(`${PackageConfig.name}/CompilerFailed`)<{
 	readonly actionId: string;
 	readonly root: string;
 	readonly stage: CompilerStage;
