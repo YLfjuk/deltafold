@@ -1,5 +1,6 @@
 import { Array as Arr, Data, Order, Result, SemVer } from "effect";
 
+import * as PackageConfig from "../../configs/package.ts";
 import type * as Action from "../../foundation/action.ts";
 import type * as Change from "../../foundation/change.ts";
 import type { Prose } from "../../foundation/instruction.ts";
@@ -33,7 +34,9 @@ export const section = (
  *
  * @since 0.0.1
  */
-export class ReleaseMetadataError extends Data.TaggedError("deltafold/ReleaseMetadataError")<{
+export class ReleaseMetadataError extends Data.TaggedError(
+	`${PackageConfig.name}/ReleaseMetadataError`,
+)<{
 	readonly reason: "duplicate" | "unrelated" | "missing";
 	readonly versions: ReadonlyArray<string>;
 	readonly message: string;
@@ -192,7 +195,7 @@ const trimInlines = (values: ReadonlyArray<Document.Inline>): ReadonlyArray<Docu
 // Generated sections take their identity from model identifiers under a kind that has no
 // `/`, so any version or migration identifier renders without colliding with others.
 const stepId = (step: Step) =>
-	`deltafold/${step.direction === "forward" ? "step" : "revert"}/${step.migration.id}`;
+	`${PackageConfig.name}/${step.direction === "forward" ? "step" : "revert"}/${step.migration.id}`;
 
 /**
  * Configures sections and plugins for changelog documents. Without `sections`, a release
@@ -249,7 +252,7 @@ export const make = <M = unknown>(options: Options<M> = {}): Changelog<M> => {
 		});
 		if (other !== false && unmatched.length > 0) {
 			result.push(
-				Document.generatedSection("deltafold/other", {
+				Document.generatedSection(`${PackageConfig.name}/other`, {
 					title: other.title,
 					children: [changeList(unmatched)],
 				}),
@@ -261,7 +264,7 @@ export const make = <M = unknown>(options: Options<M> = {}): Changelog<M> => {
 
 	const releaseSection = (context: Document.ReleaseContext<M>): Document.Section => {
 		const base = asRelease(
-			Document.generatedSection(`deltafold/release/${context.version.id}`, {
+			Document.generatedSection(`${PackageConfig.name}/release/${context.version.id}`, {
 				title: context.version.id,
 				children: changeSections(context.version.changes),
 			}),
@@ -301,7 +304,7 @@ export const make = <M = unknown>(options: Options<M> = {}): Changelog<M> => {
 				_tag: "Document",
 				kind: "change",
 				children: [
-					Document.generatedSection("deltafold/unreleased", {
+					Document.generatedSection(`${PackageConfig.name}/unreleased`, {
 						title: changeOptions.title ?? "Unreleased",
 						children: changeSections(changes),
 					}),
@@ -359,7 +362,7 @@ export const make = <M = unknown>(options: Options<M> = {}): Changelog<M> => {
 					: { package: pkg, version, metadata: release.metadata };
 			});
 			const root = insertAll(
-				Document.generatedSection("deltafold/package", {
+				Document.generatedSection(`${PackageConfig.name}/package`, {
 					title: pkg.name,
 					children: contexts.map(releaseSection),
 				}),
@@ -404,7 +407,7 @@ export const make = <M = unknown>(options: Options<M> = {}): Changelog<M> => {
 					: stepSections;
 			if (guideOptions.explain === true && plan.explanations.length > 0) {
 				children.push(
-					Document.generatedSection("deltafold/explanations", {
+					Document.generatedSection(`${PackageConfig.name}/explanations`, {
 						title: "Omitted instructions",
 						children: [
 							Document.List(
@@ -435,7 +438,7 @@ export const make = <M = unknown>(options: Options<M> = {}): Changelog<M> => {
 				_tag: "Document",
 				kind: plan.direction === "downgrade" ? "downgrade" : "upgrade",
 				children: [
-					Document.generatedSection("deltafold/guide", {
+					Document.generatedSection(`${PackageConfig.name}/guide`, {
 						title: `${verb}${subject} from ${plan.from.id} to ${plan.to.id}`,
 						children,
 					}),

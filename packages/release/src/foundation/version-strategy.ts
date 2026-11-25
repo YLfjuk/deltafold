@@ -2,10 +2,11 @@ import { Predicate } from "effect";
 import type { StandardSchemaV1 } from "effect/StandardSchema";
 
 import type { Change } from "deltafold";
+import * as PackageConfig from "../configs/package.ts";
 import type * as VersionScheme from "./version-scheme.ts";
 
 /** @since 0.0.1 */
-export const TypeId = "~@deltafold/release/VersionStrategy";
+export const TypeId = `~${PackageConfig.name}/VersionStrategy`;
 
 /**
  * One package taking part in a calculation.

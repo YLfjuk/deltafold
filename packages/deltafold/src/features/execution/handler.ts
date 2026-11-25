@@ -1,5 +1,6 @@
 import { Data, Effect, Predicate, Scope } from "effect";
 
+import * as PackageConfig from "../../configs/package.ts";
 import type * as Action from "../../foundation/action.ts";
 import type * as Callback from "./promise-callback.ts";
 import { adaptPromise } from "./promise-callback.ts";
@@ -30,7 +31,9 @@ export type Performer = "automated" | "manual";
  *
  * @since 0.2.0
  */
-export class VerificationFailed extends Data.TaggedError("deltafold/VerificationFailed")<{
+export class VerificationFailed extends Data.TaggedError(
+	`${PackageConfig.name}/VerificationFailed`,
+)<{
 	readonly actionId: string;
 	readonly kind: string;
 }> {
@@ -46,7 +49,9 @@ export class VerificationFailed extends Data.TaggedError("deltafold/Verification
  *
  * @since 0.0.1
  */
-export class UnexpectedHandlerError extends Data.TaggedError("deltafold/UnexpectedHandlerError")<{
+export class UnexpectedHandlerError extends Data.TaggedError(
+	`${PackageConfig.name}/UnexpectedHandlerError`,
+)<{
 	readonly actionId: string;
 	readonly kind: string;
 	readonly phase: Phase;
@@ -57,7 +62,7 @@ export class UnexpectedHandlerError extends Data.TaggedError("deltafold/Unexpect
 	}
 }
 
-const PreparationTypeId = "~deltafold/Preparation";
+const PreparationTypeId = `~${PackageConfig.name}/Preparation`;
 
 /**
  * A prepare phase decided to apply. The apply phase receives `value` unchanged; the
@@ -143,7 +148,7 @@ const applyStep = <E, R>(apply: Effect.Effect<void, E, R>): Step<E, R> => ({
 	apply,
 });
 
-const TypeId = "~deltafold/Handler";
+const TypeId = `~${PackageConfig.name}/Handler`;
 
 /**
  * Implements one action instance. `E` and `R` are the errors and Effect services of both

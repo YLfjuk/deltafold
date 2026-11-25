@@ -1,5 +1,6 @@
 import { Data } from "effect";
 
+import * as PackageConfig from "../../configs/package.ts";
 import type { RequestDirection } from "../../foundation/plan.ts";
 import type { Issue } from "./validate.ts";
 
@@ -36,7 +37,7 @@ export type Blocker = {
  *
  * @since 0.0.1
  */
-export class InvalidHistory extends Data.TaggedError("deltafold/InvalidHistory")<{
+export class InvalidHistory extends Data.TaggedError(`${PackageConfig.name}/InvalidHistory`)<{
 	readonly issues: ReadonlyArray<Issue>;
 }> {
 	override get message() {
@@ -47,7 +48,7 @@ export class InvalidHistory extends Data.TaggedError("deltafold/InvalidHistory")
 }
 
 /** @since 0.0.1 */
-export class UnknownVersion extends Data.TaggedError("deltafold/UnknownVersion")<{
+export class UnknownVersion extends Data.TaggedError(`${PackageConfig.name}/UnknownVersion`)<{
 	readonly version: string;
 	readonly known: ReadonlyArray<string>;
 }> {
@@ -62,7 +63,7 @@ export class UnknownVersion extends Data.TaggedError("deltafold/UnknownVersion")
  *
  * @since 0.0.1
  */
-export class UnsupportedRoute extends Data.TaggedError("deltafold/UnsupportedRoute")<{
+export class UnsupportedRoute extends Data.TaggedError(`${PackageConfig.name}/UnsupportedRoute`)<{
 	readonly from: string;
 	readonly to: string;
 	readonly direction: RequestDirection;
@@ -85,7 +86,7 @@ export class UnsupportedRoute extends Data.TaggedError("deltafold/UnsupportedRou
  *
  * @since 0.0.1
  */
-export class AmbiguousRoute extends Data.TaggedError("deltafold/AmbiguousRoute")<{
+export class AmbiguousRoute extends Data.TaggedError(`${PackageConfig.name}/AmbiguousRoute`)<{
 	readonly from: string;
 	readonly to: string;
 	readonly candidates: ReadonlyArray<RouteSummary>;
@@ -105,7 +106,7 @@ export class AmbiguousRoute extends Data.TaggedError("deltafold/AmbiguousRoute")
  *
  * @since 0.0.1
  */
-export class UnknownRoute extends Data.TaggedError("deltafold/UnknownRoute")<{
+export class UnknownRoute extends Data.TaggedError(`${PackageConfig.name}/UnknownRoute`)<{
 	readonly route: string;
 	readonly candidates: ReadonlyArray<RouteSummary>;
 }> {
@@ -121,7 +122,7 @@ export class UnknownRoute extends Data.TaggedError("deltafold/UnknownRoute")<{
  *
  * @since 0.0.1
  */
-export class RewriteCycle extends Data.TaggedError("deltafold/RewriteCycle")<{
+export class RewriteCycle extends Data.TaggedError(`${PackageConfig.name}/RewriteCycle`)<{
 	readonly route: string;
 	readonly rules: ReadonlyArray<string>;
 	readonly actions: string;
@@ -136,7 +137,9 @@ export class RewriteCycle extends Data.TaggedError("deltafold/RewriteCycle")<{
  *
  * @since 0.0.1
  */
-export class ConflictingRewrites extends Data.TaggedError("deltafold/ConflictingRewrites")<{
+export class ConflictingRewrites extends Data.TaggedError(
+	`${PackageConfig.name}/ConflictingRewrites`,
+)<{
 	readonly route: string;
 	readonly outcomes: ReadonlyArray<{
 		readonly actions: string;
@@ -154,7 +157,9 @@ export class ConflictingRewrites extends Data.TaggedError("deltafold/Conflicting
  *
  * @since 0.0.1
  */
-export class RewriteLimitExceeded extends Data.TaggedError("deltafold/RewriteLimitExceeded")<{
+export class RewriteLimitExceeded extends Data.TaggedError(
+	`${PackageConfig.name}/RewriteLimitExceeded`,
+)<{
 	readonly route: string;
 	readonly limit: "states" | "depth";
 	readonly value: number;
@@ -171,7 +176,7 @@ export class RewriteLimitExceeded extends Data.TaggedError("deltafold/RewriteLim
  *
  * @since 0.0.1
  */
-export class TooManyRoutes extends Data.TaggedError("deltafold/TooManyRoutes")<{
+export class TooManyRoutes extends Data.TaggedError(`${PackageConfig.name}/TooManyRoutes`)<{
 	readonly from: string;
 	readonly to: string;
 	readonly limit: number;

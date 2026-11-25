@@ -1,6 +1,7 @@
 import { Data, Predicate } from "effect";
 import type { Pipeable } from "effect";
 
+import * as PackageConfig from "../../configs/package.ts";
 import type { Version } from "../../foundation/version.ts";
 import type { Package } from "../package.ts";
 
@@ -225,7 +226,7 @@ type SectionOptions = {
 };
 
 /** Section identifiers that deltafold generates start with this prefix. */
-const reservedPrefix = "deltafold/";
+const reservedPrefix = `${PackageConfig.name}/`;
 
 /** Builds a section without the reserved-prefix check, for sections deltafold generates. */
 export const generatedSection = (id: string, options: SectionOptions = {}): Section =>
@@ -273,7 +274,7 @@ export const append =
  *
  * @since 0.0.1
  */
-export class DocumentError extends Data.TaggedError("deltafold/DocumentError")<{
+export class DocumentError extends Data.TaggedError(`${PackageConfig.name}/DocumentError`)<{
 	readonly reason: "duplicate-section" | "heading-level" | "reserved-id";
 	readonly message: string;
 }> {}

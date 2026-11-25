@@ -13,6 +13,7 @@ import {
 	Scope,
 } from "effect";
 
+import * as PackageConfig from "../../configs/package.ts";
 import type * as Action from "../../foundation/action.ts";
 import type * as Plan from "../../foundation/plan.ts";
 import type { Node, Occurrence } from "../../foundation/plan.ts";
@@ -162,7 +163,7 @@ export type CoverageIssue = {
 	}>;
 };
 
-const HandlerCoverageBase = Data.TaggedError("deltafold/HandlerCoverageError");
+const HandlerCoverageBase = Data.TaggedError(`${PackageConfig.name}/HandlerCoverageError`);
 
 /**
  * Handler coverage failed before any handler phase ran. Every occurrence needs exactly
@@ -186,7 +187,7 @@ export class HandlerCoverageError<A extends Action.Any = Action.Any> extends Han
 	}
 }
 
-const InteractionUnavailableBase = Data.TaggedError("deltafold/InteractionUnavailable");
+const InteractionUnavailableBase = Data.TaggedError(`${PackageConfig.name}/InteractionUnavailable`);
 
 /**
  * The plan has manual handlers, and the run has no `interaction` to ask a person. The
@@ -219,7 +220,7 @@ const listIds = (entries: ReadonlyArray<OccurrenceReport>) =>
 		)
 		.join(", ");
 
-const ExecutionFailedBase = Data.TaggedError("deltafold/ExecutionFailed");
+const ExecutionFailedBase = Data.TaggedError(`${PackageConfig.name}/ExecutionFailed`);
 
 /**
  * An occurrence failed, or a person declined manual work. Execution stopped admitting
@@ -256,7 +257,7 @@ export class ExecutionFailed<
 	}
 }
 
-const ExecutionInterruptedBase = Data.TaggedError("deltafold/ExecutionInterrupted");
+const ExecutionInterruptedBase = Data.TaggedError(`${PackageConfig.name}/ExecutionInterrupted`);
 
 /**
  * Why an execution or an occurrence was interrupted: explicit cancellation, a configured
@@ -528,7 +529,9 @@ type Timing = "timed" | "untimed";
  * services layer that owned the resources.
  */
 const logCleanupFailure = (owner: Record<string, string>) => (cause: Cause.Cause<unknown>) =>
-	Effect.logError("deltafold: cleanup failed", cause).pipe(Effect.annotateLogs(owner));
+	Effect.logError(`${PackageConfig.name}: cleanup failed`, cause).pipe(
+		Effect.annotateLogs(owner),
+	);
 
 /** Admission state, cancellation, and timeouts shared by real and dry runs. */
 const makeControl = (options: ControlOptions, subscribe: Subscribe | undefined) =>

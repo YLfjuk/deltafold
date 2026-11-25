@@ -1,11 +1,12 @@
 import { Effect, Exit, Predicate } from "effect";
 import type { Cause } from "effect";
 
+import * as PackageConfig from "../../configs/package.ts";
 import type * as Plan from "../../foundation/plan.ts";
 import type { InterruptReason, Outcome, Report } from "./executor.ts";
 import type { Performer, Phase } from "./handler.ts";
 
-const TypeId = "~deltafold/Observer";
+const TypeId = `~${PackageConfig.name}/Observer`;
 
 /**
  * The run that emitted an event.

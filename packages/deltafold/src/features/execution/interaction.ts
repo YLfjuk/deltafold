@@ -1,5 +1,6 @@
 import { Data, Effect, Predicate } from "effect";
 
+import * as PackageConfig from "../../configs/package.ts";
 import type * as Action from "../../foundation/action.ts";
 import type { Occurrence } from "../../foundation/plan.ts";
 import type * as Callback from "./promise-callback.ts";
@@ -32,7 +33,7 @@ export type Request<A extends Action.Any = Action.Any> = {
  * @since 0.2.0
  */
 export class UnexpectedInteractionError extends Data.TaggedError(
-	"deltafold/UnexpectedInteractionError",
+	`${PackageConfig.name}/UnexpectedInteractionError`,
 )<{
 	readonly occurrenceId: string;
 	readonly reason: "rejected" | "invalid-answer";
@@ -59,7 +60,7 @@ const checkAnswer = (request: Request) => (answer: unknown) =>
 				}),
 			);
 
-const TypeId = "~deltafold/Interaction";
+const TypeId = `~${PackageConfig.name}/Interaction`;
 
 /**
  * Asks a person to confirm the manual work of a plan. The executor has no terminal or

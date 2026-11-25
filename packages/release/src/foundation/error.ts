@@ -1,5 +1,7 @@
 import { Data } from "effect";
 
+import * as PackageConfig from "../configs/package.ts";
+
 /**
  * Why planning or preparation refused a release.
  *
@@ -69,7 +71,7 @@ export const issue = (reason: Reason, message: string, subjects: ReadonlyArray<s
  *
  * @since 0.0.1
  */
-export class PlanError extends Data.TaggedError("@deltafold/release/PlanError")<Issue> {}
+export class PlanError extends Data.TaggedError(`${PackageConfig.name}/PlanError`)<Issue> {}
 
 /**
  * Preparation found problems. Every independent problem is listed, and nothing was
@@ -77,7 +79,7 @@ export class PlanError extends Data.TaggedError("@deltafold/release/PlanError")<
  *
  * @since 0.0.1
  */
-export class PrepareError extends Data.TaggedError("@deltafold/release/PrepareError")<{
+export class PrepareError extends Data.TaggedError(`${PackageConfig.name}/PrepareError`)<{
 	readonly issues: ReadonlyArray<Issue>;
 }> {}
 
@@ -87,7 +89,7 @@ export class PrepareError extends Data.TaggedError("@deltafold/release/PrepareEr
  *
  * @since 0.0.1
  */
-export class StalePlan extends Data.TaggedError("@deltafold/release/StalePlan")<{
+export class StalePlan extends Data.TaggedError(`${PackageConfig.name}/StalePlan`)<{
 	readonly paths: ReadonlyArray<string>;
 }> {}
 
@@ -101,7 +103,7 @@ export class StalePlan extends Data.TaggedError("@deltafold/release/StalePlan")<
  *
  * @since 0.0.1
  */
-export class ApplyFailed extends Data.TaggedError("@deltafold/release/ApplyFailed")<{
+export class ApplyFailed extends Data.TaggedError(`${PackageConfig.name}/ApplyFailed`)<{
 	readonly path: string;
 	readonly cause: unknown;
 	readonly restored: ReadonlyArray<string>;
@@ -113,6 +115,8 @@ export class ApplyFailed extends Data.TaggedError("@deltafold/release/ApplyFaile
  *
  * @since 0.0.1
  */
-export class ChangedDuringApply extends Data.TaggedError("@deltafold/release/ChangedDuringApply")<{
+export class ChangedDuringApply extends Data.TaggedError(
+	`${PackageConfig.name}/ChangedDuringApply`,
+)<{
 	readonly path: string;
 }> {}
