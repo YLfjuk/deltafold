@@ -139,7 +139,11 @@ export const migrateCommand = (
 					const controller = new AbortController();
 					// Without an interaction, the executor refuses to start a run that has manual
 					// handlers. A dry run never asks.
-					const terminal = yield* Prompt.make(output, () => controller.abort());
+					let cancelledAtPrompt = false;
+					const terminal = yield* Prompt.make(output, () => {
+						cancelledAtPrompt = true;
+						controller.abort();
+					});
 					const interaction =
 						output.interactive && !input.dryRun
 							? { interaction: terminal.interaction }
@@ -289,6 +293,13 @@ export const migrateCommand = (
 					}
 					if (error instanceof ExecutionFailed) {
 						yield* printReport(error.report);
+						// The end of input at a queued prompt cancels the run even when an earlier
+						// decline or failure is the run's recorded stop.
+						if (cancelledAtPrompt) {
+							yield* output.diagnostic("Canceled.", "Warn");
+
+							return yield* Effect.interrupt;
+						}
 
 						return yield* new CliFailure({
 							reason:

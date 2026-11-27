@@ -196,6 +196,22 @@ describe("usage errors", () => {
 		}),
 	);
 
+	it.effect("read --json with an inline or separate boolean value", () =>
+		Effect.gen(function* () {
+			const inline = yield* run(["plan", "--bogus", "--json=true"]);
+			const separate = yield* run(["plan", "--bogus", "--json", "yes"]);
+			const inlineOff = yield* run(["plan", "--bogus", "--json=false"]);
+			const separateOff = yield* run(["plan", "--bogus", "--json", "false"]);
+
+			expect(json(inline.stderr).reason).toBe("unknown_option");
+			expect(json(separate.stderr).reason).toBe("unknown_option");
+			for (const result of [inlineOff, separateOff]) {
+				expect(result.code).toBe(2);
+				expect(result.stderr).toContain("Error: Unrecognized flag: --bogus");
+			}
+		}),
+	);
+
 	it.effect("reject --route together with --policy", () =>
 		Effect.gen(function* () {
 			const result = yield* run([
@@ -1037,6 +1053,22 @@ describe("queued manual prompts", () => {
 			expect(result.stdout).toContain(
 				"1.0.0-to-2.0.0/add-retry-limit (confirmed by a person)",
 			);
+		}),
+	);
+
+	it.effect("cancel at the end of input after an earlier decline", () =>
+		Effect.gen(function* () {
+			const command = Command.make(parallel([renameTimeout, addRetryLimit]), {
+				handlers: [Handler.manual(renameTimeout), Handler.manual(addRetryLimit)],
+			});
+			const result = yield* capture(start(command, argv), { ...person, input: ["n"] });
+
+			expect(result.code).toBe(130);
+			expect(result.stdout).toContain("declined            1.0.0-to-2.0.0/rename-timeout");
+			expect(result.stdout).toContain(
+				"interrupted         1.0.0-to-2.0.0/add-retry-limit (confirmation, cancelled)",
+			);
+			expect(result.stderr).toContain("Canceled.");
 		}),
 	);
 

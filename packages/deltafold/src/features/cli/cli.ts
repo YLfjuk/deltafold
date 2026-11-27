@@ -1,6 +1,6 @@
-import { Effect, Stdio } from "effect";
+import { Effect, Option, Stdio } from "effect";
 import type { Terminal } from "effect";
-import { CliConfig, CliError, CliOutput, Command, GlobalFlag } from "effect/cli";
+import { CliConfig, CliError, CliOutput, Command, GlobalFlag, Primitive } from "effect/cli";
 
 import type { CliFailure, Reason } from "./failure.ts";
 import { fail } from "./failure.ts";
@@ -38,12 +38,36 @@ const config = CliConfig.layer({
 	builtIns: [GlobalFlag.Help, GlobalFlag.Version, GlobalFlag.Completions, GlobalFlag.LogLevel],
 });
 
-/** Whether `--json` appears before `--`, for reporting usage errors that stop parsing. */
-const wantsJson = (argv: ReadonlyArray<string>) => {
-	const end = argv.indexOf("--");
+const booleanLiteral = (value: string | undefined) =>
+	value === undefined
+		? Effect.succeed(undefined)
+		: Primitive.Boolean.parse(value).pipe(Effect.option, Effect.map(Option.getOrUndefined));
 
-	return (end === -1 ? argv : argv.slice(0, end)).includes("--json");
-};
+/**
+ * Reads a boolean setting from the arguments before `--` as effect/cli parses it, for usage
+ * errors that stop parsing: `--name`, `--name=<bool>`, `--name <bool>`, and `--no-name`.
+ * The last occurrence wins.
+ */
+const readSetting = (argv: ReadonlyArray<string>, name: string) =>
+	Effect.gen(function* () {
+		const end = argv.indexOf("--");
+		const args = end === -1 ? argv : argv.slice(0, end);
+		let value = false;
+		for (let index = 0; index < args.length; index++) {
+			const arg = args[index];
+			if (arg === `--no-${name}`) {
+				value = false;
+			} else if (arg === `--${name}`) {
+				const next = yield* booleanLiteral(args[index + 1]);
+				if (next !== undefined) index++;
+				value = next ?? true;
+			} else if (arg?.startsWith(`--${name}=`)) {
+				value = (yield* booleanLiteral(arg.slice(name.length + 3))) ?? false;
+			}
+		}
+
+		return value;
+	});
 
 const usageFailure = (error: CliError.ShowHelp, argv: ReadonlyArray<string>) => {
 	const [first] = error.errors;
@@ -66,8 +90,8 @@ const usageFailure = (error: CliError.ShowHelp, argv: ReadonlyArray<string>) => 
 		next: [{ purpose: "help", label: "See help", args: [...path, "--help"], text: true }],
 	}).pipe(
 		Effect.provideServiceEffect(Output, makeOutput([program])),
-		Effect.provideService(Json, wantsJson(argv)),
-		Effect.provideService(NoColor, argv.includes("--no-color")),
+		Effect.provideServiceEffect(Json, readSetting(argv, "json")),
+		Effect.provideServiceEffect(NoColor, readSetting(argv, "no-color")),
 	);
 };
 

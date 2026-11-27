@@ -414,8 +414,10 @@ from your handlers go to stderr; Promise handlers that write to stdout
 themselves would mix with results. With `--json`, stdout holds one JSON document
 with `schemaVersion: 1`, and a failure that happens before there is a result
 prints one JSON error document on stderr instead, with a stable `reason`,
-structured `data`, and suggested follow-up commands as `argv`. `migrate` always
-prints its report on stdout, including after a failure or cancellation.
+structured `data`, and suggested follow-up commands as `argv`. `migrate` prints its
+execution report on stdout even when the run fails or is cancelled. A failure before
+the run starts, such as a handler module that fails to load, has no report and goes to
+stderr.
 Action payloads are not included in JSON output. A change's `metadata` keeps
 every key: plain JSON values stay as they are, `undefined` becomes `null`, and
 other values are named by type, such as `"[Date]"`, `"[Map]"`, or `"[Circular]"`.
