@@ -1,6 +1,7 @@
 import { Effect, Option, Stdio } from "effect";
 import type { Terminal } from "effect";
 import { CliConfig, CliError, CliOutput, Command, GlobalFlag, Primitive } from "effect/cli";
+import type { HelpDoc } from "effect/cli";
 
 import type { CliFailure, Reason } from "./failure.ts";
 import { fail } from "./failure.ts";
@@ -25,16 +26,17 @@ const reasonByTag: Record<CliError.CliError["_tag"], Reason> = {
 };
 
 // Help and version go to stdout. Usage errors are reported by `run` on stderr instead of
-// printing the full help, so stdout only ever holds a requested result.
-const presenter = CliOutput.layerPresenter({
+// printing the full help, so stdout only ever holds a requested result. `onInvalid` keeps
+// the selected command's help, which names its own flags.
+const presenter = (onInvalid: (helpDoc: HelpDoc.HelpDoc) => void): CliOutput.Presenter => ({
 	present: (event) =>
 		event._tag === "InvalidInvocation"
-			? Effect.void
+			? Effect.sync(() => onInvalid(event.helpDoc))
 			: CliOutput.defaultPresenter.present(event),
 });
 
 // No wizard: the only prompts are manual-handler confirmations.
-const config = CliConfig.layer({
+const config = CliConfig.make({
 	builtIns: [GlobalFlag.Help, GlobalFlag.Version, GlobalFlag.Completions, GlobalFlag.LogLevel],
 });
 
@@ -43,33 +45,49 @@ const booleanLiteral = (value: string | undefined) =>
 		? Effect.succeed(undefined)
 		: Primitive.Boolean.parse(value).pipe(Effect.option, Effect.map(Option.getOrUndefined));
 
+/** Long flag names that the selected command claims for itself, without dashes. */
+const localNames = (helpDoc: HelpDoc.HelpDoc | undefined) =>
+	new Set(
+		[...(helpDoc?.flags ?? []), ...(helpDoc?.inheritedFlags ?? [])].flatMap((flag) => [
+			flag.name,
+			...(flag.type === "boolean" ? [`no-${flag.name}`] : []),
+			...flag.aliases.flatMap((alias) => (alias.startsWith("--") ? alias.slice(2) : [])),
+		]),
+	);
+
 /**
- * Reads a boolean setting from the arguments before `--` as effect/cli parses it, for usage
- * errors that stop parsing: `--name`, `--name=<bool>`, `--name <bool>`, and `--no-name`.
- * The last occurrence wins.
+ * Reads a boolean setting from the arguments before `--`, for usage errors that stop
+ * parsing. A flag of the same name on the selected command takes the token, as in
+ * effect/cli. Exactly one `--name`, `--name=<bool>`, or `--name <bool>` sets the value; a
+ * missing, repeated, negated, or invalid setting reports the error as text.
  */
-const readSetting = (argv: ReadonlyArray<string>, name: string) =>
+const readSetting = (argv: ReadonlyArray<string>, name: string, local: ReadonlySet<string>) =>
 	Effect.gen(function* () {
+		if (local.has(name)) return false;
 		const end = argv.indexOf("--");
 		const args = end === -1 ? argv : argv.slice(0, end);
-		let value = false;
-		for (let index = 0; index < args.length; index++) {
-			const arg = args[index];
-			if (arg === `--no-${name}`) {
-				value = false;
-			} else if (arg === `--${name}`) {
-				const next = yield* booleanLiteral(args[index + 1]);
-				if (next !== undefined) index++;
-				value = next ?? true;
-			} else if (arg?.startsWith(`--${name}=`)) {
-				value = (yield* booleanLiteral(arg.slice(name.length + 3))) ?? false;
-			}
-		}
+		const negated = local.has(`no-${name}`) ? [] : [`--no-${name}`];
+		const matches = args.flatMap((arg, index) =>
+			[`--${name}`, ...negated].some((flag) => arg === flag || arg.startsWith(`${flag}=`))
+				? index
+				: [],
+		);
+		if (matches.length !== 1) return false;
+		const [index = 0] = matches;
+		const arg = args[index] ?? "";
+		if (arg.startsWith("--no-")) return false;
+		if (arg !== `--${name}`)
+			return (yield* booleanLiteral(arg.slice(name.length + 3))) ?? false;
 
-		return value;
+		return (yield* booleanLiteral(args[index + 1])) ?? true;
 	});
 
-const usageFailure = (error: CliError.ShowHelp, argv: ReadonlyArray<string>) => {
+const usageFailure = (
+	error: CliError.ShowHelp,
+	argv: ReadonlyArray<string>,
+	helpDoc: HelpDoc.HelpDoc | undefined,
+) => {
+	const local = localNames(helpDoc);
 	const [first] = error.errors;
 	const message = first?.message.split("\n")[0] ?? "Invalid arguments";
 	const [program = "", ...path] = error.commandPath;
@@ -90,8 +108,8 @@ const usageFailure = (error: CliError.ShowHelp, argv: ReadonlyArray<string>) => 
 		next: [{ purpose: "help", label: "See help", args: [...path, "--help"], text: true }],
 	}).pipe(
 		Effect.provideServiceEffect(Output, makeOutput([program])),
-		Effect.provideServiceEffect(Json, readSetting(argv, "json")),
-		Effect.provideServiceEffect(NoColor, readSetting(argv, "no-color")),
+		Effect.provideServiceEffect(Json, readSetting(argv, "json", local)),
+		Effect.provideServiceEffect(NoColor, readSetting(argv, "no-color", local)),
 	);
 };
 
@@ -124,17 +142,27 @@ export const run = <Name extends string, Input, ContextInput, E, R>(
 		// A root that already installs them keeps one copy: Effect dedupes global flags by
 		// object identity.
 		const root = Command.withGlobalFlags(command, [Json, NoColor]);
+		let helpDoc: HelpDoc.HelpDoc | undefined;
 
 		return yield* Command.runWith(root, { version: options.version })(args).pipe(
+			Effect.provideService(
+				CliOutput.Presenter,
+				presenter((doc) => {
+					helpDoc = doc;
+				}),
+			),
 			Effect.catchIf(CliError.isCliError, (error) => {
 				if (error._tag === "ShowHelp") {
-					return error.errors.length === 0 ? Effect.void : usageFailure(error, args);
+					return error.errors.length === 0
+						? Effect.void
+						: usageFailure(error, args, helpDoc);
 				}
 
 				return usageFailure(
 					new CliError.ShowHelp({ commandPath: [command.name], errors: [error] }),
 					args,
+					helpDoc,
 				);
 			}),
 		);
-	}).pipe(Effect.provide([presenter, config]));
+	}).pipe(Effect.provideService(CliConfig.CliConfig, config));

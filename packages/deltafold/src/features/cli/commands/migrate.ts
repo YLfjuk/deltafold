@@ -312,8 +312,9 @@ export const migrateCommand = (
 					}
 					if (error instanceof ExecutionInterrupted) {
 						yield* printReport(error.report);
-						if (error.reason === "cancelled") {
-							// The CLI cancelled the run itself, at the end of input to a prompt.
+						if (error.reason === "cancelled" || cancelledAtPrompt) {
+							// The CLI cancelled the run itself, at the end of input to a prompt, even
+							// when an earlier timeout is the run's recorded stop.
 							yield* output.diagnostic("Canceled.", "Warn");
 
 							return yield* Effect.interrupt;

@@ -212,6 +212,22 @@ describe("usage errors", () => {
 		}),
 	);
 
+	it.effect("report as text when --json is repeated or negated", () =>
+		Effect.gen(function* () {
+			for (const settings of [
+				["--json", "--no-json"],
+				["--no-json", "--json"],
+				["--json", "--json"],
+				["--no-json", "true"],
+			]) {
+				const result = yield* run(["plan", "--bogus", ...settings]);
+
+				expect(result.code).toBe(2);
+				expect(result.stderr.startsWith("Error: ")).toBe(true);
+			}
+		}),
+	);
+
 	it.effect("reject --route together with --policy", () =>
 		Effect.gen(function* () {
 			const result = yield* run([
@@ -1072,6 +1088,60 @@ describe("queued manual prompts", () => {
 		}),
 	);
 
+	/** Times out an automated action, then answers the queued manual prompts with `input`. */
+	const afterTimeout = (input: ReadonlyArray<string>) =>
+		Effect.gen(function* () {
+			const asked = new Set<string>();
+			const bothAsked = yield* Deferred.make<void>();
+			const timedOut = yield* Deferred.make<void>();
+			const signals = Observer.effect((event) => {
+				if (event._tag === "ActionPhaseStarted" && event.phase === "confirmation") {
+					asked.add(event.action.occurrence);
+
+					return asked.size === 2 ? Deferred.succeed(bothAsked, undefined) : Effect.void;
+				}
+
+				return event._tag === "ActionSettled" && event.outcome._tag === "Interrupted"
+					? Deferred.succeed(timedOut, undefined)
+					: Effect.void;
+			});
+			const command = Command.make(parallel([renameTimeout, addRetryLimit, addBoth]), {
+				observers: [signals],
+				handlers: [
+					Handler.manual(renameTimeout),
+					Handler.manual(addRetryLimit),
+					Handler.effect(addBoth, () =>
+						Effect.andThen(Deferred.await(bothAsked), Effect.never),
+					),
+				],
+			});
+			const timeoutSettled = Effect.andThen(
+				Deferred.await(timedOut),
+				Effect.sleep("50 millis"),
+			);
+			const [first = "y", ...rest] = input;
+
+			return yield* capture(start(command, [...argv, "--action-timeout", "50ms"]), {
+				...person,
+				input: [{ line: first, after: timeoutSettled }, ...rest],
+			});
+		});
+
+	it.live("cancel at the end of input after an earlier timeout", () =>
+		Effect.gen(function* () {
+			const cancelled = yield* afterTimeout(["y"]);
+			const answered = yield* afterTimeout(["y", "y"]);
+
+			expect(cancelled.code).toBe(130);
+			expect(cancelled.stdout).toContain("1.0.0-to-2.0.0/add-both (apply, timeout)");
+			expect(cancelled.stdout).toContain(
+				"1.0.0-to-2.0.0/add-retry-limit (confirmation, cancelled)",
+			);
+			expect(cancelled.stderr).toContain("Canceled.");
+			expect(answered.code).toBe(1);
+		}),
+	);
+
 	it.live("say that a failure is stopping the run", () =>
 		Effect.gen(function* () {
 			const asked = new Set<string>();
@@ -1422,6 +1492,34 @@ describe("composition", () => {
 			expect(help.stdout).toContain("acme gadgets plan --from 1.0.0 --to 2.0.0");
 			expect(unknown.code).toBe(2);
 			expect(json(unknown.stderr).reason).toBe("unknown_option");
+		}),
+	);
+
+	it.effect("leaves --json to a mounted command that declares its own", () =>
+		Effect.gen(function* () {
+			const child = EffectCli.Command.make(
+				"child",
+				{
+					json: EffectCli.Flag.Boolean("json"),
+					color: EffectCli.Flag.Boolean("no-color"),
+				},
+				() => Effect.void,
+			);
+			const root = EffectCli.Command.make("root").pipe(
+				EffectCli.Command.withSubcommands([child]),
+			);
+			const result = yield* capture(
+				Cli.run(root, {
+					version: "1.0.0",
+					argv: ["child", "--bogus", "--json=true", "--no-color"],
+				}),
+				{ stderrIsTerminal: true, env: { FORCE_COLOR: "1" } },
+			);
+
+			expect(result.code).toBe(2);
+			expect(result.stderr).toContain("Unrecognized flag: --bogus");
+			expect(result.stderr).not.toContain("schemaVersion");
+			expect(result.stderr).toContain("[");
 		}),
 	);
 
