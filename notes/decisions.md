@@ -53,6 +53,10 @@ stop-on-failure.
   TypeScript 7 and wrote Markdown docs. `@effect/docgen` requires `@since` on
   every public export, so released exports carry their release version and
   unreleased additions carry `@since @next`.
+- **The `deltafold` bin.** `@deltafold/cli` declares its bin in
+  `vite.config.ts` as `pack.exports.bin` and excludes the entry from `exports`,
+  so importing the package never runs the CLI. It ships no types, so its pack
+  config skips attw. `@effect/platform-node` brings a required `redis` peer.
 
 ## Integrations
 
@@ -97,6 +101,14 @@ These work today but need confirmation before 1.0:
   parses, and in reverse registration order otherwise. A standalone release has
   no package wrapper, and drafts are titled "Unreleased".
 - Serializer dependencies are pinned to exact versions.
+- `deltafold self` is the migrator for the deltafold library, so the top level
+  stays free for commands that work on the user's repository.
+- Each package exports its `Package` from `<package>/delta`, starting with
+  `deltafold/delta`.
+- `migrate` runs on explicit versions with no confirmation flag, and manual work
+  has no non-interactive confirmation.
+- CLI JSON keeps every change metadata key and replaces values that JSON cannot
+  hold with a type marker such as `[Date]`, without a serialization library.
 
 ## Design limitations
 
@@ -109,10 +121,17 @@ These work today but need confirmation before 1.0:
   people through guides and observer events only.
 - Interrupting the fiber of `Executor.effect` produces no report. Observers
   receive a `RunFinished` event without one.
+  The CLI therefore runs `Executor.runPromise` with an abort signal, so a
+  cancelled `migrate` still prints its partial report.
+- Route identifiers contain `>`, `[`, and `]`, which shells interpret. The
+  CLI quotes them in suggested commands; the JSON `argv` is exact.
+- Suggested commands start with the full command path that ran the migrator,
+  such as `deltafold self`. effect/cli passes that path to command handlers as an
+  undocumented second argument; a mounted-command test fails if it stops doing so.
+- Promise handlers that write to stdout mix with CLI results.
 
 ## Not yet implemented
 
-- The command-line interface (CLI-1 to CLI-4), deferred until the library settles.
 - A helper that composes one migration from smaller parts, deferred until a
   concrete need appears.
 - Opt-in retry and rollback that keep the original failure and partial report.
@@ -120,8 +139,11 @@ These work today but need confirmation before 1.0:
 - A durable executor (see the durability trial above).
 - Supplying handlers through Effect layers.
 - Explicit dependencies between migrations (`requires`).
-- Runtime payload schemas, validation of imported histories, and serialized plans.
-- A versioned JSON report format and a plan fingerprint.
+- Runtime payload schemas, validation of imported histories, and serialized
+  plans.
+- A core-owned versioned JSON format for plans and reports, with payloads, and
+  a plan fingerprint. The CLI's `schemaVersion` 1 documents omit payloads.
+- Machine-readable CLI help and a published schema for the CLI's JSON documents.
 - A preview mode for integration engines, distinct from dry runs.
 - Branch labels in histories and an optional metadata schema.
 - Retrying a TypeScript action after a write conflict with a new snapshot.
@@ -144,7 +166,14 @@ These work today but need confirmation before 1.0:
 - Whether to ship optional change classification presets, such as changelog
   sections that read conventional metadata fields, and which fields they use.
 - Downgrade guide naming.
-- CLI packaging: a separate `@deltafold/cli` package, or `deltafold/cli` with
-  `deltafold/cli/node`, plus TypeScript entry loading, option spellings, and
-  exit codes.
+- Should `--route` also accept a shortcut identifier, so that common route
+  choices need no shell quoting?
+- Should deltafold plan coordinated migrations for connected packages that are
+  released together, with ordering across packages, one dry run, and one report?
+  A multi-package command currently runs one package at a time.
+- How the `deltafold` bin mounts migrators for its other packages once they
+  declare histories. `@deltafold/cli` could migrate references to renamed
+  commands, such as in `AGENTS.md`, and `@deltafold/release` could migrate its own
+  changes. One proposal is `deltafold cli` and `deltafold release`, but
+  `deltafold release` would collide with release commands in the same bin.
 - Whether generated API docs are committed or only produced in CI.

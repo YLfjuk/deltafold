@@ -5,13 +5,3 @@ interface AbortSignal {
 	readonly reason: unknown;
 	throwIfAborted(): void;
 }
-
-interface AbortController {
-	readonly signal: AbortSignal;
-	abort(reason?: unknown): void;
-}
-
-declare var AbortController: {
-	prototype: AbortController;
-	new (): AbortController;
-};
