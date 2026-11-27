@@ -1185,6 +1185,18 @@ describe("validation", () => {
 		]);
 	});
 
+	it("preserves array-backed action groups in Migration.make", () => {
+		const arrayBacked = Object.assign([], Action.sequence([renameTimeout]));
+		const history = History.make({
+			versions: [v1, v2],
+			migrations: [Migration.make("1-to-2", { from: v1, to: v2 })`${arrayBacked}`],
+		});
+
+		expect(
+			actionIds(success(History.resolve(history, { from: "1.0.0", to: "2.0.0" }))),
+		).toEqual(["rename-timeout"]);
+	});
+
 	it("rejects unsupported interpolations in types and at declaration time", () => {
 		// @ts-expect-error objects are not interpolations.
 		expect(() => Migration.make("bad", { from: v1, to: v2 })`${{ not: "an action" }}`).toThrow(

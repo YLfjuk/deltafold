@@ -46,7 +46,7 @@ stop-on-failure.
   branches, those repository and npm settings, not the YAML alone, prevent
   unreviewed branches from publishing. If publishing succeeds but creating the
   release tag fails, reruns only publish missing versions and do not recreate the
-  tag; tag the release commit with `git tag deltafold@<version> <commit>`, push
+  tag; tag the release commit with `git tag <package>@<version> <commit>`, push
   the tag, and create its GitHub release.
 - **API reference generation.** Generated API docs with `@effect/docgen` are
   deferred. A trial with Effect 4.1.2 type-checked `@example` blocks with

@@ -130,7 +130,22 @@ export const runRelease = Effect.gen(function* () {
 `ReleaseFiles.apply` checks that no read file or glob match changed after
 preparation, writes generated version modules, manifests, and replacements, and
 removes consumed pending modules. If a write fails, it restores earlier writes
-where possible and fails with the paths it could not restore.
+where possible and fails with `ApplyFailed`, listing any paths it could not restore.
+
+Tagged errors use the `@deltafold/release/<ErrorName>` tag format (`PlanError`,
+`PrepareError`, `StalePlan`, `ApplyFailed`, and `ChangedDuringApply`):
+
+```ts
+import { Effect } from "effect";
+
+export const applySafely = runRelease.pipe(
+	Effect.catchTag("@deltafold/release/ApplyFailed", (error) =>
+		Effect.logError(
+			`Failed writing ${error.path}; unrestored paths: ${error.unrestored.map((entry) => entry.path).join(", ")}`,
+		),
+	),
+);
+```
 
 ## Render changelogs
 
@@ -143,6 +158,8 @@ import { ReleaseChangelog } from "@deltafold/release/changelog";
 import { Version } from "deltafold";
 import { Changelog } from "deltafold/changelog";
 import * as Markdown from "deltafold/markdown";
+import { adapter } from "./packages/adapter/.deltafold/package.ts";
+import { version as v2 } from "./packages/adapter/.deltafold/versions/2.0.0.ts";
 
 const changelog = Changelog.make<ReleaseChangelog.DependencyMetadata>({
 	sections: ReleaseChangelog.bySignificance,
@@ -167,6 +184,9 @@ Markdown.render(
 	}),
 );
 ```
+
+Generated version modules also export a pre-annotated `release` value with recorded
+`dependencies`.
 
 ## License
 
