@@ -12,9 +12,8 @@ const anchorOf = (occurrence: Occurrence): Occurrence => {
 };
 
 /**
- * Resolves a migration's content against the occurrences that survived optimization.
- * Removed occurrences disappear with their instruction blocks. Replacements render at
- * the position of the first occurrence they replaced, using their own instruction or
+ * Removed occurrences disappear with their instruction blocks. Replacements render at the
+ * position of the first occurrence they replaced, using their own instruction or
  * description. Unassociated prose stays.
  */
 export const resolveGuide = (
@@ -40,9 +39,13 @@ export const resolveGuide = (
 			}));
 		}
 
-		const children = (step._tag === "Sequence" ? step.children : step.branches)
-			.map((child) => renderStep(child))
-			.filter((items) => items.length > 0);
+		const children = (step._tag === "Sequence" ? step.children : step.branches).flatMap(
+			(child): ReadonlyArray<ReadonlyArray<GuideItem>> => {
+				const items = renderStep(child);
+
+				return items.length > 0 ? [items] : [];
+			},
+		);
 		if (children.length === 0) return [];
 
 		return [{ _tag: "Group", kind: step._tag, children }];

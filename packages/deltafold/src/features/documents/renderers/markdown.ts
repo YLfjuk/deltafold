@@ -1,10 +1,10 @@
 import { toMarkdown } from "mdast-util-to-markdown";
 
-import type { Document } from "../features/documents/document.ts";
+import type { Document } from "../document.ts";
 import { toMdast } from "./mdast.ts";
 
 /**
- * Renders a document as Markdown. Throws `DocumentError` for unsupported structure.
+ * Throws `DocumentError` for unsupported structure.
  *
  * @since 0.0.1
  */

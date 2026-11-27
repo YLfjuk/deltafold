@@ -31,17 +31,15 @@ import {
 	UnknownRoute,
 	UnknownVersion,
 	UnsupportedRoute,
-	type Blocker,
-	type ResolveError,
-	type RewriteError,
-	type RouteSummary,
 } from "./resolve-error.ts";
-import { itemsOf, occurrencesOf, rewrite, type Item, type MakeOccurrence } from "./rewrite.ts";
-import { actionsOfSteps, hasProse, stepsOf, type Declarations } from "./validate.ts";
+import type { Blocker, ResolveError, RewriteError, RouteSummary } from "./resolve-error.ts";
+import { itemsOf, occurrencesOf, rewrite } from "./rewrite.ts";
+import type { Item, MakeOccurrence } from "./rewrite.ts";
+import { actionsOfSteps, hasProse, stepsOf } from "./validate.ts";
+import type { Declarations } from "./validate.ts";
 
 /**
- * Route policies for choosing between candidate routes. Each one is opt-in, and a policy
- * that leaves a tie still fails as ambiguous.
+ * Opt-in; a policy that leaves a tie still fails as ambiguous.
  *
  * - `fewest-actions`: the fewest action occurrences after optimization.
  * - `fewest-migrations`: the fewest migration steps.
@@ -57,7 +55,6 @@ export type RoutePolicy =
 	| "lowest-cost"
 	| "prefer-shortcuts";
 
-/** The largest number of candidate routes enumerated between two versions. */
 export const routeLimit = 100;
 
 type Member = { readonly migration: Migration.Any; readonly direction: Direction };
@@ -216,7 +213,6 @@ const graphOf = (context: Context, family: ReadonlySet<Edge["class"]>) => {
 type Enumerated = {
 	/** At most `routeLimit` routes, in search order. */
 	readonly routes: ReadonlyArray<ReadonlyArray<Edge>>;
-	/** Whether the search stopped because more routes exist. */
 	readonly overLimit: boolean;
 };
 
@@ -388,7 +384,7 @@ const summaryOf = (candidate: Candidate): RouteSummary => ({
 		edge.members.map((member) => member.migration.id),
 	),
 	shortcuts: candidate.edges.flatMap((edge) =>
-		edge.shortcut === undefined ? [] : [edge.shortcut.id],
+		edge.shortcut === undefined ? [] : edge.shortcut.id,
 	),
 	actions: Result.isSuccess(candidate.plan)
 		? candidate.plan.success.occurrences.length
@@ -417,11 +413,11 @@ const minimal = (
 	const measured = candidates.flatMap((candidate) => {
 		const value = measure(candidate);
 
-		return value === undefined ? [] : [{ candidate, value }];
+		return value === undefined ? [] : { candidate, value };
 	});
 	const best = Math.min(...measured.map((entry) => entry.value));
 
-	return measured.filter((entry) => entry.value === best).map((entry) => entry.candidate);
+	return measured.flatMap((entry) => (entry.value === best ? entry.candidate : []));
 };
 
 const applyPolicy = (
@@ -458,7 +454,6 @@ const applyPolicy = (
 
 const depthOf = (context: Context, id: string) => context.ancestors.get(id)?.size ?? 0;
 
-/** Distance between two versions in the release ancestry tree. */
 const ancestryDistance = (context: Context, self: string, that: string): number => {
 	const selfLine = [self, ...ancestorsInOrder(context, self)];
 	const thatLine = new Set([that, ...ancestorsInOrder(context, that)]);
@@ -479,7 +474,6 @@ const ancestorsInOrder = (context: Context, id: string): ReadonlyArray<string> =
 	return result;
 };
 
-/** The ancestry path between two versions, through their closest common ancestor. */
 const ancestryPath = (context: Context, from: string, to: string): ReadonlyArray<string> => {
 	const fromLine = [from, ...ancestorsInOrder(context, from)];
 	const toLine = [to, ...ancestorsInOrder(context, to)];
@@ -522,7 +516,7 @@ const familiesFor = (direction: RequestDirection) => {
 
 const unsupported = (context: Context, from: string, to: string, direction: RequestDirection) => {
 	const allowed = familiesFor(direction).flatMap((family) =>
-		family === undefined ? [] : [family],
+		family === undefined ? [] : family,
 	);
 	const reachableIds = Arr.sort(
 		new Set(allowed.flatMap((family) => reachable(context, from, family))),
@@ -534,7 +528,7 @@ const unsupported = (context: Context, from: string, to: string, direction: Requ
 	}));
 	const best = Math.min(...distances.map((entry) => entry.distance));
 	const closest = Number.isFinite(best)
-		? distances.filter((entry) => entry.distance === best).map((entry) => entry.id)
+		? distances.flatMap((entry) => (entry.distance === best ? entry.id : []))
 		: [];
 
 	const path = ancestryPath(context, from, to);
@@ -583,7 +577,7 @@ export type ResolveOptions = {
 	readonly to: Version | string;
 	/** Selects a candidate route by identifier. */
 	readonly route?: string;
-	/** Chooses between candidate routes. Ties still fail as ambiguous. */
+	/** Ties still fail as ambiguous. */
 	readonly policy?: RoutePolicy;
 };
 
@@ -662,13 +656,10 @@ export const resolve = (
 		);
 	});
 
-/**
- * A reachable destination and the identifiers of its candidate routes.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Destination = {
 	readonly version: Version;
+	/** Candidate route identifiers. */
 	readonly routes: ReadonlyArray<string>;
 	/**
 	 * Present when more routes exist than route search explores. `routes` then lists the
@@ -687,9 +678,9 @@ const semverOrder = (self: string, that: string): number | undefined => {
 };
 
 /**
- * Destinations reachable from a version. Cross-branch destinations are classified by
- * semver order when both identifiers parse, and listed in both directions otherwise.
- * Classification is presentation only; it does not change routing.
+ * Cross-branch destinations are classified by semver order when both identifiers parse,
+ * and listed in both directions otherwise. Classification is presentation only; it does
+ * not change routing.
  */
 export const destinations = (
 	context: Context,
@@ -713,19 +704,17 @@ export const destinations = (
 
 		const { routes, overLimit } = enumerateRoutes(context, from, version);
 		if (!overLimit) {
-			return [{ version, routes: routes.map((edges) => routeOf(from, edges).id) }];
+			return { version, routes: routes.map((edges) => routeOf(from, edges).id) };
 		}
 		const cheapest = Arr.sort(
 			routes,
 			Order.mapInput(Order.Number, (edges: ReadonlyArray<Edge>) => routeCost(edges)),
 		);
 
-		return [
-			{
-				version,
-				routes: cheapest.map((edges) => routeOf(from, edges).id),
-				overLimit: true as const,
-			},
-		];
+		return {
+			version,
+			routes: cheapest.map((edges) => routeOf(from, edges).id),
+			overLimit: true as const,
+		};
 	});
 };

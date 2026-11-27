@@ -12,7 +12,6 @@ export type Version<C extends Change.Any = Change.Any> = {
 	 * order and semver order have no effect.
 	 */
 	readonly previous: Version | undefined;
-	/** The changes that shipped in this release. */
 	readonly changes: ReadonlyArray<C>;
 };
 
@@ -23,8 +22,6 @@ export type Options<C extends Change.Any = Change.Any> = {
 };
 
 /**
- * Declares a version.
- *
  * @example
  * ```ts
  * const v0 = Version.make("0.0.0", { changes: [] });
@@ -47,8 +44,7 @@ export const make = <C extends Change.Any = never>(
 export const isVersion = (value: unknown): value is Version => Predicate.isTagged(value, "Version");
 
 /**
- * Release metadata attached to a version by release tooling. It does not modify the
- * version registered in history.
+ * Does not modify the version registered in history.
  *
  * @since 0.0.1
  */
@@ -59,8 +55,6 @@ export type Release<M> = {
 };
 
 /**
- * Annotates a version with release metadata.
- *
  * @example
  * ```ts
  * export const release200 = Version.withMetadata(v200, {

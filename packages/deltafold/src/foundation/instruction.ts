@@ -2,36 +2,24 @@ import { Predicate } from "effect";
 
 import type * as Action from "./action.ts";
 import { isAction, isRef } from "./action.ts";
-import { describeValue, dedent, isScalar, type Scalar } from "./template.ts";
+import { describeValue, dedent, isScalar } from "./template.ts";
+import type { Scalar } from "./template.ts";
 
-/**
- * Literal prose.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Text = {
 	readonly _tag: "Text";
 	readonly text: string;
 };
 
-/**
- * Prose content: text and action mentions.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Prose = ReadonlyArray<Text | Action.Ref>;
 
-/**
- * Values accepted inside prose templates.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type ProseValue = Scalar | Action.Ref;
 
 /**
- * Prose associated with exactly one action occurrence. The block declares that
- * occurrence; when optimization removes the action, the block leaves the resolved guide
- * with it.
+ * Declares an occurrence of `action`; when optimization removes the action, `content`
+ * leaves the resolved guide with it.
  *
  * @since 0.0.1
  */
@@ -44,7 +32,7 @@ export type Instruction<A extends Action.Any = Action.Any> = {
 export const isInstruction = (value: unknown): value is Instruction =>
 	Predicate.isTagged(value, "Instruction");
 
-/** Builds prose from a tagged template. Throws on values that are not text or mentions. */
+/** Throws `TypeError` on values other than scalars and `Action.Ref` mentions. */
 export const prose = (
 	strings: ReadonlyArray<string>,
 	values: ReadonlyArray<unknown>,
@@ -90,8 +78,6 @@ export const prose = (
 };
 
 /**
- * Associates prose with one action occurrence.
- *
  * @example
  * ```ts
  * Migration.instruction(renameTimeout)`

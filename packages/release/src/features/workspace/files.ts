@@ -1,5 +1,6 @@
-import type { Plan, Files } from "../planning/release.ts";
-import { join, type Location } from "./paths.ts";
+import type { Release } from "../planning/index.ts";
+import { join } from "./paths.ts";
+import type { Location } from "./paths.ts";
 import type { Snapshot } from "./resolve.ts";
 
 export { apply } from "./apply.ts";
@@ -22,8 +23,7 @@ export type PreviousSource = {
 };
 
 /**
- * File locations for a package directory. `manifest` is required: deltafold does not
- * assume a manifest name. `versions` defaults to `.deltafold/versions` inside `dir`.
+ * `versions` defaults to `.deltafold/versions` inside `dir`.
  *
  * Apply also keeps `index.ts` in the versions directory. It exports the versions apply
  * generated, in release order, as `versions`. Earlier versions stay where they are, so the
@@ -50,7 +50,7 @@ export type PreviousSource = {
 export const at = (
 	dir: string,
 	options: { readonly manifest: string; readonly versions?: string; readonly index?: boolean },
-): Files => ({
+): Release.Files => ({
 	manifest: join(dir, options.manifest),
 	versions: join(dir, options.versions ?? ".deltafold/versions"),
 	...(options.index === undefined ? {} : { index: options.index }),
@@ -66,7 +66,7 @@ export type PrepareOptions = Location & {
 };
 
 /**
- * One file operation. `before` is `null` for a new file; `after` is `null` for a removal.
+ * `before` is `null` for a new file; `after` is `null` for a removal.
  *
  * @since 0.0.1
  */
@@ -87,17 +87,17 @@ export type ReplacementReport = {
 };
 
 /**
- * A reviewed set of local file edits. `reads` holds every file preparation depended on,
- * so `apply` can refuse when any of them changed.
+ * `reads` and `globs` record what preparation depended on so `apply` can refuse when
+ * any of them changed.
  *
  * @since 0.0.1
  */
 export type Prepared = {
 	readonly _tag: "PreparedRelease";
-	readonly plan: Plan;
+	readonly plan: Release.Plan;
 	readonly edits: ReadonlyArray<Edit>;
 	readonly replacements: ReadonlyArray<ReplacementReport>;
-	/** Where the files are; apply uses the same location. */
+	/** Reused by `apply`. */
 	readonly location: Location;
 	/** Every file preparation read, by workspace-relative path. */
 	readonly reads: ReadonlyMap<string, string | null>;

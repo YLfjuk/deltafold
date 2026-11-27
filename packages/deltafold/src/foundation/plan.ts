@@ -6,47 +6,35 @@ import type * as Rule from "./rule.ts";
 import type * as Shortcut from "./shortcut.ts";
 import type { Version } from "./version.ts";
 
-/**
- * Which side of a migration runs.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Direction = "forward" | "revert";
 
-/**
- * How an occurrence entered the plan.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Origin =
 	| { readonly _tag: "Declared" }
 	| {
 			readonly _tag: "Replacement";
 			readonly rule: Rule.Any;
-			/** The occurrences the rule replaced, in order. */
 			readonly replaces: ReadonlyArray<Occurrence>;
 	  };
 
 /**
- * One execution of an action instance in a plan. Its `id` is stable across prose edits:
- * it combines the migration, direction, and action identifiers, or the rule and the
- * replaced occurrences for a replacement.
+ * One scheduled execution of an action instance in a plan.
  *
  * @since 0.0.1
  */
 export type Occurrence<A extends Action.Any = Action.Any> = {
 	readonly _tag: "Occurrence";
 	/**
-	 * Unique within the plan. Built from the migration, direction, and action identifiers,
-	 * or from the rule and the replaced occurrences. Separator characters in author
-	 * identifiers are escaped with a backslash, so identifiers never collide.
+	 * Unique within the plan and stable across prose edits. Built from the migration,
+	 * direction, and action identifiers, or from the rule and replaced occurrences;
+	 * separator characters are escaped with a backslash so identifiers never collide.
 	 */
 	readonly id: string;
 	readonly action: A;
 	/** The migration whose step contains this occurrence. */
 	readonly migration: Migration.Any;
 	readonly direction: Direction;
-	/** The instruction block that declared this occurrence, if any. */
 	readonly instruction: Instruction | undefined;
 	readonly origin: Origin;
 };
@@ -64,15 +52,11 @@ export type Parallel<A extends Action.Any = Action.Any> = {
 	readonly concurrency: Action.Concurrency;
 };
 
-/**
- * The declared execution structure.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Node<A extends Action.Any = Action.Any> = Occurrence<A> | Sequence<A> | Parallel<A>;
 
 /**
- * Resolved prose for a guide. Occurrences render as their instruction or description.
+ * Occurrences render as their instruction or description.
  *
  * @since 0.0.1
  */
@@ -88,8 +72,7 @@ export type GuideItem<A extends Action.Any = Action.Any> =
 	  };
 
 /**
- * One migration in the route. Steps are sequential barriers: a step starts only after
- * the previous step completed.
+ * Sequential barrier: a step starts only after the previous step completes.
  *
  * @since 0.0.1
  */
@@ -98,6 +81,8 @@ export type Step<A extends Action.Any = Action.Any> = {
 	/**
 	 * Identifies the migration side within the route: the migration identifier, followed by
 	 * `/revert` for a reverse migration. Declared occurrence identifiers start with it.
+	 *
+	 * @since 0.2.1
 	 */
 	readonly id: string;
 	readonly migration: Migration.Any;
@@ -105,7 +90,7 @@ export type Step<A extends Action.Any = Action.Any> = {
 	readonly from: Version;
 	readonly to: Version;
 	readonly node: Sequence<A>;
-	/** Resolved guide content. Empty when the step is omitted from the guide. */
+	/** Empty when `omitted` is `true`. */
 	readonly guide: ReadonlyArray<GuideItem<A>>;
 	/**
 	 * Whether the normal resolved guide leaves this step out: a noop, or a migration whose
@@ -114,11 +99,7 @@ export type Step<A extends Action.Any = Action.Any> = {
 	readonly omitted: boolean;
 };
 
-/**
- * Why the plan differs from the declared migrations.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Explanation =
 	| {
 			readonly _tag: "Rewrite";
@@ -133,20 +114,13 @@ export type Explanation =
 			readonly reason: "noop" | "all-actions-removed";
 	  };
 
-/**
- * A hop in a route: the migrations between two versions, or a shortcut.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Hop =
 	| {
 			readonly _tag: "Migrations";
 			readonly from: Version;
 			readonly to: Version;
-			/**
-			 * The migration side that moves between these versions. Validation allows one
-			 * side per transition, so this holds exactly one entry.
-			 */
+			/** Holds exactly one entry; validation allows one migration side per transition. */
 			readonly migrations: ReadonlyArray<{
 				readonly migration: Migration.Any;
 				readonly direction: Direction;
@@ -178,8 +152,7 @@ export type Route = {
 export type RequestDirection = "none" | "upgrade" | "downgrade" | "cross-branch";
 
 /**
- * When executors check handler coverage. Static plans also expose uncovered actions in
- * the execution's type.
+ * `"static"` also exposes uncovered actions in the execution's type.
  *
  * @since 0.0.1
  */
@@ -202,30 +175,19 @@ export type Plan<
 	readonly direction: RequestDirection;
 	readonly route: Route;
 	readonly steps: ReadonlyArray<Step<A>>;
-	/** Occurrences in plan order. */
+	/** In plan order. */
 	readonly occurrences: ReadonlyArray<Occurrence<A>>;
 	/** The changes addressed by the route's migrations. */
 	readonly changes: ReadonlyArray<Ch>;
 	readonly explanations: ReadonlyArray<Explanation>;
-	/**
-	 * Whether executors check handler coverage only at run time. Plans resolved from a
-	 * history are checked statically against its conservative action union.
-	 */
+	/** Plans resolved from a history are checked statically against its conservative action union. */
 	readonly coverage: C;
 };
 
-/**
- * Any plan.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Any = Plan<any, any>;
 
-/**
- * The action instances of a plan.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type ActionsOf<P> = P extends Plan<infer A, any> ? A : never;
 
 /**
@@ -236,9 +198,8 @@ export type ActionsOf<P> = P extends Plan<infer A, any> ? A : never;
 export const isEmpty = (plan: Any): boolean => plan.occurrences.length === 0;
 
 /**
- * Marks a plan for run-time coverage checks only. Use it for dynamically selected or
- * loaded plans whose action union is not known statically. Executors still reject
- * missing handlers before any action body runs.
+ * Use for dynamically selected or loaded plans whose action union is not known
+ * statically. Executors still reject missing handlers before any action body runs.
  *
  * @since 0.0.1
  */

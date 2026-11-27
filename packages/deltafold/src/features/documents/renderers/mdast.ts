@@ -1,18 +1,13 @@
 import type * as Mdast from "mdast";
 import { normalizeUri, sanitizeUri } from "micromark-util-sanitize-uri";
 
-import {
-	DocumentError,
-	type Block,
-	type Document,
-	type Inline,
-} from "../features/documents/document.ts";
+import { DocumentError } from "../document.ts";
+import type { Block, Document, Inline } from "../document.ts";
 
 /** Link schemes kept in rendered output. Relative URLs are always kept. */
 const safeSchemes = /^(https?|mailto)$/i;
 
 /**
- * Keeps a URL whose scheme is allowed, and replaces any other URL with an empty one.
  * `sanitizeUri` also HTML-escapes its result, which the serializers would escape again,
  * so only its scheme check is used here.
  */
@@ -107,9 +102,9 @@ const lowerBlocks = (
 	});
 
 /**
- * Lowers a document to an mdast root. Untitled sections contribute only their content,
- * and titled sections get the next heading level unless their title sets one. Link URLs
- * with a scheme other than http, https, or mailto become empty.
+ * Untitled sections contribute only their content, and titled sections get the next
+ * heading level unless their title sets one. Link URLs with a scheme other than http,
+ * https, or mailto become empty.
  *
  * Throws `DocumentError` when a section identifier repeats within the document or within
  * one release, or when a heading level falls outside 1 to 6.

@@ -8,11 +8,7 @@ import type * as Shortcut from "../../foundation/shortcut.ts";
 import type { Version } from "../../foundation/version.ts";
 import { stepKey } from "./rewrite.ts";
 
-/**
- * A problem in a history's declarations.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Issue = {
 	readonly _tag:
 		| "DuplicateVersion"
@@ -49,7 +45,6 @@ const issueOrder = Order.combine(
 	Order.mapInput(Order.String, (issue: Issue) => issue.message),
 );
 
-/** Action instances declared by steps, in declaration order. */
 export const actionsOfSteps = (steps: ReadonlyArray<Action.Step>): ReadonlyArray<Action.Any> =>
 	steps.flatMap((step): ReadonlyArray<Action.Any> => {
 		switch (step._tag) {
@@ -65,11 +60,8 @@ export const actionsOfSteps = (steps: ReadonlyArray<Action.Step>): ReadonlyArray
 	});
 
 export const stepsOf = (content: Migration.Content): ReadonlyArray<Action.Step> =>
-	content.flatMap((fragment) =>
-		fragment._tag === "Text" || fragment._tag === "ActionRef" ? [] : [fragment],
-	);
+	content.filter((fragment) => fragment._tag !== "Text" && fragment._tag !== "ActionRef");
 
-/** Whether two definitions with the same identifier describe the same change. */
 const sameDefinition = (self: Change.Any, that: Change.Any): boolean =>
 	self === that ||
 	(self.id === that.id &&
@@ -79,11 +71,9 @@ const sameDefinition = (self: Change.Any, that: Change.Any): boolean =>
 		self.reverts.length === that.reverts.length &&
 		self.reverts.every((change, index) => change.id === that.reverts[index]?.id));
 
-/** Whether content declares at least one occurrence. Empty groups declare none. */
 const hasOccurrences = (content: Migration.Content): boolean =>
 	actionsOfSteps(stepsOf(content)).length > 0;
 
-/** Whether content has prose or mentions. */
 export const hasProse = (content: Migration.Content): boolean =>
 	content.some(
 		(fragment) =>
@@ -121,7 +111,6 @@ export const validate = (declarations: Declarations): ReadonlyArray<Issue> => {
 	const issue = (tag: Issue["_tag"], subject: string, message: string) =>
 		issues.push({ _tag: tag, subject, message });
 
-	// Versions and ancestry.
 	const versions = new Map<string, Version>();
 	for (const version of declarations.versions) {
 		if (versions.has(version.id)) {
@@ -169,7 +158,6 @@ export const validate = (declarations: Declarations): ReadonlyArray<Issue> => {
 		);
 	}
 
-	// Change definitions.
 	const changes = new Map<string, Change.Any>();
 	// Every distinct object is compared and has its relationships followed, so a repeated
 	// definition cannot hide a conflict between the changes it refers to.
@@ -195,7 +183,6 @@ export const validate = (declarations: Declarations): ReadonlyArray<Issue> => {
 		for (const change of version.changes) visitChange(change);
 	}
 
-	// Action identities.
 	const actions = new Map<string, Action.Any>();
 	const conflicting = new Set<string>();
 	const visitAction = (action: Action.Any) => {
@@ -215,7 +202,6 @@ export const validate = (declarations: Declarations): ReadonlyArray<Issue> => {
 		}
 	};
 
-	// Migrations.
 	const migrations = allMigrations(declarations);
 	const migrationIds = new Map<string, Migration.Any>();
 	const registered = new Set<Migration.Any>();
@@ -282,7 +268,7 @@ export const validate = (declarations: Declarations): ReadonlyArray<Issue> => {
 		}
 	}
 
-	// Edges. Each pair of versions has at most one migration side, so a transition's work
+	// Each pair of versions has at most one migration side, so a transition's work
 	// lives in one migration.
 	const edgeSides = new Map<
 		string,
@@ -311,7 +297,6 @@ export const validate = (declarations: Declarations): ReadonlyArray<Issue> => {
 		);
 	}
 
-	// Rules.
 	const rules = new Set<string>();
 	for (const rule of declarations.rules) {
 		if (rules.has(rule.id)) {
@@ -339,7 +324,6 @@ export const validate = (declarations: Declarations): ReadonlyArray<Issue> => {
 		}
 	}
 
-	// Shortcuts.
 	const shortcuts = new Set<string>();
 	for (const shortcut of declarations.shortcuts) {
 		if (shortcuts.has(shortcut.id)) {

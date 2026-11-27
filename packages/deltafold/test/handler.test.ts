@@ -1,5 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "@effect/vitest";
-import { Context, Effect, Schema, Scope } from "effect";
+import type { Scope } from "effect";
+import { Context, Effect, Schema } from "effect";
 
 import { Action, Executor, Handler, History, Migration, Version } from "deltafold";
 

@@ -17,5 +17,5 @@
 		"e2e/__fixtures__/workspace/packages/widgets/.deltafold/versions/1.2.0.ts",
 		"e2e/__fixtures__/workspace/packages/widgets/.deltafold/versions/index.ts"
 	],
-	"include": ["e2e", "../deltafold/@types"]
+	"include": ["e2e", "../../@types"]
 }

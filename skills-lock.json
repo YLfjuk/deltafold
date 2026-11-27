@@ -1,67 +1,73 @@
 {
-  "version": 1,
+  "version": 2,
   "skills": {
     "abstraction-boundaries": {
       "source": "YLfjuk/skills",
       "sourceType": "github",
-      "skillPath": "skills/taste/abstraction-boundaries/SKILL.md",
-      "computedHash": "b796911eebb170b667e052c72c0f39483b45e5725f82118dad351fd255efa799",
-      "installMode": "copy"
+      "skillPath": "skills/architecture/abstraction-boundaries/SKILL.md",
+      "computedHash": "b9e1c15fa7d6705ff0a5b03e939b0943e0da006ccdf7464674c49af17b668ed5",
+      "installMode": "copy",
+      "commit": "790849b8f337fd217bbbcc8a89cfe082ea5fe7c9"
     },
     "codebase-structure": {
       "source": "YLfjuk/skills",
       "sourceType": "github",
-      "skillPath": "skills/taste/codebase-structure/SKILL.md",
-      "computedHash": "f0550799952836665a91df211d348c67f16c21a5856f59a3c6c17200d3ff6b79",
-      "installMode": "copy"
+      "skillPath": "skills/architecture/codebase-structure/SKILL.md",
+      "computedHash": "09d59a991f27f6c09bfa0010097cefd4690968f49df4d45bffc9e95ff916528d",
+      "installMode": "copy",
+      "commit": "790849b8f337fd217bbbcc8a89cfe082ea5fe7c9"
     },
     "deslop": {
       "source": "skills.sh",
       "sourceUrl": "https://skills.sh/p/I7JhAOA6xTzFenmm",
       "sourceType": "well-known",
-      "computedHash": "8883a7d459c07a0b2ee06972e79baa634009aa3bab969a6650acbefac394ad41",
+      "computedHash": "104e1041830c5ad58da3805289a77dbba4eee7dd96d4547b3eaeecbd761618d8",
       "wellKnownDigest": "sha256:740038c614fc7fdef772806e59f7bd901d7b7184cf0a74022f7de8a6462d35e5"
     },
     "documentation": {
       "source": "YLfjuk/skills",
       "sourceType": "github",
-      "skillPath": "skills/taste/documentation/SKILL.md",
-      "computedHash": "8081f9c4e10d0788d987c8b8ae09b9175a29f893ab59302042828e323de35264",
-      "installMode": "copy"
+      "skillPath": "skills/writing/documentation/SKILL.md",
+      "computedHash": "58bc904dca4392ae84537b666daf3c3634b6f4c33662f046d1209e2bbf6c5696",
+      "installMode": "copy",
+      "commit": "07e1e1086bc944e841d3c0f62015ec75386c405e"
     },
     "orwell-clear-writing": {
       "source": "YLfjuk/skills",
       "sourceType": "github",
-      "skillPath": "skills/taste/orwell-clear-writing/SKILL.md",
-      "computedHash": "233946b8a2b971e567ae0cc511bd5c51a5bf372b95385a8df946fc96cfa8151e",
-      "installMode": "copy"
+      "skillPath": "skills/writing/orwell-clear-writing/SKILL.md",
+      "computedHash": "d976271fca067dbc933fa7eb72c2e4efbdde85de9a6d6098969a58305fbffb4a",
+      "installMode": "copy",
+      "commit": "790849b8f337fd217bbbcc8a89cfe082ea5fe7c9"
     },
     "ponytail": {
       "source": "skills.sh",
       "sourceUrl": "https://skills.sh/p/I7JhAOA6xTzFenmm",
       "sourceType": "well-known",
-      "computedHash": "210fa0831f649ce9f8a305f7b7c8cf2a0dd09ac4dd53067109941b96e7811d4e",
+      "computedHash": "3af42a29c072819c06c2827b1de7b1f0b8537cb6307e4ae2669010fd17c489bb",
       "wellKnownDigest": "sha256:388ec42c9551f47d12555b1723b1af67b8fe18a8afbea0a8db96cfb870eb3803"
     },
     "react-conventions": {
       "source": "YLfjuk/skills",
       "sourceType": "github",
       "skillPath": "skills/taste/react-conventions/SKILL.md",
-      "computedHash": "26f8bc35dfb38776af03293409a7a37b21cae2b6ed07cce69e5bb9466f7fbaf2",
-      "installMode": "copy"
+      "computedHash": "1c46304e50d4e5ab012c3408223ed45aeca3ef9ebe84d9e4b5288c0f6d25a0fc",
+      "installMode": "copy",
+      "commit": "790849b8f337fd217bbbcc8a89cfe082ea5fe7c9"
     },
     "typescript-conventions": {
       "source": "YLfjuk/skills",
       "sourceType": "github",
       "skillPath": "skills/taste/typescript-conventions/SKILL.md",
-      "computedHash": "aff6f8a81ac8a674891d41e7c6e7124ab08716970564f0d0a2418d8ded6cb458",
-      "installMode": "copy"
+      "computedHash": "01f99895c3332d5c5b0b450c23863e1dee47e5069f27b47bcf1b65845c2cb04b",
+      "installMode": "copy",
+      "commit": "790849b8f337fd217bbbcc8a89cfe082ea5fe7c9"
     },
     "unslop": {
       "source": "skills.sh",
       "sourceUrl": "https://skills.sh/p/I7JhAOA6xTzFenmm",
       "sourceType": "well-known",
-      "computedHash": "3dfc2afeda677e12c6065497a40df7d895859de1c7d1cffb899b1559d129fe4f",
+      "computedHash": "41e6144b38608880c06090a10f0d6ed922d670d5f7661df40af75f2e39628fc4",
       "wellKnownDigest": "sha256:c5c66e09af620e2413137fab5c17871c8e5d7fe512ddddf59b84c9b0f1b26040"
     }
   }

@@ -15,6 +15,16 @@ import {
 	timeoutRestored,
 } from "./__fixtures__/config.ts";
 
+const thrown = (fn: () => unknown): unknown => {
+	try {
+		fn();
+	} catch (error) {
+		return error;
+	}
+
+	return undefined;
+};
+
 type ReleaseMetadata = {
 	readonly releasedAt: string;
 	readonly commit: string;
@@ -250,16 +260,33 @@ describe("scenarios 13 and 15: release history", () => {
 			release0.metadata,
 		);
 
-		expect(() => changelog.history(widgets, { releases: [release100] })).toThrow(
-			'Release metadata is missing for "0.0.0", "2.0.0", "1.0.1".',
-		);
-		expect(() => changelog.history(widgets, { releases: [...releases, release100] })).toThrow(
-			'Release metadata is supplied more than once for "1.0.0".',
-		);
-		expect(() => changelog.history(widgets, { releases: [...releases, unrelated] })).toThrow(
-			'Release metadata for "9.9.9" does not belong to the history of "@acme/widgets".',
-		);
-		expect(() => changelog.release(widgets, unrelated)).toThrow("does not belong");
+		expect(thrown(() => changelog.history(widgets, { releases: [release100] }))).toMatchObject({
+			_tag: "deltafold/ReleaseMetadataError",
+			reason: "missing",
+			message: expect.stringContaining(
+				'Release metadata is missing for "0.0.0", "2.0.0", "1.0.1".',
+			),
+		});
+		expect(
+			thrown(() => changelog.history(widgets, { releases: [...releases, release100] })),
+		).toMatchObject({
+			_tag: "deltafold/ReleaseMetadataError",
+			reason: "duplicate",
+			message: 'Release metadata is supplied more than once for "1.0.0".',
+		});
+		expect(
+			thrown(() => changelog.history(widgets, { releases: [...releases, unrelated] })),
+		).toMatchObject({
+			_tag: "deltafold/ReleaseMetadataError",
+			reason: "unrelated",
+			message:
+				'Release metadata for "9.9.9" does not belong to the history of "@acme/widgets".',
+		});
+		expect(thrown(() => changelog.release(widgets, unrelated))).toMatchObject({
+			_tag: "deltafold/ReleaseMetadataError",
+			reason: "unrelated",
+			message: expect.stringContaining("does not belong"),
+		});
 	});
 
 	it("limits a history to selected versions", () => {
@@ -371,7 +398,11 @@ describe("scenario 14: document structure and escaping", () => {
 
 	it("treats explicit levels as absolute and rejects unsupported ones", () => {
 		expect(Markdown.render(leveled(4))).toBe("# Root\n\n#### Deep\n");
-		expect(() => Markdown.render(leveled(7))).toThrow("levels range from 1 to 6");
+		expect(thrown(() => Markdown.render(leveled(7)))).toMatchObject({
+			_tag: "deltafold/DocumentError",
+			reason: "heading-level",
+			message: expect.stringContaining("levels range from 1 to 6"),
+		});
 	});
 
 	it("scopes section identifiers to their release", () => {
@@ -390,9 +421,11 @@ describe("scenario 14: document structure and escaping", () => {
 			plugins: [duplicate],
 		});
 
-		expect(() => Markdown.render(strict.release(widgets, release101))).toThrow(
-			'Section "fixed" appears more than once in release "1.0.1".',
-		);
+		expect(thrown(() => Markdown.render(strict.release(widgets, release101)))).toMatchObject({
+			_tag: "deltafold/DocumentError",
+			reason: "duplicate-section",
+			message: 'Section "fixed" appears more than once in release "1.0.1".',
+		});
 		const lenient = Changelog.make<ReleaseMetadata>({
 			sections: [
 				Changelog.section("fixes", {
@@ -488,7 +521,11 @@ describe("scenario 14: document structure and escaping", () => {
 				}),
 			),
 		).not.toThrow();
-		expect(() => Document.Section("deltafold/package")).toThrow('reserved "deltafold/" prefix');
+		expect(thrown(() => Document.Section("deltafold/package"))).toMatchObject({
+			_tag: "deltafold/DocumentError",
+			reason: "reserved-id",
+			message: expect.stringContaining('reserved "deltafold/" prefix'),
+		});
 	});
 
 	it("renders versions and migrations whose identifiers use the reserved prefix", () => {

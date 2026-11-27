@@ -13,35 +13,46 @@ import {
 	Scope,
 } from "effect";
 
+import * as PackageConfig from "../../configs/package.ts";
 import type * as Action from "../../foundation/action.ts";
 import type * as Plan from "../../foundation/plan.ts";
 import type { Node, Occurrence } from "../../foundation/plan.ts";
-import * as Handler from "./handler.ts";
+import type * as Handler from "./handler.ts";
 import type * as Interaction from "./interaction.ts";
-import { makeEmitter, type Emitter } from "./observation.ts";
+import { makeEmitter } from "./observation.ts";
+import type { Emitter } from "./observation.ts";
 import type * as Observer from "./observer.ts";
 import { SettlementReference } from "./settlement.ts";
 
-/**
- * What happened to one occurrence, or what a dry run predicts.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Outcome<E = unknown> =
-	| { readonly _tag: "Completed"; readonly performer: "automated" }
 	| {
 			readonly _tag: "Completed";
+			/** @since 0.2.0 */
+			readonly performer: "automated";
+	  }
+	| {
+			readonly _tag: "Completed";
+			/** @since 0.2.0 */
 			readonly performer: "manual";
 			/**
 			 * What supports completion. `asserted`: the person said so and nothing checked
 			 * it. `verified`: the person said so and the handler's `verify` check passed.
 			 * Neither proves how the work was done.
+			 *
+			 * @since 0.2.0
 			 */
 			readonly confirmation: "asserted" | "verified";
 	  }
 	| { readonly _tag: "Skipped"; readonly reason: string }
-	/** The person asked to confirm manual work answered that it is not done. */
-	| { readonly _tag: "Declined" }
+	| {
+			/**
+			 * The person asked to confirm manual work answered that it is not done.
+			 *
+			 * @since 0.2.0
+			 */
+			readonly _tag: "Declined";
+	  }
 	| {
 			readonly _tag: "Failed";
 			readonly phase: Handler.Phase;
@@ -70,16 +81,22 @@ export type Outcome<E = unknown> =
 	| {
 			readonly _tag: "WouldExecute";
 			readonly evaluated: boolean;
+			/** @since 0.2.0 */
 			readonly performer: Handler.Performer;
 	  }
 	| { readonly _tag: "WouldSkip"; readonly reason: string }
 	| {
 			readonly _tag: "Undetermined";
 			readonly reason: string;
-			/** A `manual` occurrence would wait for a person if it executes. */
+			/**
+			 * A `manual` occurrence would wait for a person if it executes.
+			 *
+			 * @since 0.2.0
+			 */
 			readonly performer: Handler.Performer;
 	  }
 	| {
+			/** @since 0.1.0 */
 			readonly _tag: "PreparationFailed";
 			readonly error: E | undefined;
 			readonly cause: Cause.Cause<E>;
@@ -114,15 +131,15 @@ export type Report<A extends Action.Any = Action.Any, E = unknown> = {
 	readonly bodiesStarted: boolean;
 	/** Progress is not persisted. Rerunning the plan repeats completed actions. */
 	readonly persistence: "none";
-	/** Observers that failed or were abandoned. Never affects outcomes or status. */
+	/**
+	 * Observers that failed or were abandoned. Never affects outcomes or status.
+	 *
+	 * @since 0.2.1
+	 */
 	readonly observation: ReadonlyArray<Observer.ObservationFailure>;
 };
 
-/**
- * A handler is missing, duplicated, or bound to a different definition.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type CoverageIssue = {
 	readonly _tag: "Missing" | "Duplicate" | "Mismatched";
 	readonly occurrenceId: string;
@@ -138,7 +155,7 @@ export type CoverageIssue = {
 	}>;
 };
 
-const HandlerCoverageBase = Data.TaggedError("HandlerCoverageError");
+const HandlerCoverageBase = Data.TaggedError(`${PackageConfig.name}/HandlerCoverageError`);
 
 /**
  * Handler coverage failed before any handler phase ran. Every occurrence needs exactly
@@ -162,7 +179,7 @@ export class HandlerCoverageError<A extends Action.Any = Action.Any> extends Han
 	}
 }
 
-const InteractionUnavailableBase = Data.TaggedError("InteractionUnavailable");
+const InteractionUnavailableBase = Data.TaggedError(`${PackageConfig.name}/InteractionUnavailable`);
 
 /**
  * The plan has manual handlers, and the run has no `interaction` to ask a person. The
@@ -195,7 +212,7 @@ const listIds = (entries: ReadonlyArray<OccurrenceReport>) =>
 		)
 		.join(", ");
 
-const ExecutionFailedBase = Data.TaggedError("ExecutionFailed");
+const ExecutionFailedBase = Data.TaggedError(`${PackageConfig.name}/ExecutionFailed`);
 
 /**
  * An occurrence failed, or a person declined manual work. Execution stopped admitting
@@ -208,7 +225,7 @@ export class ExecutionFailed<
 	E = unknown,
 > extends ExecutionFailedBase<{
 	readonly failures: ReadonlyArray<OccurrenceReport<A, E>>;
-	/** Manual occurrences that a person declined. */
+	/** @since 0.2.0 */
 	readonly declined: ReadonlyArray<OccurrenceReport<A, E>>;
 	readonly report: Report<A, E>;
 }> {
@@ -228,11 +245,10 @@ export class ExecutionFailed<
 	}
 }
 
-const ExecutionInterruptedBase = Data.TaggedError("ExecutionInterrupted");
+const ExecutionInterruptedBase = Data.TaggedError(`${PackageConfig.name}/ExecutionInterrupted`);
 
 /**
- * Why an execution or an occurrence was interrupted: explicit cancellation, a configured
- * timeout, or an Effect handler that interrupted itself.
+ * `"handler"` means an Effect handler interrupted itself.
  *
  * @since 0.0.1
  */
@@ -244,12 +260,7 @@ const interruptedBy: Record<InterruptReason, string> = {
 	handler: "interrupted by a handler",
 };
 
-/**
- * Explicit cancellation, a configured timeout, or a handler's own interruption stopped
- * execution.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export class ExecutionInterrupted<
 	A extends Action.Any = Action.Any,
 	E = unknown,
@@ -300,19 +311,10 @@ type CoverageCheck<A extends Action.Any, H, C extends Plan.Coverage> = [
 	? unknown
 	: { readonly handlers: `Missing a handler for action "${Uncovered<A, H, C>}"` };
 
-/**
- * Errors an execution can report for its occurrences.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Errors<H, I = never> = Handler.Error<H> | Interaction.Error<I>;
 
-/**
- * Effect services an execution requires: the services of its handlers, its
- * interaction, and its observers.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Requirements<H, I = never, O = never> =
 	| Handler.Services<H>
 	| Interaction.Services<I>
@@ -329,15 +331,23 @@ export type Options<
 	 * Asks a person to confirm the work of manual handlers. A run whose plan has manual
 	 * handlers fails with `InteractionUnavailable` before it starts when this is absent.
 	 * A dry run never asks and does not need it.
+	 *
+	 * @since 0.2.0
 	 */
 	readonly interaction?: I;
 	/**
 	 * Receive the run's events, in array order. The executor waits for each observer
 	 * before it continues; an observer failure is recorded in `report.observation` and never changes
 	 * the outcome.
+	 *
+	 * @since 0.2.1
 	 */
 	readonly observers?: ReadonlyArray<O>;
-	/** Identifies the run in observer events. */
+	/**
+	 * Identifies the run in observer events.
+	 *
+	 * @since 0.2.1
+	 */
 	readonly runId?: string;
 	/**
 	 * Run prepare phases without running any apply phase. A prepare phase that may
@@ -360,7 +370,6 @@ export type Options<
 	readonly settleTimeout?: Duration.Input;
 };
 
-/** A handler as the executor runs it: its action is erased, its channels are not. */
 type Internal<E, R> = Handler.Handler<Action.Any, E, R>;
 
 type Resolved<E, R> = Map<string, Internal<E, R>>;
@@ -463,7 +472,7 @@ const forEachBranch = <R>(
 	run: (node: Node) => Effect.Effect<void, never, R>,
 ) => Effect.forEach(branches, run, { concurrency, discard: true });
 
-/** Registers a callback that cancels the execution. Only `runPromise` uses it. */
+/** Used only by `runPromise`. */
 type Subscribe = (cancel: () => void) => void;
 
 /**
@@ -492,7 +501,9 @@ type Timing = "timed" | "untimed";
  * services layer that owned the resources.
  */
 const logCleanupFailure = (owner: Record<string, string>) => (cause: Cause.Cause<unknown>) =>
-	Effect.logError("deltafold: cleanup failed", cause).pipe(Effect.annotateLogs(owner));
+	Effect.logError(`${PackageConfig.name}: cleanup failed`, cause).pipe(
+		Effect.annotateLogs(owner),
+	);
 
 /** Admission state, cancellation, and timeouts shared by real and dry runs. */
 const makeControl = (options: ControlOptions, subscribe: Subscribe | undefined) =>
@@ -608,8 +619,8 @@ const inScope = <E, R>(
 	).pipe(Effect.asVoid);
 
 /**
- * The outcome of a phase that did not succeed. `undefined` when it succeeded. An Effect
- * handler that interrupted itself stops admission.
+ * Returns an `Interrupted` outcome for stopped or self-interrupted phases; a
+ * self-interrupting Effect handler also stops admission.
  */
 const unsuccessful = <T, E>(
 	phase: Handler.Phase,
@@ -633,7 +644,6 @@ const unsuccessful = <T, E>(
 	return undefined;
 };
 
-/** The observers of one run, and the identifier their events carry. */
 type Observation<R> = {
 	readonly observers: ReadonlyArray<Observer.Observer<R>>;
 	readonly runId: string | undefined;
@@ -919,7 +929,6 @@ const dryRun = <A extends Action.Any, E, R>(
 					return emitter.settled(occurrence);
 				};
 
-				/** Runs a prepare phase in the occurrence's scope and records what it predicts. */
 				const prepare = (occurrence: Occurrence, handler: Internal<E, R>) => {
 					const id = occurrence.id;
 					const end = (outcome: Outcome<E>) => {
@@ -1089,10 +1098,6 @@ const run = <
 	ExecutionError<A, Errors<H, I>>,
 	Requirements<H, I, O>
 > => {
-	// Handlers, interactions, and observers are covariant in their errors and services,
-	// and `Errors<H, I>` and `Requirements<H, I, O>` collect them from each handler in `H`,
-	// from `I`, and from each observer in `O`, so all of them fit these shapes. From here
-	// on the compiler checks both channels.
 	const handlers: ReadonlyArray<Internal<Errors<H, I>, Requirements<H, I, O>>> =
 		options.handlers ?? [];
 	const interaction: Interaction.Interaction<Errors<H, I>, Requirements<H, I, O>> | undefined =
@@ -1151,8 +1156,8 @@ const run = <
 };
 
 /**
- * Runs a plan as an Effect. Coverage, and the interaction that manual handlers need,
- * are checked before any handler phase runs. Steps
+ * Coverage, and the interaction that manual handlers need, are checked before any
+ * handler phase runs. Steps
  * are sequential barriers; parallel groups run their branches concurrently. On failure,
  * no new action starts, and actions already running settle before the effect fails
  * with the partial report.
@@ -1183,11 +1188,9 @@ export const effect = <
 
 type ServicesOption<R, LE> = [R] extends [never]
 	? {
-			/** Handlers, interactions, and observers without Effect services need none. */
 			readonly services?: Context.Context<never> | Layer.Layer<never, LE>;
 		}
 	: {
-			/** Supplies the Effect services of the handlers, the interaction, and the observers. */
 			readonly services: Context.Context<R> | Layer.Layer<R, LE>;
 		};
 
@@ -1198,17 +1201,15 @@ export type PromiseOptions<
 	O extends Observer.Any = never,
 > = Options<H, I, O> & {
 	/**
-	 * Explicit cancellation. Aborting stops admission, interrupts running actions and
-	 * pending confirmations, and rejects with `ExecutionInterrupted` and the partial
-	 * report.
+	 * Aborting stops admission, interrupts running actions and pending confirmations, and
+	 * rejects with `ExecutionInterrupted` and the partial report.
 	 */
 	readonly signal?: AbortSignal;
 };
 
 /**
- * Runs a plan and returns a Promise. It rejects with `HandlerCoverageError`,
- * `InteractionUnavailable`, `ExecutionFailed`, or `ExecutionInterrupted`, each carrying
- * the partial report.
+ * Rejects with `HandlerCoverageError`, `InteractionUnavailable`, `ExecutionFailed`, or
+ * `ExecutionInterrupted`, each carrying the partial report.
  * Building a supplied services layer can also reject with the layer's own error,
  * without a report.
  *

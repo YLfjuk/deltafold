@@ -1,4 +1,5 @@
-import { Array as Arr, Effect, FileSystem, Order, type PlatformError } from "effect";
+import { Array as Arr, Effect, FileSystem, Order } from "effect";
+import type { PlatformError } from "effect";
 
 import { ApplyFailed, ChangedDuringApply, StalePlan } from "../../foundation/error.ts";
 import type { Applied, Edit, Prepared } from "./files.ts";
@@ -6,9 +7,9 @@ import { globAll } from "./glob.ts";
 import { dirname, paths } from "./paths.ts";
 
 /**
- * Applies prepared edits to local files. It first checks that every file preparation
- * read is unchanged, and refuses with `StalePlan` otherwise. On failure, it restores the
- * files it changed where it can.
+ * Checks that every file and glob preparation depended on is unchanged before writing,
+ * failing with `StalePlan` otherwise. On failure, restores the files it changed where
+ * it can.
  *
  * @since 0.0.1
  */
@@ -125,7 +126,7 @@ export const apply = (
 		}
 
 		return {
-			written: done.filter((edit) => edit.after !== null).map((edit) => edit.path),
-			removed: done.filter((edit) => edit.after === null).map((edit) => edit.path),
+			written: done.flatMap((edit) => (edit.after !== null ? edit.path : [])),
+			removed: done.flatMap((edit) => (edit.after === null ? edit.path : [])),
 		};
 	});

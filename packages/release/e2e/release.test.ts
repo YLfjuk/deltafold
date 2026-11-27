@@ -338,7 +338,7 @@ describe("fixture workspace consumer", () => {
 				const beforeApply = new Map(files);
 				const error = yield* Effect.flip(ReleaseFiles.apply(prepared));
 				expect(error).toMatchObject({
-					_tag: "StalePlan",
+					_tag: "@deltafold/release/StalePlan",
 					paths: ["docs/guide.md", pendingHeaders, widgetsIndex],
 				});
 				expect(files).toEqual(beforeApply);
@@ -362,10 +362,15 @@ describe("fixture workspace consumer", () => {
 				const prepared = yield* prepare;
 				const error = yield* Effect.flip(ReleaseFiles.apply(prepared));
 				expect(error).toMatchObject({
-					_tag: "ApplyFailed",
+					_tag: "@deltafold/release/ApplyFailed",
 					path: adapterManifest,
 					restored: [generatedAdapter, widgetsIndex, generatedWidgets],
-					unrestored: [{ path: widgetManifest, cause: { _tag: "ChangedDuringApply" } }],
+					unrestored: [
+						{
+							path: widgetManifest,
+							cause: { _tag: "@deltafold/release/ChangedDuringApply" },
+						},
+					],
 				});
 				expect(files.get(widgetManifest)).toBe('"external manifest edit"\n');
 				expect(files.get("unrelated.txt")).toBe("External unrelated edit.\n");

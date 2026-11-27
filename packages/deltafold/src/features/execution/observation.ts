@@ -1,15 +1,5 @@
-import {
-	Cause,
-	Clock,
-	Deferred,
-	Duration,
-	Effect,
-	Exit,
-	Fiber,
-	Option,
-	Predicate,
-	Semaphore,
-} from "effect";
+import type { Duration } from "effect";
+import { Cause, Clock, Deferred, Effect, Exit, Fiber, Option, Predicate, Semaphore } from "effect";
 
 import type * as Plan from "../../foundation/plan.ts";
 import type { Occurrence, Step } from "../../foundation/plan.ts";
@@ -176,7 +166,7 @@ const emptyCounts = (): { -readonly [K in keyof Observer.Counts]: number } => ({
 	unsettled: 0,
 });
 
-/** Emits events for one run. Without observers, every method is a no-op. */
+/** Without observers, every method is a no-op. */
 export type Emitter<R> = {
 	readonly runStarted: Effect.Effect<void, never, R>;
 	readonly stepStarted: (step: Step) => Effect.Effect<void, never, R>;
@@ -353,7 +343,6 @@ export const makeEmitter = <R>(options: EmitterOptions<R>): Effect.Effect<Emitte
 			}
 		};
 
-		/** Delivers an event to each observer from `first` on, in order. */
 		const deliverFrom = (event: Observer.Event, first: number, bounded: boolean) =>
 			Effect.gen(function* () {
 				for (const [offset, observer] of observers.slice(first).entries()) {

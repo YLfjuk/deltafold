@@ -1,8 +1,7 @@
 import { Result } from "effect";
 
-import * as GenConfig from "../../configs/gen.config.ts";
+import * as GenConfig from "../../configs/gen.ts";
 
-/** One version the index imports: the module's version id and the name it exports. */
 export type IndexEntry = { readonly id: string; readonly exportName: string };
 
 const localNames = (entries: ReadonlyArray<IndexEntry>): ReadonlyArray<string> => {
@@ -17,7 +16,6 @@ const localNames = (entries: ReadonlyArray<IndexEntry>): ReadonlyArray<string> =
 	});
 };
 
-/** Renders the index module, which exports the generated versions in release order. */
 export const renderIndex = (
 	entries: ReadonlyArray<IndexEntry>,
 	firstLine: string = GenConfig.header,

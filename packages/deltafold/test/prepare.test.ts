@@ -173,7 +173,7 @@ describe("Prepared handlers in real runs", () => {
 				}),
 			);
 
-			expect(error._tag === "ExecutionFailed" && outcomesOf(error.report)).toEqual([
+			expect(error._tag === "deltafold/ExecutionFailed" && outcomesOf(error.report)).toEqual([
 				expect.objectContaining({ _tag: "Failed", phase: "prepare", error: "unreadable" }),
 			]);
 		}),
@@ -200,7 +200,7 @@ describe("Prepared handlers in real runs", () => {
 		expect(reportOf(error)?.occurrences[0]?.outcome).toMatchObject({
 			_tag: "Failed",
 			phase: "prepare",
-			error: { _tag: "UnexpectedHandlerError", phase: "prepare" },
+			error: { _tag: "deltafold/UnexpectedHandlerError", phase: "prepare" },
 		});
 	});
 
@@ -274,8 +274,9 @@ describe("Prepared handlers in real runs", () => {
 			yield* TestClock.adjust("1 second");
 			const error = yield* Fiber.join(fiber);
 
-			expect(error._tag).toBe("ExecutionFailed");
-			expect(outcomesOf(reportOf(error)!).map((outcome) => outcome._tag)).toEqual([
+			expect(error._tag).toBe("deltafold/ExecutionFailed");
+			if (error._tag !== "deltafold/ExecutionFailed") throw error;
+			expect(outcomesOf(error.report).map((outcome) => outcome._tag)).toEqual([
 				"Failed",
 				"Completed",
 			]);
@@ -415,8 +416,9 @@ describe("Occurrence scopes", () => {
 				}),
 			);
 
-			expect(error._tag).toBe("ExecutionFailed");
-			const [first, second] = outcomesOf(reportOf(error)!);
+			expect(error._tag).toBe("deltafold/ExecutionFailed");
+			if (error._tag !== "deltafold/ExecutionFailed") throw error;
+			const [first, second] = outcomesOf(error.report);
 			expect(first).toMatchObject({ _tag: "Failed", phase: "apply", error: undefined });
 			expect(second).toEqual({ _tag: "Unattempted" });
 		}),

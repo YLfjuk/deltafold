@@ -1,5 +1,7 @@
 import { Data } from "effect";
 
+import * as PackageConfig from "../configs/package.ts";
+
 /**
  * Why planning or preparation refused a release.
  *
@@ -45,11 +47,7 @@ export type Reason =
 	| "OutsideWorkspace"
 	| "ReplacementConflict";
 
-/**
- * A structured planning or preparation problem.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Issue = {
 	readonly reason: Reason;
 	readonly message: string;
@@ -65,19 +63,19 @@ export const issue = (reason: Reason, message: string, subjects: ReadonlyArray<s
 });
 
 /**
- * Planning refused the input. Nothing was read or written.
+ * Nothing was read or written.
  *
  * @since 0.0.1
  */
-export class PlanError extends Data.TaggedError("PlanError")<Issue> {}
+export class PlanError extends Data.TaggedError(`${PackageConfig.name}/PlanError`)<Issue> {}
 
 /**
- * Preparation found problems. Every independent problem is listed, and nothing was
+ * Lists every independent problem found during resolution or preparation. Nothing was
  * written.
  *
  * @since 0.0.1
  */
-export class PrepareError extends Data.TaggedError("PrepareError")<{
+export class PrepareError extends Data.TaggedError(`${PackageConfig.name}/PrepareError`)<{
 	readonly issues: ReadonlyArray<Issue>;
 }> {}
 
@@ -87,7 +85,7 @@ export class PrepareError extends Data.TaggedError("PrepareError")<{
  *
  * @since 0.0.1
  */
-export class StalePlan extends Data.TaggedError("StalePlan")<{
+export class StalePlan extends Data.TaggedError(`${PackageConfig.name}/StalePlan`)<{
 	readonly paths: ReadonlyArray<string>;
 }> {}
 
@@ -101,7 +99,7 @@ export class StalePlan extends Data.TaggedError("StalePlan")<{
  *
  * @since 0.0.1
  */
-export class ApplyFailed extends Data.TaggedError("ApplyFailed")<{
+export class ApplyFailed extends Data.TaggedError(`${PackageConfig.name}/ApplyFailed`)<{
 	readonly path: string;
 	readonly cause: unknown;
 	readonly restored: ReadonlyArray<string>;
@@ -113,6 +111,8 @@ export class ApplyFailed extends Data.TaggedError("ApplyFailed")<{
  *
  * @since 0.0.1
  */
-export class ChangedDuringApply extends Data.TaggedError("ChangedDuringApply")<{
+export class ChangedDuringApply extends Data.TaggedError(
+	`${PackageConfig.name}/ChangedDuringApply`,
+)<{
 	readonly path: string;
 }> {}

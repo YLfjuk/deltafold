@@ -1,5 +1,6 @@
 import { Data, Effect, Predicate, Scope } from "effect";
 
+import * as PackageConfig from "../../configs/package.ts";
 import type * as Action from "../../foundation/action.ts";
 import type * as Callback from "./promise-callback.ts";
 import { adaptPromise } from "./promise-callback.ts";
@@ -17,12 +18,7 @@ type GuardedError<G> = Callback.GuardedError<G>;
  */
 export type Phase = "prepare" | "apply" | "confirmation" | "verification";
 
-/**
- * Who performs an action: a handler's apply phase, or a person whose confirmation the
- * executor waits for.
- *
- * @since 0.2.0
- */
+/** @since 0.2.0 */
 export type Performer = "automated" | "manual";
 
 /**
@@ -30,7 +26,9 @@ export type Performer = "automated" | "manual";
  *
  * @since 0.2.0
  */
-export class VerificationFailed extends Data.TaggedError("VerificationFailed")<{
+export class VerificationFailed extends Data.TaggedError(
+	`${PackageConfig.name}/VerificationFailed`,
+)<{
 	readonly actionId: string;
 	readonly kind: string;
 }> {
@@ -46,7 +44,9 @@ export class VerificationFailed extends Data.TaggedError("VerificationFailed")<{
  *
  * @since 0.0.1
  */
-export class UnexpectedHandlerError extends Data.TaggedError("UnexpectedHandlerError")<{
+export class UnexpectedHandlerError extends Data.TaggedError(
+	`${PackageConfig.name}/UnexpectedHandlerError`,
+)<{
 	readonly actionId: string;
 	readonly kind: string;
 	readonly phase: Phase;
@@ -57,7 +57,7 @@ export class UnexpectedHandlerError extends Data.TaggedError("UnexpectedHandlerE
 	}
 }
 
-const PreparationTypeId = "~deltafold/Preparation";
+const PreparationTypeId = `~${PackageConfig.name}/Preparation`;
 
 /**
  * A prepare phase decided to apply. The apply phase receives `value` unchanged; the
@@ -71,12 +71,7 @@ export type Prepared<out P> = {
 	readonly value: P;
 };
 
-/**
- * A prepare phase decided that the action does not apply. The occurrence is skipped
- * with `reason`.
- *
- * @since 0.1.0
- */
+/** @since 0.1.0 */
 export type Skip = {
 	readonly [PreparationTypeId]: typeof PreparationTypeId;
 	readonly _tag: "Skip";
@@ -84,18 +79,16 @@ export type Skip = {
 };
 
 /**
- * What a prepare phase returns: `Handler.prepared(value)` or `Handler.skip(reason)`.
+ * Construct with `Handler.prepared` or `Handler.skip`.
  *
  * @since 0.1.0
  */
 export type Preparation<P> = Prepared<P> | Skip;
 
-/** The value that a prepare phase passes to its apply phase. */
 type PreparedValue<T> = T extends Prepared<infer P> ? P : never;
 
 /**
- * Ends a prepare phase with the value its apply phase receives. Wrapping the value keeps
- * it apart from a skip, whatever its shape.
+ * Wraps `value` for `apply` so any shape stays distinct from `Handler.skip`.
  *
  * @since 0.1.0
  */
@@ -105,11 +98,7 @@ export function prepared(value?: unknown): Prepared<unknown> {
 	return { [PreparationTypeId]: PreparationTypeId, _tag: "Prepared", value };
 }
 
-/**
- * Ends a prepare phase by skipping the occurrence. The apply phase does not run.
- *
- * @since 0.1.0
- */
+/** @since 0.1.0 */
 export const skip = (reason: string): Skip => ({
 	[PreparationTypeId]: PreparationTypeId,
 	_tag: "Skip",
@@ -123,72 +112,64 @@ const notAPreparation = () =>
 	new TypeError("A prepare phase must return Handler.prepared(value) or Handler.skip(reason)");
 
 /**
- * How an occurrence continues after its prepare phase: skipped, applied by an effect
- * that already holds the prepared value, or confirmed by a person. `verify` checks
- * confirmed work and fails when the check does not pass.
+ * `apply` already closes over any prepared value. `verify` runs after confirmation and
+ * fails when the check does not pass.
  *
  * @since 0.1.0
  */
 export type Step<E, R> =
 	| Skip
 	| { readonly _tag: "Apply"; readonly apply: Effect.Effect<void, E, R> }
-	| { readonly _tag: "Confirm"; readonly verify: Effect.Effect<void, E, R> | undefined };
+	| {
+			/** @since 0.2.0 */
+			readonly _tag: "Confirm";
+			readonly verify: Effect.Effect<void, E, R> | undefined;
+	  };
 
 const applyStep = <E, R>(apply: Effect.Effect<void, E, R>): Step<E, R> => ({
 	_tag: "Apply",
 	apply,
 });
 
-const TypeId = "~deltafold/Handler";
+const TypeId = `~${PackageConfig.name}/Handler`;
 
 /**
- * Implements one action instance. `E` and `R` are the errors and Effect services of both
- * phases together. A prepared value stays inside the handler, so handlers with
- * different prepared values share this type.
+ * `E` and `R` are the errors and Effect services of both phases together. A prepared
+ * value stays inside the handler, so handlers with different prepared values share
+ * this type.
  *
  * @since 0.0.1
  */
 export type Handler<out A extends Action.Any, out E = never, out R = never> = {
 	readonly [TypeId]: typeof TypeId;
 	readonly action: A;
-	/** A `manual` handler has no phases of its own: a person does the work. */
+	/**
+	 * A `manual` handler has no phases of its own: a person does the work.
+	 *
+	 * @since 0.2.0
+	 */
 	readonly performer: Performer;
-	/** Whether the handler has a prepare phase. */
+	/** @since 0.1.0 */
 	readonly prepares: boolean;
 	/**
-	 * Runs the prepare phase, if any, and resolves to the next step. Both phases share
-	 * `scope`, the occurrence's scope, so resources acquired while preparing stay open
-	 * until the executor closes it after the occurrence ends.
+	 * Both phases share `scope`, the occurrence's scope, so resources acquired while
+	 * preparing stay open until the executor closes it after the occurrence ends.
+	 *
+	 * @since 0.1.0
 	 */
 	readonly prepare: (scope: Scope.Scope) => Effect.Effect<Step<E, R>, E, R>;
 };
 
-/**
- * Any handler.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Any = Handler<Action.Any, any, any>;
 
-/**
- * The errors of a handler or a union of handlers.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Error<H> = H extends Handler<any, infer E, any> ? E : never;
 
-/**
- * The Effect services of a handler or a union of handlers.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Services<H> = H extends Handler<any, any, infer R> ? R : never;
 
-/**
- * The action identifiers implemented by a handler or a union of handlers.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type ActionId<H> = H extends Handler<infer A, any, any> ? A["id"] : never;
 
 /** @since 0.0.1 */
@@ -200,35 +181,23 @@ const make = <A extends Action.Any, E, R>(
 	prepare: (scope: Scope.Scope) => Effect.Effect<Step<E, R>, E, R>,
 ): Handler<A, E, R> => ({ [TypeId]: TypeId, action, performer: "automated", prepares, prepare });
 
-/**
- * Named Effect services that a Promise handler declares.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type ServiceMap = Callback.ServiceMap;
 
 /**
- * The second argument of Promise handler callbacks: the `AbortSignal` that
- * `Effect.tryPromise` aborts on interruption, and the declared services, resolved.
+ * `signal` aborts on interruption; `services` holds the resolved declared services.
  *
  * @since 0.0.1
  */
 export type PromiseContext<S extends ServiceMap = NoServices> = Callback.PromiseContext<S>;
 
-/**
- * The second argument of a Promise apply phase: the Promise context and the action
- * payload.
- *
- * @since 0.1.0
- */
+/** @since 0.1.0 */
 export type PromiseApplyContext<Payload, S extends ServiceMap = NoServices> = PromiseContext<S> & {
 	readonly payload: Payload;
 };
 
 /**
- * A Promise handler with a prepare phase. `prepare` reads state and returns
- * `Handler.prepared(value)` or `Handler.skip(reason)`; `apply` receives the value. Each
- * phase gets its own signal.
+ * `prepare` must only read state; each phase receives its own `AbortSignal`.
  *
  * @since 0.1.0
  */
@@ -243,7 +212,8 @@ export type PromisePhases<Payload, T extends Preparation<unknown>, S extends Ser
 /**
  * Recognizes a declared rejection: a schema, or a type guard such as an `instanceof`
  * check. Guards must declare their parameter type, for example
- * `(cause: unknown): cause is NotFound => cause instanceof NotFound`.
+ * `(cause: unknown): cause is NotFound => cause instanceof NotFound`. Pass a schema
+ * directly rather than `Schema.is(schema)`, whose generic signature defeats inference.
  *
  * @since 0.0.1
  */
@@ -268,8 +238,8 @@ type PromiseHandler<A extends Action.Any, S extends ServiceMap, G> = Handler<
 >;
 
 /**
- * Implements an action with Promise callbacks. The callbacks run lazily through
- * `Effect.tryPromise`, and receive its `AbortSignal` and the declared services.
+ * Callbacks run lazily through `Effect.tryPromise`, and receive its `AbortSignal` and the
+ * declared services.
  *
  * Pass one callback to apply the action directly, or `{ prepare, apply }` to decide
  * first. `prepare` must only read: a dry run calls it and never calls `apply`. A real
@@ -310,6 +280,7 @@ export function promise<
 	apply: (payload: A["payload"], context: PromiseContext<S>) => PromiseLike<unknown>,
 	options?: PromiseOptions<S, G>,
 ): PromiseHandler<A, S, G[number]>;
+/** @since 0.1.0 */
 export function promise<
 	A extends Action.Any,
 	T extends Preparation<unknown> = Skip,
@@ -370,16 +341,11 @@ export function promise<
 	return make(action, true, () => prepare);
 }
 
-/**
- * The second argument of an Effect apply phase.
- *
- * @since 0.1.0
- */
+/** @since 0.1.0 */
 export type EffectApplyContext<Payload> = { readonly payload: Payload };
 
 /**
- * An Effect handler with a prepare phase. `prepare` reads state and succeeds with
- * `Handler.prepared(value)` or `Handler.skip(reason)`; `apply` receives the value.
+ * `prepare` must only read state.
  *
  * @since 0.1.0
  */
@@ -392,8 +358,7 @@ export type EffectPhases<Payload, T extends Preparation<unknown>, E1, R1, E2, R2
 };
 
 /**
- * Implements an action with an Effect. The handler keeps its own errors and services,
- * and stops through native Effect interruption.
+ * Keeps its own errors and services, and stops through native Effect interruption.
  *
  * Pass one function to apply the action directly, or `{ prepare, apply }` to decide
  * first. `prepare` must only read: a dry run runs it and never runs `apply`. A real run
@@ -420,6 +385,7 @@ export function effect<A extends Action.Any, E = never, R = never>(
 	action: A,
 	apply: (payload: A["payload"]) => Effect.Effect<unknown, E, R>,
 ): Handler<A, E, Exclude<R, Scope.Scope>>;
+/** @since 0.1.0 */
 export function effect<
 	A extends Action.Any,
 	T extends Preparation<unknown> = Skip,

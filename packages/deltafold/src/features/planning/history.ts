@@ -7,18 +7,17 @@ import type { Plan } from "../../foundation/plan.ts";
 import type * as Rule from "../../foundation/rule.ts";
 import type * as Shortcut from "../../foundation/shortcut.ts";
 import type { Version } from "../../foundation/version.ts";
-import { InvalidHistory, type ResolveError, type UnknownVersion } from "./resolve-error.ts";
+import { InvalidHistory } from "./resolve-error.ts";
+import type { ResolveError, UnknownVersion } from "./resolve-error.ts";
 import {
 	destinations,
 	lookup as lookupVersion,
 	makeContext,
 	resolve as resolveRoute,
-	type Context,
-	type Destination,
-	type ResolveOptions,
-	type RoutePolicy,
 } from "./resolve.ts";
-import { validate as validateDeclarations, type Issue } from "./validate.ts";
+import type { Context, Destination, ResolveOptions, RoutePolicy } from "./resolve.ts";
+import { validate as validateDeclarations } from "./validate.ts";
+import type { Issue } from "./validate.ts";
 
 export * from "./resolve-error.ts";
 export type { Destination, Issue, ResolveOptions, RoutePolicy };
@@ -36,30 +35,18 @@ export type History<A extends Action.Any = Action.Any, C extends Change.Any = Ch
 	readonly "~changes"?: C;
 };
 
-/**
- * Any history.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Any = History<any>;
 
-/**
- * Every action instance that a plan resolved from the history can contain.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type ActionsOf<H> = H extends History<infer A> ? A : never;
 
-/**
- * Every change that a plan resolved from the history can list in `changes`.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type ChangesOf<H> = H extends History<any, infer C> ? C : never;
 
 /**
- * Registers declarations. Migrations are registered independently of versions, so
- * routes can be added later without changing published release definitions.
+ * Migrations are registered independently of versions, so routes can be added later
+ * without changing published release definitions.
  *
  * `make` does not throw. Use `History.validate` to list declaration issues;
  * resolution fails with `InvalidHistory` when there are any.
@@ -105,7 +92,7 @@ const prepare = (history: Any) => {
 };
 
 /**
- * Lists declaration issues in a deterministic order. An empty list means valid.
+ * Returns issues in deterministic order.
  *
  * @since 0.0.1
  */
@@ -120,8 +107,8 @@ const valid = (history: Any): Result.Result<Context, InvalidHistory> => {
 };
 
 /**
- * Resolves an optimized plan between two versions. Planning needs no handlers or
- * execution services, and it never reads or modifies consumer files.
+ * Planning needs no handlers or execution services, and it never reads or modifies
+ * consumer files.
  *
  * When several routes connect the versions, resolution fails with `AmbiguousRoute`
  * unless the `route` option selects one or a route `policy` leaves exactly one.
@@ -146,22 +133,14 @@ export const resolve = <A extends Action.Any, C extends Change.Any>(
 		ResolveError
 	>;
 
-/**
- * Destinations reachable by upgrade from a version, with their candidate routes.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export const upgrades = (
 	history: Any,
 	options: { readonly from: Version | string },
 ): Result.Result<ReadonlyArray<Destination>, InvalidHistory | UnknownVersion> =>
 	reachableFrom(history, options.from, "upgrade");
 
-/**
- * Destinations reachable by downgrade from a version, with their candidate routes.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export const downgrades = (
 	history: Any,
 	options: { readonly from: Version | string },

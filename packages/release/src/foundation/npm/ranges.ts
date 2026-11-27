@@ -1,9 +1,7 @@
 import { Result, SemVer, SemVerRange } from "effect";
 
-// Dependency ranges in the forms release planning can rewrite: `^x.y.z`, `~x.y.z`, and an
-// exact `x.y.z`. `workspace:` ranges are resolved by the package manager at publish time.
-
 export type Form =
+	// Package managers resolve `workspace:` ranges at publish time.
 	| { readonly _tag: "Workspace" }
 	| {
 			readonly _tag: "Rewritable";
@@ -25,10 +23,9 @@ export const form = (range: string): Form => {
 };
 
 /**
- * Whether a version satisfies a range, with npm range semantics: a prerelease satisfies
- * only a range with a prerelease on the same version, and build metadata is ignored. Any
- * range SemVer can parse is checked, including forms that cannot be rewritten; anything
- * else, such as a dist-tag, is not satisfied.
+ * Uses npm range semantics: a prerelease satisfies only a range with a prerelease on the
+ * same version, and build metadata is ignored. Any range `SemVerRange` can parse is
+ * checked, including non-rewritable forms; unparseable ranges such as dist-tags return `false`.
  */
 export const satisfies = (range: string, version: string): boolean => {
 	const parsed = SemVerRange.parse(range);
@@ -40,6 +37,5 @@ export const satisfies = (range: string, version: string): boolean => {
 	);
 };
 
-/** Keeps the range's operator and replaces its version. */
 export const rewrite = (range: Form & { readonly _tag: "Rewritable" }, version: string): string =>
 	`${range.operator}${version}`;

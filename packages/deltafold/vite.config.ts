@@ -24,8 +24,8 @@ export default defineConfig({
 		entry: {
 			index: "src/index.ts",
 			changelog: "src/features/documents/index.ts",
-			markdown: "src/renderers/markdown.ts",
-			html: "src/renderers/html.ts",
+			markdown: "src/features/documents/renderers/markdown.ts",
+			html: "src/features/documents/renderers/html.ts",
 		},
 		format: ["esm"],
 		platform: "neutral",

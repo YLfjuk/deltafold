@@ -1,16 +1,14 @@
-import { type Cause, Effect, Exit, Predicate } from "effect";
+import { Effect, Exit, Predicate } from "effect";
+import type { Cause } from "effect";
 
+import * as PackageConfig from "../../configs/package.ts";
 import type * as Plan from "../../foundation/plan.ts";
 import type { InterruptReason, Outcome, Report } from "./executor.ts";
 import type { Performer, Phase } from "./handler.ts";
 
-const TypeId = "~deltafold/Observer";
+const TypeId = `~${PackageConfig.name}/Observer`;
 
-/**
- * The run that emitted an event.
- *
- * @since 0.2.1
- */
+/** @since 0.2.1 */
 export type Run = {
 	/** The `runId` passed to the executor, if any. Shared observers use it to tell runs apart. */
 	readonly id: string | undefined;
@@ -21,7 +19,7 @@ export type Run = {
 };
 
 /**
- * Counters at the moment an event was emitted. Counters never decrease during a run.
+ * `steps.finished` and `actions.finished` never decrease during a run.
  *
  * @since 0.2.1
  */
@@ -30,15 +28,13 @@ export type Progress = {
 	readonly steps: { readonly total: number; readonly finished: number };
 	readonly actions: {
 		readonly total: number;
-		/** Occurrences whose prepare or apply phase has started and that have not settled. */
+		/** Occurrences with a started phase that have not settled. */
 		readonly running: number;
 		readonly finished: number;
 	};
 };
 
 /**
- * One step of the route, as observers see it.
- *
  * - `execute`: the step has actions after optimization.
  * - `prose`: the step has instruction prose but no actions. The executor runs nothing
  *   for it and does not wait at it.
@@ -47,7 +43,6 @@ export type Progress = {
  * @since 0.2.1
  */
 export type StepInfo = {
-	/** The plan step's `id`. */
 	readonly id: string;
 	/** Position in `plan.steps`, including omitted steps. */
 	readonly index: number;
@@ -67,11 +62,7 @@ export type StepInfo = {
 	| { readonly kind: "omitted"; readonly reason: "noop" | "all-actions-removed" }
 );
 
-/**
- * One occurrence of the plan, as observers see it.
- *
- * @since 0.2.1
- */
+/** @since 0.2.1 */
 export type ActionInfo = {
 	readonly occurrence: string;
 	readonly action: string;
@@ -94,9 +85,8 @@ export type ActionInfo = {
 };
 
 /**
- * An outcome as observers see it. Each variant lists its fields explicitly, so a field
- * added to the report's outcome never reaches observers unreviewed. A failure keeps only
- * the error's string `_tag`; the full error is in the execution's report.
+ * Failures keep only the error's string `_tag`; full errors stay in the execution's
+ * report.
  *
  * @since 0.2.1
  */
@@ -135,8 +125,7 @@ export type OutcomeSummary =
 	| { readonly _tag: "PreparationFailed"; readonly errorTag: string | undefined };
 
 /**
- * Occurrences by outcome tag. `unsettled` counts interrupted occurrences that may still be
- * running.
+ * `unsettled` counts interrupted occurrences that may still be running.
  *
  * @since 0.2.1
  */
@@ -169,10 +158,8 @@ export type RunStarted = Base & {
 export type StepStarted = Base & { readonly _tag: "StepStarted"; readonly step: StepInfo };
 
 /**
- * A phase of an occurrence started: its prepare or apply phase, the confirmation of
- * manual work, or its verification. `prepare` appears only for handlers that have a
- * prepare phase. `confirmation` means the run is waiting for a person. An occurrence
- * emits this once per phase that starts.
+ * Emitted once per phase that starts. `prepare` appears only for handlers with a prepare
+ * phase; `confirmation` means the run is waiting for a person.
  *
  * @since 0.2.1
  */
@@ -199,7 +186,7 @@ export type ActionSettled = Base & {
 };
 
 /**
- * A started step ended. `counts` covers the step's occurrences.
+ * `counts` covers only this step's occurrences.
  *
  * @since 0.2.1
  */
@@ -210,7 +197,7 @@ export type StepSettled = Base & {
 };
 
 /**
- * The run ended. `status` and `counts` match the execution's report. When the fiber of
+ * `status` and `counts` match the execution's report. When the fiber of
  * `Executor.effect` is interrupted, there is no report: `report` is `false`, the status is
  * `"interrupted"`, and running occurrences count as unsettled interruptions. If the
  * interruption cuts short the delivery of `RunFinished`, the observers that had not yet
@@ -227,7 +214,7 @@ export type RunFinished = Base & {
 };
 
 /**
- * What an observer receives. A run emits `RunStarted`; then, for each step that is not
+ * A run emits `RunStarted`; then, for each step that is not
  * omitted, `StepStarted`, an `ActionPhaseStarted` for each phase that starts, an
  * `ActionSettled` for each occurrence, and `StepSettled`; and finally `RunFinished`. Action
  * events of parallel branches interleave.
@@ -277,22 +264,13 @@ export type ObservationFailure = {
  */
 export type Observer<out R = never> = {
 	readonly [TypeId]: typeof TypeId;
-	/** Delivers one event and captures how the delivery ended. It never fails. */
 	readonly notify: (event: Event) => Effect.Effect<Exit.Exit<unknown, unknown>, never, R>;
 };
 
-/**
- * Any observer.
- *
- * @since 0.2.1
- */
+/** @since 0.2.1 */
 export type Any = Observer<any>;
 
-/**
- * The Effect services of an observer or a union of observers.
- *
- * @since 0.2.1
- */
+/** @since 0.2.1 */
 export type Services<O> = O extends Observer<infer R> ? R : never;
 
 /** @since 0.2.1 */
@@ -305,8 +283,7 @@ class AsyncSyncObserver extends Error {
 }
 
 /**
- * Observes with a synchronous callback. A thrown value is recorded as an observation
- * failure.
+ * Thrown values and returned Promises are recorded as observation failures.
  *
  * @example
  * ```ts
@@ -336,7 +313,7 @@ export const sync = (callback: (event: Event) => void): Observer => ({
 });
 
 /**
- * Observes with a Promise callback. The executor waits for the Promise. The `signal`
+ * The executor waits for the Promise. The `signal`
  * aborts when the executor stops waiting: after cancellation or a timeout, once the
  * settlement grace period has passed, or when the execution is interrupted. A services
  * layer that `Executor.runPromise` built stays open until an abandoned Promise settles.
@@ -377,8 +354,8 @@ export const promise = (
 });
 
 /**
- * Observes with an Effect. Its services become requirements of the execution. Its
- * failures are recorded as observation failures and never fail the execution.
+ * Services become requirements of the execution. Failures are recorded as observation
+ * failures and never fail the execution.
  *
  * @example
  * ```ts

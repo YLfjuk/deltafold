@@ -1,7 +1,5 @@
 import { Predicate } from "effect";
 
-// Reading and editing npm package.json manifests as text.
-
 /** The dependency fields that become requirements. */
 export const fields = [
 	"dependencies",
@@ -21,7 +19,7 @@ export type Manifest = {
 	}>;
 };
 
-/** Reads the fields release planning uses, or `undefined` for text that is not a JSON object. */
+/** Returns `undefined` when `text` is not a valid JSON object. */
 export const readManifest = (text: string): Manifest | undefined => {
 	let parsed: unknown;
 	try {
@@ -36,7 +34,7 @@ export const readManifest = (text: string): Manifest | undefined => {
 		if (!Predicate.isObject(value)) return [];
 
 		return Object.entries(value).flatMap(([dependency, range]) =>
-			typeof range === "string" ? [{ field, dependency, range }] : [],
+			typeof range === "string" ? { field, dependency, range } : [],
 		);
 	});
 
@@ -111,7 +109,6 @@ export const locate = (text: string, path: ReadonlyArray<string>) => {
 	return undefined;
 };
 
-/** Finds a dependency's range string inside one top-level dependency field. */
 export const findRange = (text: string, field: string, dependency: string) => {
 	const found = locate(text, [field, dependency]);
 	return found === undefined

@@ -1,24 +1,21 @@
 import { Predicate } from "effect";
 
 import type * as Action from "../foundation/action.ts";
-import type { History } from "./planning/history.ts";
+import type { History } from "./planning/index.ts";
 
 /**
- * A modeled package. `N` is its name, kept as a literal type when the name is written
- * literally, so tools can tell packages apart by type.
+ * `N` preserves a literal package name so tools can distinguish packages by type.
  *
  * @since 0.0.1
  */
 export type Package<A extends Action.Any = Action.Any, N extends string = string> = {
 	readonly _tag: "Package";
-	/** The name of the modeled package, for example `@acme/widgets`. */
 	readonly name: N;
-	readonly history: History<A>;
+	readonly history: History.History<A>;
 };
 
 /**
- * Defines the modeled package. It holds no renderer settings, release metadata, or
- * handlers.
+ * Holds no renderer settings, release metadata, or handlers.
  *
  * @example
  * ```ts
@@ -29,7 +26,7 @@ export type Package<A extends Action.Any = Action.Any, N extends string = string
  */
 export const make = <A extends Action.Any, const N extends string = string>(
 	name: N,
-	options: { readonly history: History<A> },
+	options: { readonly history: History.History<A> },
 ): Package<A, N> => ({ _tag: "Package", name, history: options.history });
 
 /** @since 0.0.1 */

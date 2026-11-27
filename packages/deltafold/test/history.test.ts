@@ -81,7 +81,7 @@ describe("scenario 1: baseline and explicit empty transitions", () => {
 	it("distinguishes an absent route from an empty plan", () => {
 		const error = failure(History.resolve(history, { from: "2.0.0", to: "0.0.0" }));
 
-		expect(error._tag).toBe("UnsupportedRoute");
+		expect(error._tag).toBe("deltafold/UnsupportedRoute");
 	});
 
 	it("resolves a version to itself as an empty plan", () => {
@@ -94,7 +94,7 @@ describe("scenario 1: baseline and explicit empty transitions", () => {
 	it("fails for unknown versions", () => {
 		const error = failure(History.resolve(history, { from: "9.9.9", to: "2.0.0" }));
 
-		expect(error).toMatchObject({ _tag: "UnknownVersion", version: "9.9.9" });
+		expect(error).toMatchObject({ _tag: "deltafold/UnknownVersion", version: "9.9.9" });
 	});
 });
 
@@ -118,7 +118,7 @@ describe("scenario 2: branching ancestry", () => {
 		const error = failure(History.resolve(history, { from: "1.5.3", to: "2.0.0" }));
 
 		expect(error).toMatchObject({
-			_tag: "UnsupportedRoute",
+			_tag: "deltafold/UnsupportedRoute",
 			direction: "cross-branch",
 			reachable: ["1.5.2"],
 			closest: ["1.5.2"],
@@ -202,8 +202,8 @@ describe("scenario 3: one migration per transition and alternative routes", () =
 	it("reports alternative routes as ambiguous with selectable identifiers", () => {
 		const error = failure(History.resolve(history, { from: "1.0.0", to: "3.0.0" }));
 
-		expect(error._tag).toBe("AmbiguousRoute");
-		if (error._tag !== "AmbiguousRoute") return;
+		expect(error._tag).toBe("deltafold/AmbiguousRoute");
+		if (error._tag !== "deltafold/AmbiguousRoute") return;
 		expect(
 			error.candidates.map((candidate) => [candidate.id, candidate.actions, candidate.cost]),
 		).toEqual([
@@ -226,7 +226,7 @@ describe("scenario 3: one migration per transition and alternative routes", () =
 			History.resolve(history, { from: "1.0.0", to: "3.0.0", route: "1.0.0>9.0.0" }),
 		);
 
-		expect(error).toMatchObject({ _tag: "UnknownRoute", route: "1.0.0>9.0.0" });
+		expect(error).toMatchObject({ _tag: "deltafold/UnknownRoute", route: "1.0.0>9.0.0" });
 	});
 
 	it("applies opt-in route policies and keeps ties ambiguous", () => {
@@ -242,7 +242,7 @@ describe("scenario 3: one migration per transition and alternative routes", () =
 
 		expect(fewestMigrations.route.id).toBe("1.0.0>3.0.0");
 		expect(lowestCost.route.id).toBe("1.0.0>3.0.0");
-		expect(tie).toMatchObject({ _tag: "AmbiguousRoute", policy: "fewest-actions" });
+		expect(tie).toMatchObject({ _tag: "deltafold/AmbiguousRoute", policy: "fewest-actions" });
 	});
 });
 
@@ -378,7 +378,7 @@ describe("scenario 5: chained replacements", () => {
 		});
 
 		expect(failure(History.resolve(history, { from: "1.0.0", to: "2.0.0" }))).toMatchObject({
-			_tag: "RewriteCycle",
+			_tag: "deltafold/RewriteCycle",
 			rules: ["forth", "back"],
 		});
 	});
@@ -392,7 +392,7 @@ describe("scenario 5: chained replacements", () => {
 		});
 
 		expect(failure(History.resolve(history, { from: "1.0.0", to: "2.0.0" }))._tag).toBe(
-			"RewriteLimitExceeded",
+			"deltafold/RewriteLimitExceeded",
 		);
 	});
 
@@ -409,9 +409,9 @@ describe("scenario 5: chained replacements", () => {
 			const history = History.make({ versions: [v1, v2, v3, v4], migrations, rules });
 			const error = failure(History.resolve(history, { from: "1.0.0", to: "4.0.0" }));
 
-			expect(error._tag).toBe("ConflictingRewrites");
+			expect(error._tag).toBe("deltafold/ConflictingRewrites");
 			expect(
-				error._tag === "ConflictingRewrites" &&
+				error._tag === "deltafold/ConflictingRewrites" &&
 					error.outcomes.map((outcome) => outcome.actions),
 			).toEqual(['"rename-a-c","rename-c-d"', '"rename-a-b","rename-b-d"']);
 		}
@@ -466,7 +466,8 @@ describe("scenario 6: shortcuts", () => {
 		const error = failure(History.resolve(history, { from: "2.0.1", to: "2.0.3" }));
 
 		expect(
-			error._tag === "AmbiguousRoute" && error.candidates.map((candidate) => candidate.id),
+			error._tag === "deltafold/AmbiguousRoute" &&
+				error.candidates.map((candidate) => candidate.id),
 		).toEqual(["2.0.1>2.0.2>2.0.3", "2.0.1>[fast-upgrade]>2.0.3"]);
 	});
 
@@ -491,7 +492,8 @@ describe("scenario 6: shortcuts", () => {
 		);
 
 		expect(
-			error._tag === "AmbiguousRoute" && error.candidates.map((candidate) => candidate.id),
+			error._tag === "deltafold/AmbiguousRoute" &&
+				error.candidates.map((candidate) => candidate.id),
 		).toEqual(["2.0.1>2.0.3", "2.0.1>[fast-upgrade]>2.0.3"]);
 	});
 
@@ -519,7 +521,7 @@ describe("scenario 6: shortcuts", () => {
 			["InvalidShortcut", "unrelated"],
 		]);
 		expect(failure(History.resolve(invalid, { from: "2.0.1", to: "2.0.3" }))._tag).toBe(
-			"InvalidHistory",
+			"deltafold/InvalidHistory",
 		);
 	});
 });
@@ -577,7 +579,7 @@ describe("scenario 7: downgrades", () => {
 		const error = failure(History.resolve(history, { from: "3.0.0", to: "1.0.0" }));
 
 		expect(error).toMatchObject({
-			_tag: "UnsupportedRoute",
+			_tag: "deltafold/UnsupportedRoute",
 			direction: "downgrade",
 			reachable: [],
 			closest: [],
@@ -610,7 +612,7 @@ describe("scenario 7: downgrades", () => {
 		const error = failure(History.resolve(partial, { from: "4.0.0", to: "1.0.0" }));
 
 		expect(error).toMatchObject({
-			_tag: "UnsupportedRoute",
+			_tag: "deltafold/UnsupportedRoute",
 			reachable: ["3.0.0"],
 			closest: ["3.0.0"],
 		});
@@ -718,7 +720,7 @@ describe("parallel groups and structural rules", () => {
 
 		expect(History.validate(history)).toEqual([]);
 		expect(failure(History.resolve(history, { from: "1.0.0", to: "2.0.0" }))).toMatchObject({
-			_tag: "RewriteLimitExceeded",
+			_tag: "deltafold/RewriteLimitExceeded",
 			limit: "depth",
 			value: 256,
 		});
@@ -742,7 +744,8 @@ describe("parallel groups and structural rules", () => {
 		const error = failure(History.resolve(history, { from: "1.0.0", to: "2.0.0" }));
 
 		expect(
-			error._tag === "ConflictingRewrites" && error.outcomes.map((outcome) => outcome.rules),
+			error._tag === "deltafold/ConflictingRewrites" &&
+				error.outcomes.map((outcome) => outcome.rules),
 		).toEqual([["outer"], ["inner"]]);
 	});
 });
@@ -819,7 +822,7 @@ describe("search limits", () => {
 		).toHaveLength(13);
 		expect(
 			failure(History.resolve(independentRewrites(14), { from: "1.0.0", to: "2.0.0" })),
-		).toMatchObject({ _tag: "RewriteLimitExceeded", limit: "states", value: 10_000 });
+		).toMatchObject({ _tag: "deltafold/RewriteLimitExceeded", limit: "states", value: 10_000 });
 	});
 
 	it("chains at most 256 rule applications", () => {
@@ -827,7 +830,7 @@ describe("search limits", () => {
 			actionIds(success(History.resolve(chain(256), { from: "1.0.0", to: "2.0.0" }))),
 		).toEqual(["rename-s256-t"]);
 		expect(failure(History.resolve(chain(257), { from: "1.0.0", to: "2.0.0" }))).toMatchObject({
-			_tag: "RewriteLimitExceeded",
+			_tag: "deltafold/RewriteLimitExceeded",
 			limit: "depth",
 			value: 256,
 		});
@@ -836,13 +839,13 @@ describe("search limits", () => {
 	it("enumerates at most 100 candidate routes", () => {
 		expect(failure(History.resolve(diamonds(6), { from: "0.0.0", to: "6.0.0" }))).toMatchObject(
 			{
-				_tag: "AmbiguousRoute",
+				_tag: "deltafold/AmbiguousRoute",
 				candidates: { length: 64 },
 			},
 		);
 		expect(failure(History.resolve(diamonds(7), { from: "0.0.0", to: "7.0.0" }))).toMatchObject(
 			{
-				_tag: "TooManyRoutes",
+				_tag: "deltafold/TooManyRoutes",
 				limit: 100,
 			},
 		);
@@ -1055,7 +1058,7 @@ describe("identifiers with separator characters", () => {
 
 		const error = failure(History.resolve(history, { from: "s", to: "t" }));
 
-		const candidates = error._tag === "AmbiguousRoute" ? error.candidates : [];
+		const candidates = error._tag === "deltafold/AmbiguousRoute" ? error.candidates : [];
 
 		expect(candidates).toHaveLength(3);
 		expect(candidates.map((candidate) => candidate.id)).toEqual(
@@ -1180,6 +1183,18 @@ describe("validation", () => {
 			["EmptyMigration", "empty-group"],
 			["UnregisteredVersion", "2.0.0"],
 		]);
+	});
+
+	it("preserves array-backed action groups in Migration.make", () => {
+		const arrayBacked = Object.assign([], Action.sequence([renameTimeout]));
+		const history = History.make({
+			versions: [v1, v2],
+			migrations: [Migration.make("1-to-2", { from: v1, to: v2 })`${arrayBacked}`],
+		});
+
+		expect(
+			actionIds(success(History.resolve(history, { from: "1.0.0", to: "2.0.0" }))),
+		).toEqual(["rename-timeout"]);
 	});
 
 	it("rejects unsupported interpolations in types and at declaration time", () => {

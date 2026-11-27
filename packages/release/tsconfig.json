@@ -1,4 +1,4 @@
 {
 	"extends": "../../tsconfig.base.json",
-	"include": ["src", "test", "vite.config.ts", "../deltafold/@types"]
+	"include": ["src", "test", "vite.config.ts", "../../@types"]
 }

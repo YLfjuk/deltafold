@@ -31,6 +31,13 @@ export default defineConfig({
 		exports: {
 			devExports,
 		},
+		publint: {
+			strict: true,
+		},
+		attw: {
+			profile: "esm-only",
+			level: "error",
+		},
 	},
 	test: {
 		include: ["test/**/*.test.ts", "e2e/*.test.ts"],

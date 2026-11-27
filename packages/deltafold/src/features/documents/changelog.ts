@@ -1,7 +1,8 @@
 import { Array as Arr, Data, Order, Result, SemVer } from "effect";
 
+import * as PackageConfig from "../../configs/package.ts";
 import type * as Action from "../../foundation/action.ts";
-import * as Change from "../../foundation/change.ts";
+import type * as Change from "../../foundation/change.ts";
 import type { Prose } from "../../foundation/instruction.ts";
 import type { Coverage, GuideItem, Plan, Step } from "../../foundation/plan.ts";
 import type { Release, Version } from "../../foundation/version.ts";
@@ -10,8 +11,7 @@ import * as Document from "./document.ts";
 import { asRelease, blocksOf, insertAll } from "./sections.ts";
 
 /**
- * A change section of a release. The first section whose `select` matches wins. Selectors
- * read the metadata that the consumer declared on each change.
+ * First matching `select` wins; each change appears in at most one section.
  *
  * @since 0.0.1
  */
@@ -28,12 +28,10 @@ export const section = (
 	options: { readonly title: string; readonly select: (change: Change.Change) => boolean },
 ): SectionDefinition => ({ _tag: "ChangelogSection", id, ...options });
 
-/**
- * Release metadata does not match the package history.
- *
- * @since 0.0.1
- */
-export class ReleaseMetadataError extends Data.TaggedError("ReleaseMetadataError")<{
+/** @since 0.0.1 */
+export class ReleaseMetadataError extends Data.TaggedError(
+	`${PackageConfig.name}/ReleaseMetadataError`,
+)<{
 	readonly reason: "duplicate" | "unrelated" | "missing";
 	readonly versions: ReadonlyArray<string>;
 	readonly message: string;
@@ -46,7 +44,7 @@ export type HistoryOptions<M> = {
 	 * duplicate, or unrelated annotations throw `ReleaseMetadataError`.
 	 */
 	readonly releases: ReadonlyArray<Release<M>>;
-	/** The versions to include. Defaults to every version in the package history. */
+	/** Defaults to every version in the package history. */
 	readonly versions?: ReadonlyArray<Version>;
 };
 
@@ -67,7 +65,6 @@ export type Changelog<M> = {
 		change: Change.Any | ReadonlyArray<Change.Any>,
 		options?: { readonly title?: string },
 	) => Document.Document;
-	/** The section for one release. */
 	readonly release: (pkg: Package, release: Release<M>) => Document.Document;
 	/**
 	 * Release history, titled with the package name. Historical changes stay, including
@@ -97,11 +94,11 @@ export type Options<M> = {
 };
 
 const paragraphsOf = (text: string): ReadonlyArray<Document.Paragraph> =>
-	text
-		.split(/\n\s*\n/)
-		.map((part) => part.replace(/\s*\n\s*/g, " ").trim())
-		.filter((part) => part !== "")
-		.map((part) => Document.Paragraph(part));
+	text.split(/\n\s*\n/).flatMap((part) => {
+		const normalized = part.replace(/\s*\n\s*/g, " ").trim();
+
+		return normalized === "" ? [] : Document.Paragraph(normalized);
+	});
 
 /**
  * Selectors read metadata fields by name. Reading any field of an object yields a value
@@ -131,7 +128,6 @@ const releaseOrder = (versions: ReadonlyArray<Version>): ReadonlyArray<Version> 
 const occurrenceBlocks = (action: Action.Any, prose: Prose | undefined) =>
 	prose === undefined ? [Document.Paragraph(action.description)] : guideBlocks(prose);
 
-/** Builds guide blocks: prose becomes paragraphs; groups become lists. */
 const guideBlocks = (
 	items: ReadonlyArray<GuideItem | Prose[number]>,
 ): ReadonlyArray<Document.Block> => {
@@ -177,26 +173,25 @@ const guideBlocks = (
 	return blocks;
 };
 
+const isBlankText = (value: Document.Inline) => value._tag === "Text" && value.value === "";
+
 const trimInlines = (values: ReadonlyArray<Document.Inline>): ReadonlyArray<Document.Inline> => {
-	const result = values.flatMap((value) =>
-		value._tag === "Text" && value.value === "" ? [] : [value],
-	);
+	const result = values.filter((value) => !isBlankText(value));
 	const first = result[0];
 	const last = result.at(-1);
 	if (first?._tag === "Text") result[0] = Document.Text(first.value.trimStart());
 	if (last?._tag === "Text") result[result.length - 1] = Document.Text(last.value.trimEnd());
 
-	return result.flatMap((value) => (value._tag === "Text" && value.value === "" ? [] : [value]));
+	return result.filter((value) => !isBlankText(value));
 };
 
 // Generated sections take their identity from model identifiers under a kind that has no
 // `/`, so any version or migration identifier renders without colliding with others.
 const stepId = (step: Step) =>
-	`deltafold/${step.direction === "forward" ? "step" : "revert"}/${step.migration.id}`;
+	`${PackageConfig.name}/${step.direction === "forward" ? "step" : "revert"}/${step.migration.id}`;
 
 /**
- * Configures sections and plugins for changelog documents. Without `sections`, a release
- * lists all of its changes in one "Changes" section.
+ * Without `sections`, a release lists all of its changes in one "Changes" section.
  *
  * @example
  * ```ts
@@ -242,16 +237,14 @@ export const make = <M = unknown>(options: Options<M> = {}): Changelog<M> => {
 			const matched = grouped.get(definition.id);
 			if (matched === undefined) return [];
 
-			return [
-				Document.Section(definition.id, {
-					title: definition.title,
-					children: [changeList(matched)],
-				}),
-			];
+			return Document.Section(definition.id, {
+				title: definition.title,
+				children: [changeList(matched)],
+			});
 		});
 		if (other !== false && unmatched.length > 0) {
 			result.push(
-				Document.generatedSection("deltafold/other", {
+				Document.generatedSection(`${PackageConfig.name}/other`, {
 					title: other.title,
 					children: [changeList(unmatched)],
 				}),
@@ -263,7 +256,7 @@ export const make = <M = unknown>(options: Options<M> = {}): Changelog<M> => {
 
 	const releaseSection = (context: Document.ReleaseContext<M>): Document.Section => {
 		const base = asRelease(
-			Document.generatedSection(`deltafold/release/${context.version.id}`, {
+			Document.generatedSection(`${PackageConfig.name}/release/${context.version.id}`, {
 				title: context.version.id,
 				children: changeSections(context.version.changes),
 			}),
@@ -274,7 +267,7 @@ export const make = <M = unknown>(options: Options<M> = {}): Changelog<M> => {
 			base,
 			plugins.flatMap((plugin) =>
 				plugin.scope === Document.Release
-					? [{ at: plugin.at, blocks: blocksOf(plugin.resolve(context)) }]
+					? { at: plugin.at, blocks: blocksOf(plugin.resolve(context)) }
 					: [],
 			),
 		);
@@ -282,7 +275,7 @@ export const make = <M = unknown>(options: Options<M> = {}): Changelog<M> => {
 
 	const requireKnown = (pkg: Package, releases: ReadonlyArray<Release<M>>) => {
 		const unrelated = releases.flatMap((release) =>
-			knows(pkg, release.version) ? [] : [release.version.id],
+			knows(pkg, release.version) ? [] : release.version.id,
 		);
 		if (unrelated.length > 0) {
 			throw new ReleaseMetadataError({
@@ -303,7 +296,7 @@ export const make = <M = unknown>(options: Options<M> = {}): Changelog<M> => {
 				_tag: "Document",
 				kind: "change",
 				children: [
-					Document.generatedSection("deltafold/unreleased", {
+					Document.generatedSection(`${PackageConfig.name}/unreleased`, {
 						title: changeOptions.title ?? "Unreleased",
 						children: changeSections(changes),
 					}),
@@ -343,7 +336,7 @@ export const make = <M = unknown>(options: Options<M> = {}): Changelog<M> => {
 			}
 			const included = historyOptions.versions ?? pkg.history.versions;
 			const missing = included.flatMap((version) =>
-				byVersion.has(version.id) ? [] : [version.id],
+				byVersion.has(version.id) ? [] : version.id,
 			);
 			if (missing.length > 0) {
 				throw new ReleaseMetadataError({
@@ -358,23 +351,21 @@ export const make = <M = unknown>(options: Options<M> = {}): Changelog<M> => {
 
 				return release === undefined
 					? []
-					: [{ package: pkg, version, metadata: release.metadata }];
+					: { package: pkg, version, metadata: release.metadata };
 			});
 			const root = insertAll(
-				Document.generatedSection("deltafold/package", {
+				Document.generatedSection(`${PackageConfig.name}/package`, {
 					title: pkg.name,
 					children: contexts.map(releaseSection),
 				}),
 				plugins.flatMap((plugin) =>
 					plugin.scope === Document.History
-						? [
-								{
-									at: plugin.at,
-									blocks: blocksOf(
-										plugin.resolve({ package: pkg, releases: contexts }),
-									),
-								},
-							]
+						? {
+								at: plugin.at,
+								blocks: blocksOf(
+									plugin.resolve({ package: pkg, releases: contexts }),
+								),
+							}
 						: [],
 				),
 			);
@@ -408,7 +399,7 @@ export const make = <M = unknown>(options: Options<M> = {}): Changelog<M> => {
 					: stepSections;
 			if (guideOptions.explain === true && plan.explanations.length > 0) {
 				children.push(
-					Document.generatedSection("deltafold/explanations", {
+					Document.generatedSection(`${PackageConfig.name}/explanations`, {
 						title: "Omitted instructions",
 						children: [
 							Document.List(
@@ -439,7 +430,7 @@ export const make = <M = unknown>(options: Options<M> = {}): Changelog<M> => {
 				_tag: "Document",
 				kind: plan.direction === "downgrade" ? "downgrade" : "upgrade",
 				children: [
-					Document.generatedSection("deltafold/guide", {
+					Document.generatedSection(`${PackageConfig.name}/guide`, {
 						title: `${verb}${subject} from ${plan.from.id} to ${plan.to.id}`,
 						children,
 					}),

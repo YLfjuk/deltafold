@@ -72,6 +72,9 @@ export default defineConfig({
 		rules: {
 			// Effect data types use `_tag` as their discriminant.
 			"no-underscore-dangle": ["error", { allow: ["_tag"] }],
+			"typescript/consistent-type-imports": ["error", { fixStyle: "separate-type-imports" }],
+			"import/consistent-type-specifier-style": ["error", "prefer-top-level"],
+			"import/no-default-export": "error",
 			// @effect/vitest adds Effect-aware test blocks.
 			"vitest/no-standalone-expect": [
 				"error",
@@ -88,6 +91,14 @@ export default defineConfig({
 				},
 			],
 		},
+		overrides: [
+			{
+				files: ["*.config.*", "**/*.config.*"],
+				rules: {
+					"import/no-default-export": "off",
+				},
+			},
+		],
 		options: {
 			typeAware: true,
 			typeCheck: true,

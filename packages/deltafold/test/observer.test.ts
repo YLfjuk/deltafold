@@ -1,9 +1,9 @@
 import { describe, expect, expectTypeOf, it, vi } from "@effect/vitest";
+import type { Duration } from "effect";
 import {
 	Cause,
 	Context,
 	Deferred,
-	Duration,
 	Effect,
 	Exit,
 	Fiber,
@@ -472,7 +472,7 @@ describe("Outcomes in events", () => {
 		expect(failed?._tag === "ActionSettled" && failed.outcome).toEqual({
 			_tag: "Failed",
 			phase: "apply",
-			errorTag: "UnexpectedHandlerError",
+			errorTag: "deltafold/UnexpectedHandlerError",
 		});
 		expect(events[6]).toMatchObject({
 			counts: { Skipped: 1, Failed: 1, Unattempted: 0 },

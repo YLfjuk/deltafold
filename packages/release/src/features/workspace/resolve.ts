@@ -1,12 +1,15 @@
-import { Effect, FileSystem, Struct, type PlatformError } from "effect";
+import { Effect, FileSystem, Struct } from "effect";
+import type { PlatformError } from "effect";
 
 import { Package } from "deltafold";
-import { issue, PrepareError, type Issue } from "../../foundation/error.ts";
-import { readManifest, type Manifest } from "../../foundation/npm/manifest.ts";
-import type { Requirement } from "../planning/dependents-policy.ts";
-import type { Entry, Options, Packages, Registration, Release } from "../planning/release.ts";
+import { issue, PrepareError } from "../../foundation/error.ts";
+import type { Issue } from "../../foundation/error.ts";
+import { readManifest } from "../../foundation/npm/index.ts";
+import type { Manifest } from "../../foundation/npm/index.ts";
+import type { DependentsPolicy, Release } from "../planning/index.ts";
 import { globAll } from "./glob.ts";
-import { paths, type Location } from "./paths.ts";
+import { paths } from "./paths.ts";
+import type { Location } from "./paths.ts";
 
 /**
  * The files a resolution read, so that preparation and apply can refuse when any of them
@@ -22,11 +25,7 @@ export type Snapshot = {
 	}>;
 };
 
-/**
- * A plan entry after resolution: its previous version is the manifest's version.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type WithPrevious<E> =
 	E extends Package.Package<any>
 		? { readonly package: E; readonly previous: string; readonly changes: ReadonlyArray<never> }
@@ -38,33 +37,28 @@ export type Resolved<
 	V,
 	I,
 	D,
-	_Rs extends ReadonlyArray<Registration<M>>,
+	_Rs extends ReadonlyArray<Release.Registration<M>>,
 	Ps extends ReadonlyArray<unknown>,
 > = {
 	/** Every member with its manifest version as a stated `previous`. */
-	readonly input: Options<M, V, I, D> & {
+	readonly input: Release.Options<M, V, I, D> & {
 		readonly packages: { readonly [K in keyof Ps]: WithPrevious<Ps[K]> };
-		readonly requirements: ReadonlyArray<Requirement>;
+		readonly requirements: ReadonlyArray<DependentsPolicy.Requirement>;
 	};
 	readonly snapshot: Snapshot;
 };
 
-/**
- * Resolution options: plan input whose previous versions and requirements come from
- * manifests.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type ResolveOptions<
 	M extends object,
 	V,
 	I,
 	D,
-	Rs extends ReadonlyArray<Registration<M>>,
+	Rs extends ReadonlyArray<Release.Registration<M>>,
 	Ps extends ReadonlyArray<unknown>,
 > = Location &
-	Options<M, V, I, D> & {
-		readonly packages: Packages<M, V, I, D, Rs, Ps>;
+	Release.Options<M, V, I, D> & {
+		readonly packages: Release.Packages<M, V, I, D, Rs, Ps>;
 		/**
 		 * Glob patterns of other manifests to scan for dependents outside the group. They are
 		 * reported as cross-group requirements, never added.
@@ -73,9 +67,9 @@ export type ResolveOptions<
 	};
 
 /**
- * Resolves plan input from manifests. Each member's previous version is its manifest's
- * `version`, and dependency fields become requirements: `devDependencies` can get range
- * edits but never require a release. Nothing is written.
+ * Sets each member's `previous` from its manifest's `version` and collects manifest
+ * dependency fields as requirements (`devDependencies` can get range edits but never
+ * require a release). Nothing is written.
  *
  * @since 0.0.1
  */
@@ -84,10 +78,10 @@ export const resolve = <
 	V,
 	I,
 	D,
-	Rs extends ReadonlyArray<Registration<M>>,
-	const Ps extends ReadonlyArray<Entry<Rs>>,
+	Rs extends ReadonlyArray<Release.Registration<M>>,
+	const Ps extends ReadonlyArray<Release.Entry<Rs>>,
 >(
-	release: Release<M, V, I, D, Rs>,
+	release: Release.Release<M, V, I, D, Rs>,
 	options: ResolveOptions<M, V, I, D, Rs, Ps>,
 ): Effect.Effect<
 	Resolved<M, V, I, D, Rs, Ps>,
@@ -155,10 +149,7 @@ export const resolve = <
 
 		const globs: Array<Snapshot["globs"][number]> = [];
 		if (options.manifests !== undefined) {
-			const patterns = options.manifests.flatMap((pattern) => {
-				const path = fromBase(pattern);
-				return path === undefined ? [] : [path];
-			});
+			const patterns = options.manifests.flatMap((pattern) => fromBase(pattern) ?? []);
 			const matched = yield* globAll(fs, location, patterns, []);
 			globs.push({ pattern: patterns, matched });
 			for (const path of matched) {
@@ -170,21 +161,20 @@ export const resolve = <
 		}
 		if (issues.length > 0) return yield* new PrepareError({ issues });
 
-		const requirements: Array<Requirement> = manifests.flatMap(({ path, manifest }) =>
-			manifest.ranges.flatMap(({ field, dependency, range }) =>
-				members.includes(dependency) && manifest.name !== undefined
-					? [
-							{
+		const requirements: Array<DependentsPolicy.Requirement> = manifests.flatMap(
+			({ path, manifest }) =>
+				manifest.ranges.flatMap(({ field, dependency, range }) =>
+					members.includes(dependency) && manifest.name !== undefined
+						? {
 								dependency,
 								dependent: manifest.name,
 								field,
 								range,
 								manifest: path,
 								private: manifest.private,
-							},
-						]
-					: [],
-			),
+							}
+						: [],
+				),
 		);
 		// Each entry keeps its own fields, with the manifest's version as `previous`.
 		// oxlint-disable-next-line typescript/no-unsafe-type-assertion

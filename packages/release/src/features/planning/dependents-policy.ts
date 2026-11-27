@@ -1,4 +1,4 @@
-import { form, satisfies } from "../../foundation/npm/ranges.ts";
+import { form, satisfies } from "../../foundation/npm/index.ts";
 
 /**
  * A dependency between workspace packages, resolved from manifests before planning.
@@ -50,8 +50,8 @@ export type Context = {
 };
 
 /**
- * Decides dependent work. It must return synchronously. Planning runs it until no new
- * `release` appears, so a dependent's own dependents are considered too.
+ * Must return synchronously. Planning repeats it until no new `release` proposal
+ * appears, so transitive dependents are included.
  *
  * @since 0.0.1
  */

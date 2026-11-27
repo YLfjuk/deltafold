@@ -1,8 +1,8 @@
 # Release design
 
-Status: accepted direction, with a private prototype in `packages/release`.
-Examples are API sketches; the prototype's exact interfaces may change. Open
-questions and prototype findings are listed at the end.
+Status: implemented in `@deltafold/release` (`packages/release`) from the
+accepted design direction. Early examples are sketches; open questions and
+implementation findings are listed at the end.
 
 ## Ownership
 
@@ -91,7 +91,7 @@ uses that head. Several heads (for example a backport merged forward) refuse
 with `PreviousRequired`, naming every such package and its heads; an empty
 history refuses with `NoPrevious`. Each planned and unchanged member reports
 `previousFrom: "stated" | "history-head"`, and an explanation names the head
-used, noting when it is a prerelease. `Release.heads(pkg)` lists the heads. A
+used. `Release.heads(pkg)` lists the heads. A
 planned version must be new to the whole package history (`ExistingVersion`).
 
 Releasing from a version that already has later versions forks beside them. It
@@ -149,8 +149,7 @@ planned version's `details.line` is the prerelease line it lands on.
 The baseline policy supports highest (default), require-matching, and an explicit
 baseline version. A baseline is used for calculation, not assigned as ancestry.
 An explicit baseline ignores alignment checks. An explicit target bypasses
-calculation. Exact syntax for the richer baseline
-policy remains a prototype detail.
+calculation.
 
 Baseline policy also controls alignment. Align unchanged participants to an
 advancing shared version by default; allow unchanged-package drift explicitly.
@@ -399,13 +398,6 @@ before prescribing persistence machinery.
 Git commits, tags, publishing, and publication metadata are separate explicit
 steps. Core migration execution/rollback behavior is not release apply policy.
 
-## Open prototype questions
-
-- Source relocation: supported declaration/dependency patterns, factory import
-  discovery and explicit reference fallback, collisions and diagnostics.
-- Exact DependentsPolicy callback contract, rich baseline shape, and handling
-  no-change plans. Do not infer new product policy from syntax examples.
-
 ## Deferred authoring tooling
 
 Custom .change.delta/.version.delta files with filename-derived IDs and a
@@ -416,34 +408,10 @@ for generation and in-memory validation without imposing it on core.
 
 ## Prototype findings
 
-The prototype in `packages/release` is private and unpublished. It builds on
-headless `Change` from the core. Its public exports carry `@since @next`. When the package
-first receives a version, the version step replaces `@next` with that version on
-the APIs the release includes, before publishing; tags that already name a
-version keep it.
-
-These contracts worked as accepted:
-
-- Bounded groups with a required ID. Per-package settings leave the shared
-  calculation, plan options replace configured ones, and literal targets work at
-  both levels of plan input. Every generated version keeps its package's own `previous`.
-- The configured factory's metadata type reaches strategies, and changes from
-  another factory are type errors. Strategies are synchronous in their type and
-  at run time.
-- Highest, require-matching, and explicit baselines. Unchanged members align by
-  default and drift when the strategy allows it. Downgrades fail.
-- The prerelease sequence above, from lines derived from version ids and
-  ancestry. Continuing from a stable version and a tag change that lowers
-  precedence fail with diagnostics.
-- Stable promotion with explicitly selected changes, and
-  `SemVerStrategy.prereleaseChanges` listing a line's changes with their reverts.
-- Pending modules copied into one generated module per version without
-  evaluation. Relative imports are re-pointed and a shared change is copied into
-  each package's module with the same ID.
-- Literal replacements with globs, exclusions, zero-match reports, and overlap
-  conflicts. Apply refuses when any file read during preparation, or the set of
-  matched files, changed. A failed write restores earlier writes and reports
-  files it could not restore.
+`packages/release` is published as `@deltafold/release` (starting at `0.0.1`).
+It builds on headless `Change` from the core. Released exports carry their
+release `@since` version; unreleased additions carry `@since @next`, which the
+version step replaces before publishing.
 
 Interface choices made by the prototype, open to revision:
 

@@ -3,15 +3,27 @@
 	"tasks": {
 		"build": {
 			"dependsOn": ["^build"],
-			"inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/tsconfig.base.json"],
+			"inputs": [
+				"$TURBO_DEFAULT$",
+				"$TURBO_ROOT$/tsconfig.base.json",
+				"$TURBO_ROOT$/@types/**"
+			],
 			"outputs": ["dist/**"]
 		},
 		"typecheck": {
-			"inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/tsconfig.base.json"],
+			"inputs": [
+				"$TURBO_DEFAULT$",
+				"$TURBO_ROOT$/tsconfig.base.json",
+				"$TURBO_ROOT$/@types/**"
+			],
 			"outputs": []
 		},
 		"test": {
-			"inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/tsconfig.base.json"],
+			"inputs": [
+				"$TURBO_DEFAULT$",
+				"$TURBO_ROOT$/tsconfig.base.json",
+				"$TURBO_ROOT$/@types/**"
+			],
 			"outputs": []
 		}
 	}

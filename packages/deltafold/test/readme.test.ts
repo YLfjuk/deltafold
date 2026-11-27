@@ -13,10 +13,10 @@ import {
 	Migration,
 	Observer,
 	Package,
-	type Plan,
 	Rule,
 	Version,
 } from "deltafold";
+import type { Plan } from "deltafold";
 import { Changelog } from "deltafold/changelog";
 import * as Markdown from "deltafold/markdown";
 

@@ -11,7 +11,7 @@ export type Kind<P> = {
 	readonly _tag: "ActionKind";
 	readonly kind: string;
 	readonly describe: (payload: P) => string;
-	/** Creates an action instance with a stable identifier. */
+	/** `id` must be stable. */
 	readonly make: <const Id extends string>(id: Id, payload: P) => Action<Id, P>;
 };
 
@@ -26,15 +26,11 @@ export type Action<Id extends string = string, P = unknown> = {
 	readonly id: Id;
 	readonly kind: string;
 	readonly payload: P;
-	/** The description produced by the kind's `describe` function. */
+	/** Produced by the kind's `describe` function. */
 	readonly description: string;
 };
 
-/**
- * Any action instance.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Any = Action<string, any>;
 
 /**
@@ -47,11 +43,7 @@ export type Ref = {
 	readonly action: Any;
 };
 
-/**
- * Children run one after another.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Sequence<A extends Any = Any> = {
 	readonly _tag: "Sequence";
 	readonly children: ReadonlyArray<Step>;
@@ -87,11 +79,7 @@ export type Parallel<A extends Any = Any> = {
  */
 export type Step<A extends Any = Any> = A | Instruction<A> | Sequence<A> | Parallel<A>;
 
-/**
- * Extracts the action instances declared by a step.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type ActionsOf<S> =
 	S extends Action<infer Id, infer P>
 		? Action<Id, P>
@@ -104,7 +92,7 @@ export type ActionsOf<S> =
 					: never;
 
 /**
- * Defines an action kind.
+ * `describe` defaults to returning `kind`.
  *
  * @example
  * ```ts
@@ -148,18 +136,13 @@ export const define = <P>(
  */
 export const ref = (action: Any): Ref => ({ _tag: "ActionRef", action });
 
-/**
- * Declares steps that run one after another.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export const sequence = <const S extends ReadonlyArray<Step>>(
 	children: S,
 ): Sequence<ActionsOf<S[number]>> => ({ _tag: "Sequence", children });
 
 /**
- * Declares independent branches that may run concurrently. Each branch can be a single
- * step or a sequence.
+ * `concurrency` defaults to `"unbounded"`.
  *
  * @since 0.0.1
  */
