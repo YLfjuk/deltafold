@@ -1,6 +1,7 @@
 import * as NodeFileSystem from "@effect/platform-node-shared/NodeFileSystem";
 import * as NodePath from "@effect/platform-node-shared/NodePath";
-import { Effect, FileSystem, Layer, Path, Scope } from "effect";
+import type { Scope } from "effect";
+import { Effect, FileSystem, Layer, Path } from "effect";
 import { API } from "typescript-7.1/async";
 
 import * as Workspace from "../workspace.ts";

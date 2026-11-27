@@ -1,4 +1,5 @@
-import { Effect, Result, Scope } from "effect";
+import type { Scope } from "effect";
+import { Effect, Result } from "effect";
 import type { Node, SourceFile } from "typescript-7.1/ast";
 import { skipTrivia } from "typescript-7.1/ast/scanner";
 import type { Checker, Program, Symbol } from "typescript-7.1/async";

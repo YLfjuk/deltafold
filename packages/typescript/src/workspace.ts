@@ -1,3 +1,4 @@
+import type { Scope } from "effect";
 import {
 	Array as Arr,
 	Context,
@@ -8,7 +9,6 @@ import {
 	Order,
 	Path,
 	RcMap,
-	Scope,
 	Semaphore,
 } from "effect";
 import type { Snapshot } from "typescript-7.1/async";

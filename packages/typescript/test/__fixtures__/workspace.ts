@@ -1,6 +1,7 @@
 // Real-file fixtures. The TypeScript compiler reads files from disk, so these tests
 // write each fixture project into a temporary directory that the test's scope removes.
-import { Effect, FileSystem, Result, Scope } from "effect";
+import type { Scope } from "effect";
+import { Effect, FileSystem, Result } from "effect";
 
 import { TypeScript } from "@deltafold/typescript";
 import { TypeScriptNode } from "@deltafold/typescript/node";

@@ -3,6 +3,7 @@ import { symlink } from "node:fs/promises";
 import * as NodeFileSystem from "@effect/platform-node-shared/NodeFileSystem";
 import * as NodePath from "@effect/platform-node-shared/NodePath";
 import { expect, layer } from "@effect/vitest";
+import type { Scope } from "effect";
 import {
 	Array as Arr,
 	Deferred,
@@ -13,7 +14,6 @@ import {
 	Layer,
 	Order,
 	PlatformError,
-	Scope,
 } from "effect";
 
 import { TypeScript } from "@deltafold/typescript";

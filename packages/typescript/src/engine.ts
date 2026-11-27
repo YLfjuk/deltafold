@@ -1,4 +1,5 @@
-import { Array as Arr, Cause, Context, Effect, Option, Order, Result, Schema, Scope } from "effect";
+import type { Result, Scope } from "effect";
+import { Array as Arr, Cause, Context, Effect, Option, Order, Schema } from "effect";
 import type { SourceFile } from "typescript-7.1/ast";
 import type { Project as CompilerProject } from "typescript-7.1/async";
 
@@ -19,7 +20,6 @@ import type { Info } from "./project.ts";
 import type { Internals, OpenFile, Opened, Write } from "./workspace.ts";
 import { internals, Workspace } from "./workspace.ts";
 
-/** The service map of a Promise transform that declares no services. */
 // oxlint-disable-next-line typescript/no-generated-empty-object-type -- Transforms without services declare an empty service map.
 export type NoServices = Record<never, never>;
 

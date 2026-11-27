@@ -1,4 +1,5 @@
-import { Effect, Result, Scope } from "effect";
+import type { Scope } from "effect";
+import { Effect, Result } from "effect";
 import type { SourceFile } from "typescript-7.1/ast";
 import type { Checker, Program } from "typescript-7.1/async";
 

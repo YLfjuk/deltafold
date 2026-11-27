@@ -261,7 +261,7 @@ layer(NodeFileSystem.layer)("TypeScript.File", (it) => {
 			const failed = transformFailed(outcome);
 			expect(failed.failures.map((failure) => [failure.path, failure.cause._tag])).toEqual([
 				["src/aliased.tsx", "Unsupported"],
-				["src/unrelated.ts", "UnexpectedHandlerError"],
+				["src/unrelated.ts", "deltafold/UnexpectedHandlerError"],
 			]);
 			const unexpected = failed.failures[1]?.cause;
 			expect(unexpected).toBeInstanceOf(Handler.UnexpectedHandlerError);

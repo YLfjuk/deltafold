@@ -10,7 +10,7 @@ const parses = (text: string) => {
 	}
 };
 
-/** The end of the string literal that starts at `start`, after its closing quote. */
+/** The index just past the closing quote of the string that starts at `start`. */
 const stringEnd = (text: string, start: number) => {
 	let end = start + 1;
 	while (end < text.length && text[end] !== '"') end += text[end] === "\\" ? 2 : 1;

@@ -76,11 +76,7 @@ export class TransformFailed<out E = never> extends Data.TaggedError(
 	}
 }
 
-/**
- * Returns the failures whose cause the guard recognizes.
- *
- * @since @next
- */
+/** @since @next */
 export const causes = <E, G extends Handler.ErrorGuard>(
 	error: TransformFailed<E>,
 	guard: G,
@@ -89,11 +85,7 @@ export const causes = <E, G extends Handler.ErrorGuard>(
 		Schema.isSchema(guard) ? Schema.is(guard)(failure.cause) : guard(failure.cause),
 	);
 
-/**
- * The type a schema or type guard recognizes.
- *
- * @since @next
- */
+/** @since @next */
 export type GuardedError<G> = G extends Schema.Top
 	? G["Type"]
 	: G extends ((cause: unknown) => cause is infer E)
