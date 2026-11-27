@@ -31,9 +31,13 @@
 				"noExternal": true,
 				"importAliases": { "Array": "Arr" },
 				"allowedUnstableApis": [
+					"@effect/platform-node-shared/NodeFileSystem",
+					"@effect/platform-node-shared/NodePath",
 					"@effect/vitest#it",
+					"@effect/vitest#layer",
 					"effect/FileSystem",
 					"effect/Graph",
+					"effect/Path",
 					"effect/PlatformError",
 					"effect/SemVer",
 					"effect/SemVerRange"
