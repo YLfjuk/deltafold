@@ -6,9 +6,7 @@ import { skipTrivia } from "typescript-7.1/ast/scanner";
 import { EditRejected } from "./errors.ts";
 
 /**
- * Replaces the text from `pos` to `end` with `newText`. Offsets are UTF-16 positions in
- * the file text without its byte order mark, as `SourceFile.text` holds it. Language
- * service methods such as `getImportAdderEdits` return edits of this shape too.
+ * Offsets are UTF-16 positions in `SourceFile.text`, which has no byte order mark.
  *
  * @since @next
  */
@@ -19,42 +17,32 @@ export type TextEdit = {
 };
 
 /**
- * A text edit with the root-relative, `/`-separated path of the file it changes.
+ * `path` is root-relative and `/`-separated.
  *
  * @since @next
  */
 export type FileEdit = TextEdit & { readonly path: string };
 
 /**
- * Builds edits from syntax nodes. The helpers start at a node's first token, because
- * its `pos` includes leading comments and whitespace.
+ * Edits start at a node's first token, after its leading comments and whitespace.
  *
  * @since @next
  */
 export type Edits = {
 	readonly replace: (node: Node, text: string) => FileEdit;
-	/** Removes a node and keeps its leading comments and whitespace. */
+	/** Keeps the node's leading comments and whitespace. */
 	readonly remove: (node: Node) => FileEdit;
-	/** Inserts text before a node's first token. */
 	readonly insertBefore: (node: Node, text: string) => FileEdit;
-	/** Inserts text after a node's last character. */
 	readonly insertAfter: (node: Node, text: string) => FileEdit;
 	/**
-	 * Renames a property or member at a name node, such as a find-references result.
 	 * Shorthand forms keep the local name, so `const { a1 } = value` becomes
-	 * `const { a2: a1 } = value`, and string-literal names keep their quotes. Other
-	 * name positions throw `EditRejected`.
+	 * `const { a2: a1 } = value`. Throws `EditRejected` for `"other"` name forms.
 	 */
 	readonly rename: (name: Node, newName: string) => FileEdit;
-	/** A node's text, without its leading comments and whitespace. */
 	readonly text: (node: Node) => string;
 };
 
-/**
- * Where a name appears. `rename` supports every form except `"other"`.
- *
- * @since @next
- */
+/** @since @next */
 export type NameForm =
 	| "access"
 	| "element-access"
@@ -90,7 +78,6 @@ const memberKinds = new Set<SyntaxKind>([
 	SyntaxKind.EnumMember,
 ]);
 
-/** Classifies a name node by its parent. */
 export const nameForm = (name: Node): NameForm => {
 	const parent = name.parent;
 	if (parent === undefined) return "other";
@@ -127,8 +114,8 @@ export const nameForm = (name: Node): NameForm => {
 };
 
 /**
- * Creates edit helpers. `pathOf` returns the root-relative path of a source file the
- * transform may edit, and throws `EditRejected` for any other file.
+ * `pathOf` returns the root-relative path of a source file the transform may edit, and
+ * throws `EditRejected` for any other file.
  */
 export const makeEdits = (pathOf: (sourceFile: SourceFile) => string): Edits => {
 	const locate = (node: Node) => {
@@ -191,7 +178,6 @@ export const makeEdits = (pathOf: (sourceFile: SourceFile) => string): Edits => 
 
 const isInsertion = (edit: TextEdit) => edit.pos === edit.end;
 
-/** Orders edits by offset, with insertions before a replacement at the same offset. */
 const byOffset = Order.combine(
 	Order.mapInput(Order.Number, (edit: TextEdit) => edit.pos),
 	Order.mapInput(Order.Number, (edit: TextEdit) => (isInsertion(edit) ? 0 : 1)),
@@ -201,10 +187,9 @@ const sameEdit = (a: TextEdit, b: TextEdit) =>
 	a.pos === b.pos && a.end === b.end && a.newText === b.newText;
 
 /**
- * Applies a batch of edits that all refer to `text`. It keeps one copy of identical
- * replacements and removals, and every insertion. At one offset, insertions come before
- * a replacement, in the order returned. An edit outside the text, or two overlapping
- * edits, rejects the batch.
+ * Keeps one copy of identical replacements and removals, and every insertion. At one
+ * offset, insertions come before a replacement, in the order returned. An edit outside
+ * the text, or two overlapping edits, rejects the batch.
  */
 export const applyEdits = (
 	path: string,

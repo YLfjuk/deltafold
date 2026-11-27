@@ -22,8 +22,8 @@ export class EditRejected extends Data.TaggedError(`${PackageConfig.name}/EditRe
 }
 
 /**
- * A matched file has syntax errors, so its transform did not run. A project
- * transform does not run while any matched file of its project has syntax errors.
+ * The file's transform did not run. A project transform does not run while any of its
+ * matched files has syntax errors.
  *
  * @since @next
  */
@@ -37,10 +37,8 @@ export class SyntaxErrors extends Data.TaggedError(`${PackageConfig.name}/Syntax
 }
 
 /**
- * One failure of a transform. `path` names the file when the failure concerns one: a
- * file with syntax errors, a failed file transform, or edits refused for that file. A
- * project transform's own error, or an edit it returns for a file outside its project,
- * has no `path`.
+ * `path` is missing for a project transform's own error and for an edit to a file
+ * outside its project.
  *
  * @since @next
  */
@@ -51,18 +49,16 @@ export type Failure<C> = {
 };
 
 /**
- * Causes that any transform can produce. `Handler.UnexpectedHandlerError` wraps an
- * error that none of the transform's guards recognized, or an Effect transform's
- * defect.
+ * `Handler.UnexpectedHandlerError` wraps an error that no guard recognized, or an
+ * Effect transform's defect.
  *
  * @since @next
  */
 export type AdapterCause = Handler.UnexpectedHandlerError | EditRejected | SyntaxErrors;
 
 /**
- * At least one transform of the action failed, and no file was written. Every
- * transform runs before the action fails, so `failures` lists all failures, sorted by
- * path and project. `E` is the error type the transform declared.
+ * No file was written. Every transform runs before the action fails, so `failures`
+ * lists all of them, sorted by path and project.
  *
  * @since @next
  */
@@ -81,8 +77,7 @@ export class TransformFailed<out E = never> extends Data.TaggedError(
 }
 
 /**
- * Returns the failures whose cause a guard recognizes. The guard is a schema or a type
- * guard.
+ * Returns the failures whose cause the guard recognizes.
  *
  * @since @next
  */
@@ -106,17 +101,15 @@ export type GuardedError<G> = G extends Schema.Top
 		: never;
 
 /**
- * Whether the failed file was written. `"not-written"` means its original is unchanged.
- * `"unknown"` means the failure left that unclear.
+ * `"not-written"` means the original is unchanged.
  *
  * @since @next
  */
 export type WriteStatus = "not-written" | "unknown";
 
 /**
- * Writing the action's files failed. `writtenPaths` were replaced, `failed` names the
- * file that failed, and `pendingPaths` were not attempted. If a file changed since it
- * was read, writing fails here before it replaces any file. Nothing is rolled back.
+ * `pendingPaths` were not attempted. A file that changed since it was read fails here
+ * before any file is replaced. Nothing is rolled back.
  *
  * @since @next
  */
@@ -138,20 +131,15 @@ export class WriteFailed extends Data.TaggedError(`${PackageConfig.name}/WriteFa
 }
 
 /**
- * Why a target could not be read:
- *
- * - `"pattern"`: the pattern is absolute, has a `..` segment, or matched a file outside
- *   the root.
- * - `"link"`: the path is a symbolic link or junction.
- * - `"unreadable"`: the file cannot be read.
- * - `"changed"`: the file changed while the compiler loaded it.
+ * `"pattern"` covers absolute patterns, `..` segments, and matches outside the root.
+ * `"changed"` means the file changed while the compiler loaded it.
  *
  * @since @next
  */
 export type ReadReason = "pattern" | "link" | "unreadable" | "changed";
 
 /**
- * Matching or reading the action's files failed before any transform ran.
+ * No transform ran.
  *
  * @since @next
  */
@@ -167,16 +155,11 @@ export class ReadFailed extends Data.TaggedError(`${PackageConfig.name}/ReadFail
 	}
 }
 
-/**
- * When the compiler failed: while opening a snapshot, or on a later request.
- *
- * @since @next
- */
+/** @since @next */
 export type CompilerStage = "snapshot" | "request";
 
 /**
- * The TypeScript compiler failed: it could not start, its native package is missing,
- * a request failed, or it crashed. Nothing restarts it.
+ * Nothing restarts the compiler after it fails.
  *
  * @since @next
  */
@@ -191,10 +174,5 @@ export class CompilerFailed extends Data.TaggedError(`${PackageConfig.name}/Comp
 	}
 }
 
-/**
- * The errors of a handler built by this package, for a transform that declares
- * errors `E`.
- *
- * @since @next
- */
+/** @since @next */
 export type Errors<E> = TransformFailed<E> | WriteFailed | ReadFailed | CompilerFailed;

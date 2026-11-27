@@ -22,9 +22,8 @@ import { EditRejected } from "./errors.ts";
 import type { Workspace } from "./workspace.ts";
 
 /**
- * The compiler project a transform runs for. A configured project has the path of its
- * tsconfig file, relative to the root when the file is under it. An inferred project
- * holds files outside every tsconfig file.
+ * `config` is relative to the root when the tsconfig file is under it. An inferred
+ * project holds files outside every tsconfig file.
  *
  * @since @next
  */
@@ -32,50 +31,35 @@ export type Info =
 	| { readonly kind: "configured"; readonly config: string }
 	| { readonly kind: "inferred"; readonly id: string };
 
-/**
- * One use of a symbol in a file the transform may edit.
- *
- * @since @next
- */
+/** @since @next */
 export type Reference = {
-	/** The root-relative, `/`-separated path of the file. */
+	/** Root-relative and `/`-separated. */
 	readonly path: string;
-	/** The name node, such as the `a1` in `value.a1`. */
+	/** The name, such as the `a1` in `value.a1`. */
 	readonly node: Node;
-	/** Where the name appears. */
 	readonly form: NameForm;
 };
 
-/**
- * What a project transform receives, besides `signal` and `services` for Promise
- * transforms.
- *
- * @since @next
- */
+/** @since @next */
 export type Context<Payload> = {
 	readonly payload: Payload;
 	readonly project: Info;
 	/**
-	 * The project's matched files, as root-relative paths. The transform may edit only
-	 * these files, and it does not run while any of them has syntax errors.
+	 * The only files the transform may edit. It does not run while any of them has
+	 * syntax errors.
 	 */
 	readonly files: ReadonlyArray<string>;
-	/** Reads every file of the project, including installed declarations. */
+	/** Includes installed declarations. */
 	readonly program: Program;
 	readonly checker: Checker;
 	readonly edit: Edits;
 };
 
-/**
- * What a Promise project transform receives.
- *
- * @since @next
- */
+/** @since @next */
 export type PromiseContext<
 	Payload,
 	S extends Handler.ServiceMap = NoServices,
 > = Context<Payload> & {
-	/** Loads one of `files`. */
 	readonly sourceFile: (path: string) => Promise<SourceFile>;
 	/**
 	 * Finds the uses of a symbol in `files` with the compiler's find-references. It leaves
@@ -87,13 +71,8 @@ export type PromiseContext<
 	readonly services: ResolvedServices<S>;
 };
 
-/**
- * What an Effect project transform receives.
- *
- * @since @next
- */
+/** @since @next */
 export type EffectContext<Payload> = Context<Payload> & {
-	/** Loads one of `files`. */
 	readonly sourceFile: (
 		path: string,
 	) => Effect.Effect<SourceFile, Handler.UnexpectedHandlerError>;
@@ -106,29 +85,21 @@ export type EffectContext<Payload> = Context<Payload> & {
 	) => Effect.Effect<ReadonlyArray<Reference>, Handler.UnexpectedHandlerError>;
 };
 
-/**
- * Options of a transform.
- *
- * @since @next
- */
+/** @since @next */
 export type Options<Payload> = {
-	/** Globs, relative to the run's root, that select the action's files. */
+	/** Globs relative to the run's root. */
 	readonly include: (payload: Payload) => ReadonlyArray<string>;
 };
 
-/**
- * Options of a Promise transform.
- *
- * @since @next
- */
+/** @since @next */
 export type PromiseOptions<
 	Payload,
 	S extends Handler.ServiceMap,
 	G extends ReadonlyArray<Handler.ErrorGuard>,
 > = Options<Payload> & {
-	/** Effect services that the transform receives as `services`. The handler requires them. */
+	/** The transform receives them as `services`, and the handler requires them. */
 	readonly services?: S;
-	/** Guards for errors that keep their own type. Others become `Handler.UnexpectedHandlerError`. */
+	/** Errors these guards recognize keep their type. Others become `Handler.UnexpectedHandlerError`. */
 	readonly errors?: G;
 };
 
@@ -187,7 +158,6 @@ const operations = (unit: Unit): Operations => {
 	};
 };
 
-/** Turns a Promise operation into an Effect that fails with `Handler.UnexpectedHandlerError`. */
 const liftPromise =
 	<I, O>(action: Action.Any, call: (input: I) => Promise<O>) =>
 	(input: I) =>
@@ -244,10 +214,9 @@ const project = <A extends Action.Any, C, R>(
 	});
 
 /**
- * Edits the matched files with a Promise transform that runs once per compiler project.
- * Each edit carries its file's path, with offsets into the text the transform received.
- * The handler computes the edits in its prepare phase and writes them in its apply
- * phase, so a dry run shows whether any file would change.
+ * Runs a transform once per compiler project. The handler computes edits in its prepare
+ * phase and writes them in its apply phase, so a dry run shows whether any file would
+ * change.
  *
  * @example
  * ```ts
@@ -299,8 +268,7 @@ export const promise = <
 	);
 
 /**
- * Edits the matched files with an Effect transform that runs once per compiler project.
- * The transform keeps its own error and service types. A defect becomes
+ * Runs a transform once per compiler project. A defect becomes
  * `Handler.UnexpectedHandlerError`.
  *
  * @since @next

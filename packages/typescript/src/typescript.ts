@@ -1,14 +1,6 @@
-/**
- * Per-file transforms.
- *
- * @since @next
- */
+/** @since @next */
 export * as File from "./file.ts";
-/**
- * Per-project transforms.
- *
- * @since @next
- */
+/** @since @next */
 export * as Project from "./project.ts";
 export type { Edits, FileEdit, NameForm, TextEdit } from "./edits.ts";
 export type {

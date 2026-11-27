@@ -39,24 +39,20 @@ export type Unit = {
 	readonly files: ReadonlyArray<string>;
 	/** Source files of `files` that have no syntax errors. */
 	readonly sources: ReadonlyMap<string, SourceFile>;
-	/** Whether any file of the unit has syntax errors. */
 	readonly blocked: boolean;
 	readonly workspace: Internals;
 	/** The root-relative path of a matched file, from any name the compiler uses for it. */
 	readonly pathOf: (fileName: string) => string | undefined;
-	/** The name under which the compiler knows a matched file. */
 	readonly compilerPath: (path: string) => string;
-	/** Edit helpers that accept nodes of the given root-relative paths only. */
+	/** Accepts nodes of `allowed` files only. */
 	readonly edits: (allowed: ReadonlyArray<string>) => Edits;
 };
 
-/** What the transforms of one unit produced. */
 export type UnitResult<C> = {
 	readonly failures: ReadonlyArray<Failure<C>>;
 	readonly edits: ReadonlyArray<FileEdit>;
 };
 
-/** The writes that a prepare phase hands to its apply phase. */
 type Pending = { readonly writes: ReadonlyArray<Write> };
 
 const request = <T>(actionId: string, root: string, evaluate: () => PromiseLike<T>) =>
@@ -203,9 +199,7 @@ const loadUnits = (
 	});
 
 /**
- * The prepare phase of file and project transforms: match, lock, read, open a snapshot,
- * run the transforms, and compute the files to write. The snapshot closes when the
- * phase ends. The locks stay until the occurrence ends.
+ * The snapshot closes when the phase ends. The locks stay until the occurrence ends.
  */
 export const prepare = <C, R>(
 	action: Action.Any,
@@ -345,8 +339,7 @@ export const resolveServices = <S extends Handler.ServiceMap>(services: S | unde
 	);
 
 /**
- * Runs a Promise transform with an `AbortSignal` that interruption aborts. A rejection
- * becomes a failure result; interruption stays interruption.
+ * Interruption aborts the transform's signal and stays interruption.
  */
 export const runPromise = <T, C>(
 	call: (signal: AbortSignal) => PromiseLike<T> | T,
@@ -361,8 +354,7 @@ export const runPromise = <T, C>(
 	);
 
 /**
- * Runs an Effect transform. Its failures keep their type. A defect is wrapped with
- * `unexpected`, except an `EditRejected` thrown by an edit helper.
+ * Wraps a defect with `unexpected`, except an `EditRejected` thrown by an edit helper.
  */
 export const runEffect = <T, E, R>(
 	action: Action.Any,

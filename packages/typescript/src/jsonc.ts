@@ -95,9 +95,8 @@ const parsesWithComments = (text: string) => {
 };
 
 /**
- * Checks edited JSON against the dialect of the original: strict JSON stays strict, and
- * JSON with comments or trailing commas must still parse as such. Returns a reason when
- * the edited text does not parse.
+ * Strict JSON stays strict, and JSON with comments or trailing commas must still parse
+ * as such.
  */
 export const checkJson = (original: string, edited: string): string | undefined => {
 	if (parses(original)) return parses(edited) ? undefined : "The edited JSON does not parse";

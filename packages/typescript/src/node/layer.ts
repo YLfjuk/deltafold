@@ -8,9 +8,8 @@ import * as Workspace from "../workspace.ts";
 const jsoncSuffix = ".deltafold.json";
 
 /**
- * Runs the TypeScript compiler bundled with this package as a child process. The
- * process starts on the first snapshot and stops when the layer's scope closes. It is
- * never restarted after a failure.
+ * The compiler process starts on the first snapshot and stops when the layer's scope
+ * closes. Nothing restarts it.
  *
  * TypeScript 7.1.0-beta finds no project for a `.jsonc` file. Each snapshot therefore
  * opens such a file under a hidden `.json` name beside it and serves its text from
@@ -92,9 +91,8 @@ const compiler = (
 	});
 
 /**
- * Provides `TypeScript.Workspace` for a root directory, with Node's file system and
- * the TypeScript compiler. Payload globs match under `root`, and a relative `root`
- * resolves against the current working directory.
+ * Provides `TypeScript.Workspace` with Node's file system and the TypeScript compiler. A
+ * relative `root` resolves against the current working directory.
  *
  * @example
  * ```ts

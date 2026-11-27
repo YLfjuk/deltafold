@@ -12,30 +12,20 @@ import { EditRejected } from "./errors.ts";
 import type { Info, Options, PromiseOptions } from "./project.ts";
 import type { Workspace } from "./workspace.ts";
 
-/**
- * What a file transform receives, besides `signal` and `services` for Promise
- * transforms.
- *
- * @since @next
- */
+/** @since @next */
 export type Context<Payload> = {
 	readonly payload: Payload;
-	/** The root-relative, `/`-separated path of the file. */
+	/** Root-relative and `/`-separated. */
 	readonly path: string;
 	readonly sourceFile: SourceFile;
-	/** The compiler project that the file belongs to. */
 	readonly project: Info;
 	readonly program: Program;
 	readonly checker: Checker;
-	/** Edit helpers that accept nodes of this file only. */
+	/** Accepts nodes of this file only. */
 	readonly edit: Edits;
 };
 
-/**
- * What a Promise file transform receives.
- *
- * @since @next
- */
+/** @since @next */
 export type PromiseContext<
 	Payload,
 	S extends Handler.ServiceMap = NoServices,
@@ -125,10 +115,9 @@ const contextOf = <Payload>(
 });
 
 /**
- * Edits the matched files with a Promise transform that runs once per file. The
- * transform returns edits for its file, with offsets into the text it received. The
- * handler computes the edits in its prepare phase and writes them in its apply phase,
- * so a dry run shows whether any file would change.
+ * Runs a transform once per matched file. The handler computes edits in its prepare
+ * phase and writes them in its apply phase, so a dry run shows whether any file would
+ * change.
  *
  * @example
  * ```ts
@@ -169,8 +158,7 @@ export const promise = <
 	);
 
 /**
- * Edits the matched files with an Effect transform that runs once per file. The
- * transform keeps its own error and service types. A defect becomes
+ * Runs a transform once per matched file. A defect becomes
  * `Handler.UnexpectedHandlerError`.
  *
  * @since @next

@@ -16,43 +16,31 @@ import type { Snapshot } from "typescript-7.1/async";
 import * as PackageConfig from "./configs/package.ts";
 import { CompilerFailed, ReadFailed, WriteFailed } from "./errors.ts";
 
-/**
- * A file to open in a snapshot. The path is absolute and `/`-separated, and the text has
- * no byte order mark.
- */
+/** The path is absolute and `/`-separated, and the text has no byte order mark. */
 export type OpenFile = {
 	readonly path: string;
 	readonly text: string;
 };
 
-/**
- * An open snapshot and the file name under which the compiler knows each opened file.
- * The compiler can know a file under another name, such as a `.jsonc` file that it
- * only opens with a `.json` extension.
- */
+/** The compiler can know a file under another name, such as a `.json` name for a `.jsonc` file. */
 export type Opened = {
 	readonly snapshot: Snapshot;
 	readonly compilerPath: (path: string) => string;
 };
 
-/**
- * Opens compiler snapshots. The Node entry point provides one that runs the
- * TypeScript compiler.
- */
 export type Compiler = {
 	readonly open: (
 		files: ReadonlyArray<OpenFile>,
 	) => Effect.Effect<Opened, CompilerUnavailable, Scope.Scope>;
 };
 
-/** A compiler that could not open a snapshot, with the original failure. */
 export class CompilerUnavailable extends Data.TaggedError(
 	`${PackageConfig.name}/CompilerUnavailable`,
 )<{
 	readonly cause: unknown;
 }> {}
 
-/** A file the write step replaces. `expected` is the content it must still have. */
+/** `expected` is the content the file must still have. */
 export type Write = {
 	readonly path: string;
 	readonly expected: string;
@@ -64,9 +52,8 @@ const InternalId = `~${PackageConfig.name}/Workspace` as const;
 /** Workspace operations that only the handlers of this package use. */
 export type Internals = {
 	readonly caseSensitive: boolean;
-	/** The absolute, `/`-separated path of a root-relative path. */
 	readonly absolute: (path: string) => string;
-	/** A comparable key for an absolute path: case-folded on case-insensitive file systems. */
+	/** Case-folded on case-insensitive file systems. */
 	readonly canonical: (absolutePath: string) => string;
 	readonly match: (
 		actionId: string,
@@ -77,7 +64,6 @@ export type Internals = {
 		actionId: string,
 		writes: ReadonlyArray<Write>,
 	) => Effect.Effect<void, WriteFailed>;
-	/** Opens root-relative files, with their text without a byte order mark. */
 	readonly open: (
 		actionId: string,
 		files: ReadonlyArray<OpenFile>,
@@ -85,20 +71,17 @@ export type Internals = {
 };
 
 /**
- * The root of a run, its file locks, and its compiler. `TypeScriptNode.layer` provides
- * it.
+ * `TypeScriptNode.layer` provides it.
  *
  * @since @next
  */
 export type Workspace = {
-	/** The absolute, `/`-separated root that payload globs are relative to. */
+	/** Absolute and `/`-separated. Payload globs are relative to it. */
 	readonly root: string;
 	/**
-	 * Locks root-relative paths until the current scope closes. This package's handlers
-	 * lock every file they may write, and a custom handler that writes the same files can
-	 * take the same locks. `./a.ts` and `a.ts` share a lock. It takes locks in sorted
-	 * order, and waiting for one can be interrupted. Locks are not reentrant, so a fiber
-	 * that locks a path it already holds waits until it is interrupted.
+	 * Holds the locks until the current scope closes. This package's handlers lock every
+	 * file they may write. `./a.ts` and `a.ts` share a lock. Locks are not reentrant, so
+	 * locking a path the fiber already holds waits until it is interrupted.
 	 */
 	readonly lock: (paths: ReadonlyArray<string>) => Effect.Effect<void, never, Scope.Scope>;
 	readonly [InternalId]: Internals;
@@ -109,15 +92,12 @@ export const Workspace = Context.Service<Workspace>(`${PackageConfig.name}/Works
 
 export const internals = (workspace: Workspace): Internals => workspace[InternalId];
 
-/** The suffix of the write step's temporary files. Matching never selects them. */
+/** Matching never selects files with this suffix. */
 export const temporarySuffix = ".deltafold-tmp";
 
 const toPosix = (path: string) => path.replaceAll("\\", "/");
 
-/**
- * The patterns a brace pattern stands for: `a/{b,c}.ts` stands for `a/b.ts` and
- * `a/c.ts`. An unclosed `{` stays literal.
- */
+/** An unclosed `{` stays literal. */
 const expandBraces = (pattern: string): ReadonlyArray<string> => {
 	const open = pattern.indexOf("{");
 	if (open === -1) return [pattern];
@@ -142,14 +122,10 @@ const expandBraces = (pattern: string): ReadonlyArray<string> => {
 	return expandBraces(pattern.slice(open + 1)).map((rest) => `${head}{${rest}`);
 };
 
-/** Whether a `/`-separated path is absolute or has a `..` segment. */
 const escapesPath = (path: string) =>
 	/^(\/|[A-Za-z]:)/.test(path) || path.split("/").includes("..");
 
-/**
- * Whether any brace alternative of a glob pattern escapes the root. `{.,}./a` stands for
- * `../a`, so it does. Backslashes count as separators.
- */
+/** `{.,}./a` stands for `../a`, so it escapes. */
 const escapesRoot = (pattern: string) => expandBraces(toPosix(pattern)).some(escapesPath);
 
 const swapCase = (text: string) =>
@@ -159,7 +135,7 @@ const swapCase = (text: string) =>
 		return char === lower ? char.toUpperCase() : lower;
 	}).join("");
 
-/** Decodes UTF-8 file bytes and keeps a leading byte order mark. */
+/** Keeps a leading byte order mark. */
 const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
 
 const errorMessage = (cause: unknown) =>
@@ -324,7 +300,6 @@ export const make = (options: {
 			);
 
 			return Effect.gen(function* () {
-				// Pass 1: write every temporary file, keeping the original's mode.
 				for (const entry of staged) {
 					yield* fs.writeFileString(entry.temporary, entry.text).pipe(
 						Effect.andThen(
@@ -346,7 +321,7 @@ export const make = (options: {
 						),
 					);
 				}
-				// Pass 2: check that every original still has the content that was read.
+				// Check every original before renaming any, so a conflict replaces nothing.
 				for (const entry of staged) {
 					const current = yield* readText(entry.target).pipe(
 						Effect.mapError((cause) =>
@@ -368,7 +343,6 @@ export const make = (options: {
 						);
 					}
 				}
-				// Pass 3: replace each original.
 				const written: Array<string> = [];
 				for (const entry of staged) {
 					yield* fs
