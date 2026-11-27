@@ -80,7 +80,8 @@ export type Workspace = {
 	readonly root: string;
 	/**
 	 * Holds the locks until the current scope closes. This package's handlers lock every
-	 * file they may write. `./a.ts` and `a.ts` share a lock. Locks are not reentrant, so
+	 * file they may write. `./a.ts` and `a.ts` share a lock. It takes locks in sorted
+	 * order, so callers need not sort `paths`. Locks are not reentrant, so
 	 * locking a path the fiber already holds waits until it is interrupted.
 	 */
 	readonly lock: (paths: ReadonlyArray<string>) => Effect.Effect<void, never, Scope.Scope>;

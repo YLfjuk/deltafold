@@ -36,9 +36,11 @@ export type Edits = {
 	readonly insertAfter: (node: Node, text: string) => FileEdit;
 	/**
 	 * Shorthand forms keep the local name, so `const { a1 } = value` becomes
-	 * `const { a2: a1 } = value`. Throws `EditRejected` for `"other"` name forms.
+	 * `const { a2: a1 } = value`. String-literal names keep their quotes, so pass
+	 * `newName` unquoted. Throws `EditRejected` for the `"other"` `NameForm`.
 	 */
 	readonly rename: (name: Node, newName: string) => FileEdit;
+	/** Excludes leading comments and whitespace. */
 	readonly text: (node: Node) => string;
 };
 
