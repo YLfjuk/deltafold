@@ -5,21 +5,21 @@ import * as Interaction from "../execution/interaction.ts";
 import type * as Observer from "../execution/observer.ts";
 import type { Output } from "./output.ts";
 
-/** What stopped the run: the first action that was declined, failed, or timed out. */
+/** The first action that was declined, failed, or timed out. */
 type Stop = {
 	readonly occurrence: string;
 	readonly reason: "was declined" | "failed" | "timed out";
 };
 
-/** The latest known stop of a run, shared by its prompts and its progress observer. */
+/** Shared by a run's prompts and its progress observer. */
 type Stops = {
 	readonly current: () => Stop | undefined;
 	readonly record: (stop: Stop) => void;
 };
 
 /**
- * The text a person sees for manual work: the occurrence's migration instruction, or the
- * action description when it has none, as the guide shows it. Paragraphs become lines.
+ * The occurrence's migration instruction, or the action description when it has none, as
+ * the guide shows it. Paragraphs become lines.
  */
 export const instructionText = (occurrence: Occurrence): ReadonlyArray<string> => {
 	const { instruction } = occurrence;
@@ -45,8 +45,8 @@ const answers = {
 const isAnswerKey = (value: string): value is keyof typeof answers => Object.hasOwn(answers, value);
 
 /**
- * Shows one manual occurrence and reads answers until one is valid. A prompt shown after
- * the run started stopping says so: its step had already started, and settles normally.
+ * Reads answers until one is valid. A prompt shown after the run started stopping says so;
+ * its step had already started and settles normally.
  */
 const ask = (output: Output["Service"], cancel: () => void, stops: Stops, occurrence: Occurrence) =>
 	Effect.gen(function* () {
@@ -87,11 +87,10 @@ const ask = (output: Output["Service"], cancel: () => void, stops: Stops, occurr
 	});
 
 /**
- * Asks a person on the terminal to confirm manual work, one prompt at a time, and holds
- * progress lines while a prompt is open. `cancel` aborts the run: at the end of input it
- * runs before the prompt stops, so the executor records the confirmation as interrupted,
- * never as declined. Ctrl+C reaches the run as an interruption of the CLI. `observe`
- * receives the run's events to learn when it starts stopping.
+ * Asks one prompt at a time and holds progress lines while a prompt is open. At the end of
+ * input, `cancel` runs before the prompt stops, so the executor records the confirmation as
+ * interrupted, never as declined. `observe` learns from the run's events when it starts
+ * stopping.
  */
 export const make = (output: Output["Service"], cancel: () => void) =>
 	Effect.gen(function* () {

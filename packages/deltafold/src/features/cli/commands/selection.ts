@@ -12,10 +12,7 @@ export type Selection = {
 	readonly policy: Option.Option<RoutePolicy>;
 };
 
-/**
- * Resolves the plan for a command, or reports why it cannot. `args` is the command's own
- * argument list, reused in suggested commands.
- */
+/** `args` is the command's own argument list, reused in suggested commands. */
 export const resolve = (
 	definition: Definition,
 	selection: Selection,

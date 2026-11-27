@@ -132,20 +132,20 @@ export const migrateCommand = (
 
 					// Runs at the Promise boundary so that cancellation still produces the partial
 					// report: interrupting this fiber aborts the signal and waits for the report.
-					// The handlers' services are whatever the caller provided to the CLI effect; their
-					// static type is carried by `Cli<R>`, not by the erased handler array here.
+					// The handlers' services are whatever the caller provided; `Command.make`'s return
+					// type carries them, not the erased handler array here.
 					// oxlint-disable-next-line typescript/no-unsafe-type-assertion
 					const services = (yield* Effect.context()) as Context.Context<any>;
 					const controller = new AbortController();
-					// Manual work is confirmed only by a person at a terminal. Without one, the
-					// executor refuses to start a run that has manual handlers. A dry run never asks.
+					// Without an interaction, the executor refuses to start a run that has manual
+					// handlers. A dry run never asks.
 					const terminal = yield* Prompt.make(output, () => controller.abort());
 					const interaction =
 						output.interactive && !input.dryRun
 							? { interaction: terminal.interaction }
 							: {};
-					// The supplied observers run first, in order; the CLI's progress
-					// observer runs last, waits while a prompt is open, and is left out with --json.
+					// Runs after the supplied observers, waits while a prompt is open, and is left out
+					// with --json.
 					const progress = Observer.effect((event) => {
 						const lines = Render.progress(event, output.err);
 
@@ -302,8 +302,7 @@ export const migrateCommand = (
 					if (error instanceof ExecutionInterrupted) {
 						yield* printReport(error.report);
 						if (error.reason === "cancelled") {
-							// The CLI cancelled the run itself, at the end of input to a prompt. It
-							// ends like any other cancellation.
+							// The CLI cancelled the run itself, at the end of input to a prompt.
 							yield* output.diagnostic("Canceled.", "Warn");
 
 							return yield* Effect.interrupt;

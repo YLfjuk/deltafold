@@ -8,7 +8,6 @@ import { migrateCommand } from "./migrate.ts";
 import { planCommand } from "./plan.ts";
 import { validateCommand } from "./validate.ts";
 
-/** Builds the command tree for a package. */
 export const commands = (definition: Definition) => {
 	const { handlers, releases } = definition;
 

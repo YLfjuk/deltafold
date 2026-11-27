@@ -1,10 +1,11 @@
 import { Config, Context, Effect, LogLevel, Option, References, Stdio, Stream } from "effect";
 import { Flag, GlobalFlag } from "effect/cli";
 
+import * as PackageConfig from "../../configs/package.ts";
+
 /**
- * `--json`: print one versioned JSON document instead of human output. A root command
- * installs it once with `Command.withGlobalFlags`; mounted commands read it. Effect
- * recognizes a global flag by object identity, so every command must use this object.
+ * Install it once at the root with `Command.withGlobalFlags`; mounted commands read it.
+ * Effect matches global flags by object identity, so every command must use this object.
  *
  * @since @next
  */
@@ -16,7 +17,7 @@ export const Json = GlobalFlag.Setting("json")({
 });
 
 /**
- * `--no-color`: disable color in human output. Installed once at the root, like `Json`.
+ * Install it once at the root, like `Json`.
  *
  * @since @next
  */
@@ -27,9 +28,9 @@ export const NoColor = GlobalFlag.Setting("no-color")({
 	),
 });
 
-/** Text styling for one stream. Styles are identity functions when color is off. */
+/** Styles are identity functions when color is off. */
 export type Style = {
-	/** Whether the stream is a terminal that is not `TERM=dumb`. */
+	/** A terminal that is not `TERM=dumb`. */
 	readonly rich: boolean;
 	readonly bold: (text: string) => string;
 	readonly dim: (text: string) => string;
@@ -53,42 +54,32 @@ const makeStyle = (rich: boolean, color: boolean): Style => ({
 	arrow: rich ? "→" : "->",
 });
 
-/**
- * Where command results and diagnostics go. Results go to stdout; diagnostics, progress,
- * and errors go to stderr.
- */
+/** Results go to stdout; diagnostics, progress, and errors go to stderr. */
 export class Output extends Context.Service<
 	Output,
 	{
 		readonly json: boolean;
-		/**
-		 * The command path that runs the migrator, such as `["deltafold", "self"]`, so that
-		 * suggested commands run as given when the migrator is mounted under another command.
-		 */
+		/** The start of suggested commands, such as `["deltafold", "self"]` when mounted. */
 		readonly program: ReadonlyArray<string>;
-		/**
-		 * Whether a person can answer prompts: stdin and stderr are terminals, `--json` is
-		 * not set, and `CI` is not set.
-		 */
+		/** stdin and stderr are terminals, and neither `--json` nor `CI` is set. */
 		readonly interactive: boolean;
 		readonly out: Style;
 		readonly err: Style;
-		/** Writes lines of the command's result to stdout. */
 		readonly result: (lines: string | ReadonlyArray<string>) => Effect.Effect<void>;
-		/** Writes text to stderr without ending the line, for prompts. */
+		/** Writes to stderr without a trailing newline. */
 		readonly prompt: (text: string) => Effect.Effect<void>;
-		/** Writes lines to stderr regardless of the log level, for failures and prompts. */
+		/** Writes to stderr at any log level. */
 		readonly failure: (lines: string | ReadonlyArray<string>) => Effect.Effect<void>;
 		/**
-		 * Writes lines to stderr when the minimum log level admits `level`. With `--json`,
-		 * diagnostics are dropped so that stderr holds at most one error document.
+		 * Writes to stderr when the minimum log level admits `level`. Dropped with `--json`,
+		 * so stderr holds at most one error document.
 		 */
 		readonly diagnostic: (
 			lines: string | ReadonlyArray<string>,
 			level?: LogLevel.LogLevel,
 		) => Effect.Effect<void>;
 	}
->()("deltafold/cli/Output") {}
+>()(`${PackageConfig.name}/cli/Output`) {}
 
 const isPresent = (value: Option.Option<string>) => Option.isSome(value) && value.value.length > 0;
 
@@ -103,11 +94,9 @@ const toText = (lines: string | ReadonlyArray<string>) =>
 	typeof lines === "string" ? `${lines}\n` : lines.map((line) => `${line}\n`).join("");
 
 /**
- * Builds the output service from the standard streams, the environment, and the `--json`
- * and `--no-color` settings. Color precedence: `--no-color`, then a non-empty `NO_COLOR`,
- * then `FORCE_COLOR` (`0` and `false` mean off), then whether the stream is a terminal.
- * `TERM=dumb` turns off rich presentation and color unless color is forced. `program`
- * is the command path that suggested commands start with.
+ * Color precedence: `--no-color`, then a non-empty `NO_COLOR`, then `FORCE_COLOR` (`0` and
+ * `false` mean off), then whether the stream is a terminal. `TERM=dumb` turns off rich
+ * presentation and color unless color is forced.
  */
 export const make = (program: ReadonlyArray<string>) =>
 	Effect.gen(function* () {
@@ -164,5 +153,4 @@ export const make = (program: ReadonlyArray<string>) =>
 		});
 	});
 
-/** Serializes a JSON document as a single line. */
 export const stringify = (document: unknown) => JSON.stringify(document);

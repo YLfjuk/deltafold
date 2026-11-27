@@ -38,14 +38,10 @@ export type Reason =
 	| "write_failed"
 	| "internal_error";
 
-/**
- * The version of the JSON documents the CLI prints.
- *
- * @since @next
- */
+/** @since @next */
 export const schemaVersion = 1;
 
-/** The route policies `History.resolve` accepts, in documentation order. */
+/** In documentation order. */
 export const policies: ReadonlyArray<RoutePolicy> = [
 	"fewest-actions",
 	"fewest-migrations",
@@ -54,8 +50,8 @@ export const policies: ReadonlyArray<RoutePolicy> = [
 ];
 
 /**
- * A failure the CLI has already reported on stderr or in a result document. It carries the
- * process exit code for the runtime and is not logged again.
+ * Already reported on stderr or in a result document. It carries the exit code and is not
+ * logged again.
  *
  * @since @next
  */
@@ -74,7 +70,7 @@ export class CliFailure extends Data.TaggedError(`${PackageConfig.name}/CliFailu
 	}
 }
 
-/** A follow-up command. `args` excludes the command path that runs the migrator. */
+/** `args` excludes the command path. */
 export type Next = {
 	readonly purpose: string;
 	readonly label: string;
@@ -83,7 +79,6 @@ export type Next = {
 	readonly text?: boolean;
 };
 
-/** A failure to report: human headline and detail lines, and structured data for JSON. */
 export type Problem = {
 	readonly reason: Reason;
 	readonly message: string;
@@ -108,7 +103,6 @@ export const quote = (arg: string) => {
 	return `'${arg.replaceAll("'", `'\\''`)}'`;
 };
 
-/** The command line for a follow-up command, as an argument vector and display string. */
 export const invocation = (
 	program: ReadonlyArray<string>,
 	json: boolean,
@@ -123,14 +117,9 @@ export const invocation = (
 export const capped = (items: ReadonlyArray<string>, limit = 5) =>
 	items.length <= limit ? items : [...items.slice(0, limit), `and ${items.length - limit} more`];
 
-/** The headline marker for a failure: a glyph on a terminal, a word otherwise. */
 export const failureMark = (rich: boolean) => (rich ? "✗ " : "Error: ");
 
-/**
- * Reports a problem on stderr, as human text or one JSON document, then fails with a
- * `CliFailure` that carries the exit code. Suggested commands start with the output's
- * command path.
- */
+/** Reports on stderr, as text or one JSON document, then fails with a `CliFailure`. */
 export const fail = (problem: Problem) =>
 	Effect.gen(function* () {
 		const output = yield* Output;
@@ -206,10 +195,7 @@ const routeChoices = (
 			args: replay(["--route", candidate.id]),
 		}));
 
-/**
- * Describes a resolution failure. `replay` rebuilds the failed command with extra
- * arguments, so suggestions keep the user's other options.
- */
+/** `replay` rebuilds the failed command with extra arguments, keeping the user's options. */
 export const resolveProblem = (
 	error: ResolveError,
 	replay: (extra: ReadonlyArray<string>) => ReadonlyArray<string>,

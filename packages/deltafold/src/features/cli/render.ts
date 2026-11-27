@@ -168,10 +168,7 @@ const summaryDetail = (value: Observer.OutcomeSummary) => {
 	return commonDetail(value);
 };
 
-/**
- * Progress lines for an execution event: a header when a step starts, a line when an
- * action settles. Other events print nothing; the report follows the run.
- */
+/** A header when a step starts and a line when an action settles; nothing otherwise. */
 export const progress = (event: Observer.Event, style: Style): ReadonlyArray<string> => {
 	switch (event._tag) {
 		case "StepStarted": {
@@ -216,7 +213,6 @@ const headline = (value: Report, style: Style) => {
 	return style.red(`${failureMark(style.rich)}Migration ${route} did not start`);
 };
 
-/** Human report: headline, one line per occurrence, counts, and what was not undone. */
 export const report = (value: Report, style: Style) => {
 	const lines = [headline(value, style)];
 	for (const entry of value.occurrences) {
@@ -251,7 +247,6 @@ export const report = (value: Report, style: Style) => {
 	return lines;
 };
 
-/** Warnings for observers that failed or were abandoned. Outcomes are unaffected. */
 export const observation = (value: Report, style: Style) =>
 	value.observation.map((entry) =>
 		style.yellow(

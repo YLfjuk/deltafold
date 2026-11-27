@@ -13,7 +13,6 @@ const collect = (target: Array<string>) => () =>
 		}),
 	);
 
-/** Runs the `deltafold` command in process and returns its output and exit code. */
 const run = (argv: ReadonlyArray<string>) =>
 	Effect.gen(function* () {
 		const stdout: Array<string> = [];
@@ -38,7 +37,6 @@ const run = (argv: ReadonlyArray<string>) =>
 		return { exit, code, stdout: stdout.join(""), stderr: stderr.join("") };
 	});
 
-/** Runs `--help` and returns the printed help. */
 const help = (argv: ReadonlyArray<string>) =>
 	Cli.run(root, { version: "0.0.0", argv: [...argv, "--help"] }).pipe(
 		Effect.andThen(TestConsole.logLines),

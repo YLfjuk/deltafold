@@ -24,7 +24,6 @@ const attempt = <A>(project: () => A, fallback: A): A => {
 	}
 };
 
-/** A JSON value. */
 type Json =
 	| null
 	| boolean
@@ -45,9 +44,8 @@ const marker = (value: unknown) => {
 };
 
 /**
- * Projects package-defined data to JSON. Plain JSON values are kept, `undefined` becomes
- * `null`, and any other value keeps its key with a marker naming its type, so that a
- * consumer sees that the field exists.
+ * Keeps plain JSON values, turns `undefined` into `null`, and replaces any other value with
+ * a type marker, so its key stays visible.
  */
 const plain = (value: unknown, seen: ReadonlySet<object> = new Set()): Json =>
 	attempt((): Json => {
@@ -95,13 +93,13 @@ export const occurrence = (value: Occurrence, step: string | null) => ({
 				},
 });
 
-/** The occurrences that belong to a step, in plan order. */
+/** In plan order. */
 export const occurrencesOf = (plan: AnyPlan, step: Step) =>
 	plan.occurrences.filter(
 		(entry) => entry.migration.id === step.migration.id && entry.direction === step.direction,
 	);
 
-/** The step identifier of each occurrence. */
+/** Keyed by occurrence ID. */
 const stepIds = (plan: AnyPlan) =>
 	new Map(
 		plan.steps.flatMap((step) =>
@@ -199,7 +197,7 @@ const reduce = (value: unknown, withCause: boolean): EncodedError => {
 	return cause === undefined ? base : { ...base, cause: reduce(cause, false) };
 };
 
-/** The failure of an outcome: its typed error, or the squashed cause for defects. */
+/** The typed error, or the squashed cause for defects. */
 export const outcomeError = (value: {
 	readonly error: unknown;
 	readonly cause: Cause.Cause<unknown>;
@@ -277,7 +275,7 @@ const statuses: ReadonlyArray<OutcomeStatus> = [
 	"preparation-failed",
 ];
 
-/** Counts of each outcome status, including zeros, in a stable order. */
+/** Includes zeros, in a stable order. */
 export const counts = (entries: ReadonlyArray<OccurrenceReport>) => {
 	const result = new Map<OutcomeStatus, number>(statuses.map((status) => [status, 0]));
 	for (const entry of entries) {
@@ -294,7 +292,7 @@ export const unsettled = (value: Report) =>
 		entry.outcome._tag === "Interrupted" && !entry.outcome.settled ? entry.occurrence.id : [],
 	);
 
-/** The report, with observer failures reduced to plain fields. */
+/** Observer failures are reduced to plain fields. */
 export const report = (value: Report, resolved: AnyPlan) => {
 	const steps = stepIds(resolved);
 

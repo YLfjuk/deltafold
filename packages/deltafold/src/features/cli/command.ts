@@ -14,9 +14,8 @@ import type { Reason } from "./failure.ts";
 export { CliFailure, schemaVersion, type Reason };
 
 /**
- * Handlers for the `migrate` command: an array, or a function that loads one. A function
- * is called only when `migrate` runs, so help and the inspection commands never import
- * handler modules.
+ * A loader function is called only when `migrate` runs, so help and the inspection
+ * commands never import handler modules.
  *
  * @since @next
  */
@@ -25,8 +24,7 @@ export type Handlers<H> =
 	| (() => ReadonlyArray<H> | PromiseLike<ReadonlyArray<H>>);
 
 /**
- * Observers for the `migrate` command: an array, or a function that loads one. Like
- * handlers, a function is called only when `migrate` runs.
+ * A loader function is called only when `migrate` runs.
  *
  * @since @next
  */
@@ -34,7 +32,7 @@ export type Observers<O> =
 	| ReadonlyArray<O>
 	| (() => ReadonlyArray<O> | PromiseLike<ReadonlyArray<O>>);
 
-/** The shared settings that `Cli.run` or another root command installs. */
+/** Installed by `Cli.run` or another root command. */
 type Settings = GlobalFlag.Setting.Identifier<"json"> | GlobalFlag.Setting.Identifier<"no-color">;
 
 /** @since @next */
@@ -44,24 +42,17 @@ export type Options<
 	O extends Observer.Any,
 	M,
 > = {
-	/**
-	 * The command name shown in help and suggested commands: the bin name, or the
-	 * subcommand name when the command is mounted under another one. Defaults to the
-	 * package name.
-	 */
+	/** The bin name, or the subcommand name when mounted. Defaults to the package name. */
 	readonly name?: string;
-	/** The root command's help summary. */
+	/** Defaults to "Plan and run migrations between versions of <package>". */
 	readonly description?: string;
 	/** Enables the `migrate` command. Coverage is checked at run time, before any action. */
 	readonly handlers?: Handlers<H>;
-	/**
-	 * Receive `migrate`'s execution events, before the CLI's own progress observer. Their
-	 * Effect services join the command's requirements.
-	 */
+	/** Run before the CLI's progress observer. Their services join the command's requirements. */
 	readonly observers?: Observers<O>;
-	/** Configures change sections and plugins for `guide` and `changelog`. */
+	/** Used by `guide` and `changelog`. */
 	readonly changelog?: Changelog<M>;
-	/** Release metadata for every released version. Enables the `changelog` command. */
+	/** One entry per released version. Enables the `changelog` command. */
 	readonly releases?: ReadonlyArray<Release<M>> | (() => ReadonlyArray<Release<M>>);
 };
 

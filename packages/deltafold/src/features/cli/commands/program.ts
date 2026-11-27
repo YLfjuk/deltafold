@@ -4,18 +4,15 @@ import { make as makeOutput, Output } from "../output.ts";
 import type { Definition } from "./definition.ts";
 
 /**
- * The command path that runs the migrator. effect/cli calls a handler with the path of
- * its command, which ends with the subcommand; without one, the migrator's own name.
+ * effect/cli passes a handler its command path, which ends with the subcommand. Without
+ * one, the migrator's own name.
  */
 export const programOf = (definition: Definition, commandPath: ReadonlyArray<string> | undefined) =>
 	commandPath === undefined || commandPath.length < 2
 		? [definition.name]
 		: commandPath.slice(0, -1);
 
-/**
- * Gives a command handler its output service, with the command path for suggested
- * commands, and keeps Effect logs off stdout.
- */
+/** Also keeps Effect logs off stdout. */
 export const withOutput =
 	(program: ReadonlyArray<string>) =>
 	<A, E, R>(effect: Effect.Effect<A, E, R | Output>) =>

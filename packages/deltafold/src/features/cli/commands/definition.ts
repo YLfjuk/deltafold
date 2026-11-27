@@ -4,7 +4,7 @@ import type * as Handler from "../../execution/handler.ts";
 import type * as Observer from "../../execution/observer.ts";
 import type { Package } from "../../package.ts";
 
-/** What the command tree needs from `Cli.make`, with handler types erased. */
+/** Handler types are erased; `Command.make` carries them. */
 export type Definition = {
 	readonly name: string;
 	readonly description: string;

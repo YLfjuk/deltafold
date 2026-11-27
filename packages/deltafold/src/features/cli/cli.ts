@@ -33,8 +33,7 @@ const presenter = CliOutput.layerPresenter({
 			: CliOutput.defaultPresenter.present(event),
 });
 
-// No interactive wizard. The only prompts are manual-handler confirmations, which
-// `migrate` asks only at a terminal, without --json, and outside CI.
+// No wizard: the only prompts are manual-handler confirmations.
 const config = CliConfig.layer({
 	builtIns: [GlobalFlag.Help, GlobalFlag.Version, GlobalFlag.Completions, GlobalFlag.LogLevel],
 });
@@ -88,7 +87,6 @@ const usageFailure = (error: CliError.ShowHelp, argv: ReadonlyArray<string>) => 
 export const run = <Name extends string, Input, ContextInput, E, R>(
 	command: Command.Command<Name, Input, ContextInput, E, R>,
 	options: {
-		/** Printed by `--version`. */
 		readonly version: string;
 		readonly argv?: ReadonlyArray<string>;
 	},
@@ -99,8 +97,8 @@ export const run = <Name extends string, Input, ContextInput, E, R>(
 > =>
 	Effect.gen(function* () {
 		const args = options.argv ?? (yield* (yield* Stdio.Stdio).args);
-		// Installed once, at the root. A root that already installs them keeps one copy,
-		// because Effect recognizes global flags by object identity.
+		// A root that already installs them keeps one copy: Effect dedupes global flags by
+		// object identity.
 		const root = Command.withGlobalFlags(command, [Json, NoColor]);
 
 		return yield* Command.runWith(root, { version: options.version })(args).pipe(
