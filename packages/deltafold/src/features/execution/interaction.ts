@@ -7,16 +7,14 @@ import type * as Callback from "./promise-callback.ts";
 import { adaptPromise } from "./promise-callback.ts";
 
 /**
- * What a person says about manual work. There is no other answer: free-form input never
- * reaches a report.
+ * Free-form input is never accepted or recorded in a report.
  *
  * @since 0.2.0
  */
 export type Answer = "confirmed" | "declined";
 
 /**
- * A request to confirm manual work. The occurrence carries the action, its description,
- * and the migration instruction that declared it, which is what to show the person.
+ * Show the person `occurrence.instruction` or `occurrence.action.description`.
  *
  * @since 0.2.0
  */
@@ -77,25 +75,13 @@ export type Interaction<out E = never, out R = never> = {
 	readonly confirm: (request: Request) => Effect.Effect<Answer, E, R>;
 };
 
-/**
- * Any interaction.
- *
- * @since 0.2.0
- */
+/** @since 0.2.0 */
 export type Any = Interaction<any, any>;
 
-/**
- * The errors of an interaction.
- *
- * @since 0.2.0
- */
+/** @since 0.2.0 */
 export type Error<I> = I extends Interaction<infer E, any> ? E : never;
 
-/**
- * The Effect services of an interaction.
- *
- * @since 0.2.0
- */
+/** @since 0.2.0 */
 export type Services<I> = I extends Interaction<any, infer R> ? R : never;
 
 /** @since 0.2.0 */
@@ -113,9 +99,7 @@ export type PromiseOptions<
 };
 
 /**
- * Confirms manual work with a Promise callback. It receives `{ signal, services }`: an
- * `AbortSignal` that aborts when the run is cancelled, so it can stop asking, and the
- * declared services.
+ * `signal` aborts when the run is cancelled so the prompt can stop waiting.
  *
  * @example
  * ```ts
@@ -160,8 +144,8 @@ export const promise = <
 };
 
 /**
- * Confirms manual work with an Effect, which keeps its own errors and services and
- * stops through Effect interruption when the run is cancelled.
+ * Keeps its own errors and services and stops through Effect interruption when the run
+ * is cancelled.
  *
  * @since 0.2.0
  */

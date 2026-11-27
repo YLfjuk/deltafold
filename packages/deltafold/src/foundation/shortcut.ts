@@ -13,36 +13,23 @@ export type Shortcut<A extends Action.Any = Action.Any, C extends Change.Any = C
 	readonly to: Version;
 	/** The canonical route this shortcut replaces, in order. */
 	readonly replaces: ReadonlyArray<Migration.Any>;
-	/** The migrations that run instead, in order. */
 	readonly migrations: ReadonlyArray<Migration.Migration<A, C>>;
-	/** Author-declared cost, used only by the `lowest-cost` route policy. */
+	/** Used only by the `lowest-cost` route policy. */
 	readonly cost: number | undefined;
 };
 
-/**
- * Any shortcut.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Any = Shortcut<any>;
 
-/**
- * The action instances a shortcut can contribute to a plan.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type ActionsOf<S> = S extends Shortcut<infer A> ? A : never;
 
-/**
- * The changes addressed by a shortcut's migrations.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type ChangesOf<S> = S extends Shortcut<any, infer C> ? C : never;
 
 /**
- * Declares a shortcut. The author asserts that its migrations are equivalent to the
- * canonical route it replaces; deltafold does not prove it.
+ * The author asserts that its migrations are equivalent to the canonical route it
+ * replaces; deltafold does not prove it.
  *
  * @example
  * ```ts

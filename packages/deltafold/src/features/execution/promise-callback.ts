@@ -3,13 +3,11 @@ import { Context, Effect, Schema } from "effect";
 import type { ValueOf } from "../../types.ts";
 import { trackPromise } from "./settlement.ts";
 
-/** Named Effect services that Promise callbacks declare. */
 export type ServiceMap = { readonly [name: string | symbol]: Context.Key<any, any> };
 
 // oxlint-disable-next-line typescript/no-generated-empty-object-type -- Callbacks without services declare an empty service map.
 export type NoServices = Record<never, never>;
 
-/** The `AbortSignal` aborted on interruption, and the declared services, resolved. */
 export type PromiseContext<S extends ServiceMap = NoServices> = {
 	readonly signal: AbortSignal;
 	readonly services: { readonly [K in keyof S]: S[K]["Service"] };
@@ -19,7 +17,6 @@ export type ServiceIds<S extends ServiceMap> = ValueOf<{
 	[K in keyof S]: S[K] extends Context.Key<infer I, any> ? I : never;
 }>;
 
-/** Recognizes a declared rejection: a schema, or a type guard. */
 export type ErrorGuard = Schema.Top | ((cause: unknown) => cause is any);
 
 export type GuardedError<G> = G extends Schema.Top
@@ -34,9 +31,8 @@ const declaredError =
 		guards.some((guard) => (Schema.isSchema(guard) ? Schema.is(guard)(cause) : guard(cause)));
 
 /**
- * Turns Promise callbacks into Effects. Declared services are resolved before each
- * call, rejections that a guard recognizes keep their type, and `unexpected` wraps the
- * rest.
+ * Resolves declared services before each call; guarded rejections keep their type and
+ * `unexpected` wraps the rest.
  */
 export const adaptPromise = <S extends ServiceMap, G extends ReadonlyArray<ErrorGuard>>(options: {
 	readonly services?: S | undefined;

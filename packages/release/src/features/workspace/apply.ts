@@ -7,9 +7,9 @@ import { globAll } from "./glob.ts";
 import { dirname, paths } from "./paths.ts";
 
 /**
- * Applies prepared edits to local files. It first checks that every file preparation
- * read is unchanged, and refuses with `StalePlan` otherwise. On failure, it restores the
- * files it changed where it can.
+ * Checks that every file and glob preparation depended on is unchanged before writing,
+ * failing with `StalePlan` otherwise. On failure, restores the files it changed where
+ * it can.
  *
  * @since 0.0.1
  */

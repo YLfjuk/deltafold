@@ -3,11 +3,7 @@ import { Predicate } from "effect";
 import { describeValue, dedent, isScalar } from "./template.ts";
 import type { Scalar } from "./template.ts";
 
-/**
- * The metadata of a change whose shape is not known statically.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Metadata = { readonly [field: string]: unknown };
 
 /** @since 0.0.1 */
@@ -34,29 +30,16 @@ export type Change<M extends object = Metadata> = {
 	readonly backportOf: Any | undefined;
 };
 
-/**
- * A change whose metadata type is not known statically. Its metadata is an object, so
- * reading a field requires narrowing first.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Any = Change<object>;
 
-/**
- * Relationships to other changes.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Relations = {
 	readonly reverts?: ReadonlyArray<Any>;
 	readonly backportOf?: Any;
 };
 
-/**
- * Takes the description as a tagged template and returns the change.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Describe<M extends object> = (
 	strings: TemplateStringsArray,
 	...values: ReadonlyArray<Scalar>
@@ -89,9 +72,6 @@ const describe =
 	};
 
 /**
- * Declares a change. The tagged template is its description. Metadata is optional, and
- * its type is inferred from the value, literals included.
- *
  * @example
  * ```ts
  * const retriesAdded = Change.make("2026-11-20.add-retries")`
@@ -114,18 +94,12 @@ export function make(id: string, metadata: object = {}, relations: Relations = {
 	return describe(id, metadata, relations);
 }
 
-/**
- * Makes changes that share one metadata shape.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Definition<M extends object> = {
 	readonly make: (id: string, metadata: M, relations?: Relations) => Describe<M>;
 };
 
 /**
- * Defines a reusable change factory whose metadata must have the type `M`.
- *
  * @example
  * ```ts
  * const ConfigChange = Change.define<{

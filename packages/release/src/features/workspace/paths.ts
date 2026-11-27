@@ -1,9 +1,6 @@
 import { issue } from "../../foundation/error.ts";
 import type { Issue } from "../../foundation/error.ts";
 
-// Path arithmetic on forward-slash paths. An absolute path keeps its prefix: "/" on POSIX,
-// "C:/" for a Windows drive (the letter is upper-cased), or "//" for a UNC share.
-
 const prefixOf = (path: string): string => {
 	const slashed = path.replace(/\\/g, "/");
 	const drive = /^([A-Za-z]):\//.exec(slashed);
@@ -19,10 +16,7 @@ const driveRelative = (path: string) => /^[A-Za-z]:(?![\\/])/.test(path);
 /** Whether a path is absolute on POSIX or Windows. */
 export const isAbsolute = (path: string): boolean => prefixOf(path) !== "";
 
-/**
- * Removes `.` segments, resolves `..`, and joins with "/". An absolute path keeps its
- * prefix, and `..` never climbs above it. A relative path keeps leading `..` segments.
- */
+/** Absolute paths keep their prefix and clamp `..` at it; relative paths keep leading `..` segments. */
 export const normalize = (path: string): string => {
 	const prefix = prefixOf(path);
 	const body = path
@@ -42,7 +36,7 @@ export const normalize = (path: string): string => {
 	return `${prefix}${parts.join("/")}`;
 };
 
-/** Joins path parts. An absolute part restarts the path. */
+/** An absolute part restarts the path. */
 export const join = (...parts: ReadonlyArray<string>): string => {
 	let path = "";
 	for (const part of parts) {
@@ -88,11 +82,7 @@ export const relative = (fromDirectory: string, to: string): string => {
 	return path.startsWith(".") ? path : `./${path}`;
 };
 
-/**
- * Where release files are found.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Location = {
 	/**
 	 * The workspace root. Absolute paths must stay inside it, and reports show paths
@@ -107,7 +97,6 @@ export type Location = {
 	readonly base?: string;
 };
 
-/** A resolved location with workspace-relative helpers. */
 export type Paths = {
 	/** A path given relative to `base`, or absolute, as a workspace-relative path. */
 	readonly fromBase: (path: string) => string | Issue;
@@ -127,10 +116,6 @@ const segments = (path: string) => {
 		.filter((part) => part !== "");
 };
 
-/**
- * The path of `path` inside `directory`, segment by segment: "" for the directory itself,
- * and `undefined` when `path` is not inside it.
- */
 const within = (directory: string, path: string): string | undefined => {
 	const outer = segments(directory);
 	const inner = segments(path);

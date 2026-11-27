@@ -73,8 +73,6 @@ export const history = History.make({ versions: [v1, v2], migrations: [toV2] });
 export const widgets = Package.make("@acme/widgets", { history });
 ```
 
-`Version.make` records the changes that shipped in a release, and
-`Migration.make` names the changes that a transition addresses.
 `Migration.instruction(action)` attaches prose to one action so guides omit
 that prose if a rule removes the action. Use `Action.ref(action)` to mention an
 action without running it again.
@@ -114,7 +112,7 @@ plan.route.id; // "1.0.0>2.0.0"
 plan.occurrences.map((occurrence) => occurrence.id); // ["1.0.0-to-2.0.0/rename-timeout"]
 ```
 
-Resolution returns a `Result` and needs no handlers; a plan with no actions is
+Planning needs no handlers; a plan with no actions is
 valid. When several routes connect the versions, resolution fails with
 `History.AmbiguousRoute`. Pass a listed route identifier as `route`, or choose a
 `policy` among `"fewest-actions"`, `"fewest-migrations"`, `"lowest-cost"`, or
@@ -175,9 +173,8 @@ try {
   possibly still running.
 
 `Executor.runPromise` also accepts `interaction`, `observers`, `runId`, and
-`settleTimeout`. Errors and outcomes are exported from `Executor`, and handler
-builders from `Handler`. Tagged errors use the `deltafold/<ErrorName>` tag format
-for `Effect.catchTag`.
+`settleTimeout`. Tagged errors use the `deltafold/<ErrorName>` tag format for
+`Effect.catchTag`.
 
 ## Run a plan with Effect handlers
 
@@ -294,10 +291,10 @@ const progress = Observer.sync((event) => {
 await Executor.runPromise(plan, { handlers, observers: [logging, progress] });
 ```
 
-`Observer.sync`, `Observer.promise`, and `Observer.effect` run a callback for
-each event. Effect observers contribute their service requirements to execution.
-The executor awaits each observer before continuing, and records observer
-failures in `report.observation` without changing run outcomes.
+Use `Observer.promise` for asynchronous callbacks. Effect observers contribute
+their service requirements to execution. The executor awaits each observer
+before continuing, and records observer failures in `report.observation` without
+changing run outcomes.
 
 ## Simplify routes with rules and shortcuts
 

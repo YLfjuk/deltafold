@@ -11,8 +11,7 @@ import * as Document from "./document.ts";
 import { asRelease, blocksOf, insertAll } from "./sections.ts";
 
 /**
- * A change section of a release. The first section whose `select` matches wins. Selectors
- * read the metadata that the consumer declared on each change.
+ * First matching `select` wins; each change appears in at most one section.
  *
  * @since 0.0.1
  */
@@ -29,11 +28,7 @@ export const section = (
 	options: { readonly title: string; readonly select: (change: Change.Change) => boolean },
 ): SectionDefinition => ({ _tag: "ChangelogSection", id, ...options });
 
-/**
- * Release metadata does not match the package history.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export class ReleaseMetadataError extends Data.TaggedError(
 	`${PackageConfig.name}/ReleaseMetadataError`,
 )<{
@@ -49,7 +44,7 @@ export type HistoryOptions<M> = {
 	 * duplicate, or unrelated annotations throw `ReleaseMetadataError`.
 	 */
 	readonly releases: ReadonlyArray<Release<M>>;
-	/** The versions to include. Defaults to every version in the package history. */
+	/** Defaults to every version in the package history. */
 	readonly versions?: ReadonlyArray<Version>;
 };
 
@@ -70,7 +65,6 @@ export type Changelog<M> = {
 		change: Change.Any | ReadonlyArray<Change.Any>,
 		options?: { readonly title?: string },
 	) => Document.Document;
-	/** The section for one release. */
 	readonly release: (pkg: Package, release: Release<M>) => Document.Document;
 	/**
 	 * Release history, titled with the package name. Historical changes stay, including
@@ -134,7 +128,6 @@ const releaseOrder = (versions: ReadonlyArray<Version>): ReadonlyArray<Version> 
 const occurrenceBlocks = (action: Action.Any, prose: Prose | undefined) =>
 	prose === undefined ? [Document.Paragraph(action.description)] : guideBlocks(prose);
 
-/** Builds guide blocks: prose becomes paragraphs; groups become lists. */
 const guideBlocks = (
 	items: ReadonlyArray<GuideItem | Prose[number]>,
 ): ReadonlyArray<Document.Block> => {
@@ -198,8 +191,7 @@ const stepId = (step: Step) =>
 	`${PackageConfig.name}/${step.direction === "forward" ? "step" : "revert"}/${step.migration.id}`;
 
 /**
- * Configures sections and plugins for changelog documents. Without `sections`, a release
- * lists all of its changes in one "Changes" section.
+ * Without `sections`, a release lists all of its changes in one "Changes" section.
  *
  * @example
  * ```ts

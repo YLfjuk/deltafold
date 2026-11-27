@@ -21,9 +21,9 @@ export const SettlementReference = Context.Reference<Settlement>(
 );
 
 /**
- * Runs a Promise-producing effect. If it is interrupted after the Promise started,
- * waits up to the settlement grace period and hands a still-pending Promise to the
- * settlement, which can hold resources until it settles.
+ * If interrupted after the Promise starts, waits up to the settlement grace period and
+ * hands a still-pending Promise to `Settlement`, which can hold resources until it
+ * settles.
  */
 export const trackPromise = <T, E, R>(
 	start: (capture: (promise: Promise<T>) => Promise<T>) => Effect.Effect<T, E, R>,

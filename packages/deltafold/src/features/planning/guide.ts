@@ -12,9 +12,8 @@ const anchorOf = (occurrence: Occurrence): Occurrence => {
 };
 
 /**
- * Resolves a migration's content against the occurrences that survived optimization.
- * Removed occurrences disappear with their instruction blocks. Replacements render at
- * the position of the first occurrence they replaced, using their own instruction or
+ * Removed occurrences disappear with their instruction blocks. Replacements render at the
+ * position of the first occurrence they replaced, using their own instruction or
  * description. Unassociated prose stays.
  */
 export const resolveGuide = (

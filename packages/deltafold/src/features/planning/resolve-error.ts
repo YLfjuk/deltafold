@@ -4,11 +4,7 @@ import * as PackageConfig from "../../configs/package.ts";
 import type { RequestDirection } from "../../foundation/plan.ts";
 import type { Issue } from "./validate.ts";
 
-/**
- * A candidate route, summarized for diagnostics and explicit selection.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type RouteSummary = {
 	/** Pass this as the `route` option to select the route. */
 	readonly id: string;
@@ -17,7 +13,6 @@ export type RouteSummary = {
 	/** Optimized action count, or `undefined` when the route failed to optimize. */
 	readonly actions: number | undefined;
 	readonly cost: number;
-	/** Why the route cannot be planned, if it cannot. */
 	readonly failure: string | undefined;
 };
 
@@ -32,11 +27,7 @@ export type Blocker = {
 	readonly reason: string;
 };
 
-/**
- * The history's declarations are invalid. Resolution needs a valid history.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export class InvalidHistory extends Data.TaggedError(`${PackageConfig.name}/InvalidHistory`)<{
 	readonly issues: ReadonlyArray<Issue>;
 }> {
@@ -58,8 +49,8 @@ export class UnknownVersion extends Data.TaggedError(`${PackageConfig.name}/Unkn
 }
 
 /**
- * No declared route connects the versions. This never means that no work is needed:
- * declare `Migration.noop` for a supported zero-work transition.
+ * Missing routes never imply zero work; declare `Migration.noop` for a supported
+ * zero-work transition.
  *
  * @since 0.0.1
  */
@@ -81,11 +72,7 @@ export class UnsupportedRoute extends Data.TaggedError(`${PackageConfig.name}/Un
 	}
 }
 
-/**
- * Several routes connect the versions and no selection or policy chose one.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export class AmbiguousRoute extends Data.TaggedError(`${PackageConfig.name}/AmbiguousRoute`)<{
 	readonly from: string;
 	readonly to: string;
@@ -101,11 +88,7 @@ export class AmbiguousRoute extends Data.TaggedError(`${PackageConfig.name}/Ambi
 	}
 }
 
-/**
- * The `route` option names no candidate route.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export class UnknownRoute extends Data.TaggedError(`${PackageConfig.name}/UnknownRoute`)<{
 	readonly route: string;
 	readonly candidates: ReadonlyArray<RouteSummary>;
@@ -117,11 +100,7 @@ export class UnknownRoute extends Data.TaggedError(`${PackageConfig.name}/Unknow
 	}
 }
 
-/**
- * Rules rewrite a sequence back into itself.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export class RewriteCycle extends Data.TaggedError(`${PackageConfig.name}/RewriteCycle`)<{
 	readonly route: string;
 	readonly rules: ReadonlyArray<string>;
@@ -171,11 +150,7 @@ export class RewriteLimitExceeded extends Data.TaggedError(
 	}
 }
 
-/**
- * More candidate routes exist than the resolver enumerates.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export class TooManyRoutes extends Data.TaggedError(`${PackageConfig.name}/TooManyRoutes`)<{
 	readonly from: string;
 	readonly to: string;
@@ -189,13 +164,7 @@ export class TooManyRoutes extends Data.TaggedError(`${PackageConfig.name}/TooMa
 /** @since 0.0.1 */
 export type RewriteError = RewriteCycle | ConflictingRewrites | RewriteLimitExceeded;
 
-/**
- * Why a plan could not be resolved. `UnsupportedRoute` lists the reachable versions, the
- * closest ones by release ancestry, and blockers. `AmbiguousRoute` lists the candidate
- * routes: pass one as `route`, or choose a `policy`.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type ResolveError =
 	| InvalidHistory
 	| UnknownVersion

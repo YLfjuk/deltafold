@@ -8,7 +8,7 @@ import * as VersionStrategy from "../foundation/version-strategy.ts";
 import type { ValueOf } from "../types.ts";
 
 /**
- * Release magnitudes. A prerelease stage is chosen per plan, never per change.
+ * Prerelease stages are chosen per plan, never per change.
  *
  * @since 0.0.1
  */
@@ -24,8 +24,7 @@ export type Bump = ValueOf<typeof Bump>;
 const isBump = Schema.is(Schema.Enum(Bump));
 
 /**
- * The SemVer value type, from Effect. Effect marks its SemVer module unstable, so this
- * type may change with Effect releases.
+ * Effect marks its `SemVer` module unstable, so this type may change with Effect releases.
  *
  * @since 0.0.1
  */
@@ -52,7 +51,7 @@ export const scheme: VersionScheme.VersionScheme<Version> = VersionScheme.make({
 });
 
 /**
- * The prerelease choice of one plan. Omit it for a stable release.
+ * Omit `pre` for a stable release.
  *
  * @since 0.0.1
  */
@@ -62,11 +61,7 @@ export type Pre = {
 	readonly continue: boolean;
 };
 
-/**
- * Per-plan input of the SemVer strategy.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Input = {
 	readonly pre?: Pre;
 	/**
@@ -76,11 +71,7 @@ export type Input = {
 	readonly target?: string;
 };
 
-/**
- * The input schema, for reading input from outside TypeScript.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export const InputSchema = Schema.Struct({
 	pre: Schema.optionalKey(Schema.Struct({ tag: Schema.String, continue: Schema.Boolean })),
 	target: Schema.optionalKey(Schema.String),
@@ -102,18 +93,10 @@ export type Line = {
 	readonly counter: number;
 };
 
-/**
- * Details the SemVer strategy attaches to each planned version.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Details = { readonly line: Line | undefined };
 
-/**
- * A line as plain strings, for JSON output.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type EncodedLine = {
 	readonly baseline: string | undefined;
 	readonly target: string;
@@ -122,8 +105,7 @@ export type EncodedLine = {
 };
 
 /**
- * Encodes a line with string versions. Effect SemVer values do not serialize to JSON as
- * ids, so use this for output.
+ * Effect `SemVer` values do not serialize to JSON as ids; use this for JSON output.
  *
  * @since 0.0.1
  */
@@ -135,9 +117,8 @@ export const encodeLine = (line: Line): EncodedLine => ({
 });
 
 /**
- * The line a version is on. Its tag and counter come from `<target>-<tag>.<counter>`, and
- * its baseline is the first stable version in `ancestry`. Stable versions, and
- * prereleases in another shape, have no line.
+ * Parses `<target>-<tag>.<counter>` and takes `baseline` from the first stable version in
+ * `ancestry`. Returns `undefined` for stable versions and prereleases in another shape.
  *
  * @since 0.0.1
  */
@@ -210,7 +191,6 @@ const failWith = diagnose;
 const decode = (id: string): Version =>
 	Result.getOrElse(scheme.decode(id), (message) => failWith("InvalidVersion", message, [id]));
 
-/** A version the strategy calculates from or to; build metadata is refused. */
 const calculable = (version: Version, role: string): Version =>
 	SemVer.hasBuild(version)
 		? failWith(
@@ -227,8 +207,8 @@ const ownLine = (participant: Participant<object>) =>
 const sameLine = (a: Line, b: Line) => SemVer.equals(a.target, b.target) && a.tag === b.tag;
 
 /**
- * The one line of a calculation. Participants on a stable version join it; lines must
- * share their target and tag. It carries the highest counter and highest known baseline.
+ * Participants on a stable version join the line; lines must share target and tag.
+ * Carries the highest counter and highest known baseline.
  */
 const sharedLine = (participants: ReadonlyArray<Participant<object>>, purpose: string): Line => {
 	const unshaped = participants.filter(
@@ -264,10 +244,7 @@ const sharedLine = (participants: ReadonlyArray<Participant<object>>, purpose: s
 	};
 };
 
-/**
- * The line participants are on when a new line starts, if any. Lines with different
- * targets or tags cannot share a calculation, here as when continuing.
- */
+/** Lines with different targets or tags cannot share a calculation, even when starting a new line. */
 const startingLine = (participants: ReadonlyArray<Participant<object>>): Line | undefined => {
 	const lines = participants.flatMap((participant) => ownLine(participant) ?? []);
 	const [first] = lines;
@@ -284,7 +261,6 @@ const startingLine = (participants: ReadonlyArray<Participant<object>>): Line | 
 		: { ...first, baseline: calculable(first.baseline, "The line's baseline") };
 };
 
-/** The line's target, raised when intent needs a stronger bump from its baseline. */
 const raise = (line: Line, bumps: ReadonlyArray<Bump>): Version => {
 	const intent = strongest(bumps);
 	if (intent === undefined || line.baseline === undefined) return line.target;
@@ -296,8 +272,6 @@ const onLine = (target: Version, tag: string, counter: number): Version =>
 	SemVer.withPrerelease(target, [tag, counter]);
 
 /**
- * A SemVer strategy over consumer-defined change metadata.
- *
  * Stable plans bump the baseline by the strongest change. Prerelease plans keep a line:
  * `continue` keeps the line's target unless stronger intent raises it, and the counter
  * restarts at 0 whenever the tag or the target changes. A stable plan from a prerelease
@@ -493,11 +467,7 @@ export const make = <M extends object>(
 	});
 };
 
-/**
- * One change found on a prerelease line.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type LineChange = {
 	readonly change: Change.Any;
 	/** The prerelease versions that contain it, oldest first. */
@@ -508,11 +478,7 @@ export type LineChange = {
 	readonly reverts: ReadonlyArray<string>;
 };
 
-/**
- * The changes of a prerelease line since its last stable ancestor.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type PrereleaseChanges = {
 	readonly package: string;
 	readonly from: string;

@@ -11,13 +11,11 @@ const occurrencePart = (id: string) => escape(id, /[\\/()+]/g);
 
 const routePart = (id: string) => escape(id, /[\\>[\]]/g);
 
-/** A plan step: `<migration>` forward, `<migration>/revert` in reverse. */
 export const stepId = (migration: Migration.Any, direction: Direction): string =>
 	direction === "forward"
 		? occurrencePart(migration.id)
 		: `${occurrencePart(migration.id)}/revert`;
 
-/** `<migration>/<action>` forward, `<migration>/revert/<action>` in reverse. */
 export const declaredOccurrenceId = (
 	migration: Migration.Any,
 	direction: Direction,
@@ -25,8 +23,8 @@ export const declaredOccurrenceId = (
 ): string => `${stepId(migration, direction)}/${occurrencePart(action.id)}`;
 
 /**
- * `<rule>(<replaced>+<replaced>)/<action>`. Replaced identifiers are complete occurrence
- * identifiers, so they nest without further escaping.
+ * Replaced identifiers are already escaped occurrence identifiers, so they nest without
+ * further escaping.
  */
 export const replacementOccurrenceId = (
 	rule: Rule.Any,
@@ -35,12 +33,9 @@ export const replacementOccurrenceId = (
 ): string =>
 	`${occurrencePart(rule.id)}(${replaced.map((occurrence) => occurrence.id).join("+")})/${occurrencePart(action.id)}`;
 
-/** The first version of a route identifier. */
 export const routeStart = (version: string): string => routePart(version);
 
-/** A migration hop: `>` and the target version. */
 export const routeHop = (to: string): string => `>${routePart(to)}`;
 
-/** A shortcut hop: `>[shortcut]>` and the target version. */
 export const routeShortcut = (shortcut: string, to: string): string =>
 	`>[${routePart(shortcut)}]>${routePart(to)}`;

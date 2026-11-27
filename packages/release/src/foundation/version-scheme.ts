@@ -1,25 +1,20 @@
 import type { Order, Result } from "effect";
 
 /**
- * How version ids are read, written, and ordered. A scheme has no bumping or prerelease
- * rules; those belong to a `VersionStrategy`.
+ * Has no bumping or prerelease rules; those belong to a `VersionStrategy`.
  *
  * @since 0.0.1
  */
 export type VersionScheme<V> = {
 	/** Shown in diagnostics, such as `"semver"`. */
 	readonly name: string;
-	/** Reads a version id. The message becomes an `InvalidVersion` issue. */
+	/** Failure messages become `InvalidVersion` issues. */
 	readonly decode: (id: string) => Result.Result<V, string>;
 	/** The canonical id written to history, file names, and manifests. */
 	readonly encode: (version: V) => string;
-	/** Precedence. The planner uses it only to refuse downgrades. */
+	/** Used by the planner only to refuse downgrades. */
 	readonly order: Order.Order<V>;
 };
 
-/**
- * Declares a version scheme.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export const make = <V>(scheme: VersionScheme<V>): VersionScheme<V> => scheme;

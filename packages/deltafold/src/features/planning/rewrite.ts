@@ -83,7 +83,7 @@ const groupKey = (branches: ReadonlyArray<string>) =>
 		Order.String,
 	).join("|")}}`;
 
-/** A key that identifies a sequence by its action structure. Branch order is ignored. */
+/** Structural action key; ignores parallel branch order. */
 export const keyOf = (items: ReadonlyArray<Item>): string =>
 	items
 		.map((item) => {
@@ -94,7 +94,7 @@ export const keyOf = (items: ReadonlyArray<Item>): string =>
 		})
 		.join(",");
 
-/** A key that identifies declared steps by their action structure. Branch order is ignored. */
+/** Structural action key for declared steps; ignores parallel branch order. */
 export const stepKey = (steps: ReadonlyArray<Action.Step>): string =>
 	steps
 		.map((step) => {
@@ -119,7 +119,7 @@ export type MakeOccurrence = (
 	instruction: Migration.Instruction | undefined,
 ) => Occurrence;
 
-/** Converts declared steps to items. Sequences flatten; single-branch groups flatten. */
+/** Flattens sequences and single-branch parallel groups. */
 export const itemsOf = (
 	steps: ReadonlyArray<Action.Step>,
 	make: MakeOccurrence,
@@ -142,7 +142,6 @@ export const itemsOf = (
 		);
 	});
 
-/** Drops empty branches and flattens a group that has a single branch left. */
 const parallelOf = (
 	branches: ReadonlyArray<ReadonlyArray<Item>>,
 	concurrency: Action.Concurrency,
@@ -175,7 +174,6 @@ type Transition = {
 	readonly application: Application;
 };
 
-/** Replaces the match of a rule at a position with occurrences that record their provenance. */
 const replace = (rule: Rule.Any, items: ReadonlyArray<Item>, position: number): Transition => {
 	const matched = items.slice(position, position + rule.match.length);
 	const removed = occurrencesOf(matched);
@@ -213,11 +211,7 @@ const makeNormalizer = (rules: ReadonlyArray<Rule.Any>) => {
 		Order.mapInput(Order.String, (rule: Rule.Any) => rule.id),
 	);
 
-	/**
-	 * Every single rule application available in a sequence: at any position of the
-	 * sequence itself, or inside any branch of its groups. Branch-local and whole-group
-	 * rewrites compete as transitions from the same state.
-	 */
+	/** Branch-local and whole-group rewrites compete as transitions from the same state. */
 	const transitions = (items: ReadonlyArray<Item>): ReadonlyArray<Transition> => {
 		const found: Array<Transition> = [];
 		for (let position = 0; position < items.length; position++) {
@@ -314,7 +308,6 @@ const makeNormalizer = (rules: ReadonlyArray<Rule.Any>) => {
 	return { normalize };
 };
 
-/** Applies rules to a sequence until no rule matches. */
 export const rewrite = (
 	items: ReadonlyArray<Item>,
 	rules: ReadonlyArray<Rule.Any>,

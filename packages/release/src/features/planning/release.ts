@@ -12,9 +12,8 @@ import type { Policy, Proposal, Requirement } from "./dependents-policy.ts";
 type AnyPackage = Package.Package<any>;
 
 /**
- * Where a package's files live. Relative paths resolve against the release config file's
- * directory; absolute paths must be inside the workspace. `ReleaseFiles.at` builds this
- * from a package directory.
+ * Relative paths resolve against the release config file's directory; absolute paths
+ * must be inside the workspace. `ReleaseFiles.at` builds this from a package directory.
  *
  * @since 0.0.1
  */
@@ -78,7 +77,6 @@ export type Config<
 	readonly exportName?: string;
 };
 
-// An unmatched registration, `never`, falls back to the shared strategy.
 type StrategyOf<R, Shared> = [R] extends [never]
 	? Shared
 	: R extends { readonly version: infer S extends VersionStrategy.Any }
@@ -98,11 +96,7 @@ type OwnsStrategy<R, E> = [E] extends [{ readonly version: VersionStrategy.Any }
 			? true
 			: false;
 
-/**
- * An `input` field: required when the strategy's input type does not accept `undefined`.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type InputField<I> = undefined extends I ? { readonly input?: I } : { readonly input: I };
 
 type RequiresInput<S> = [S] extends [never]
@@ -113,19 +107,11 @@ type RequiresInput<S> = [S] extends [never]
 			: true
 		: false;
 
-/**
- * The message a per-package `input` gets when the package shares the group calculation.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type SharedInputError<N extends string> =
 	`${N} shares the group calculation; add version: <strategy> to calculate it with its own input`;
 
-/**
- * One package's part of a plan, checked against its registration.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Selection<M extends object, R, Shared, E> = SelectionFields<M, R, Shared, E> &
 	(OwnsStrategy<R, E> extends true
 		? InputField<VersionStrategy.InputOf<StrategyOf<R, Shared>>>
@@ -159,11 +145,7 @@ type SelectionFields<M extends object, R, Shared, E> = {
 		  >;
 };
 
-/**
- * An element of a plan's `packages`: a registered package, bare, or a selection for it.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Entry<Rs extends ReadonlyArray<Registration<any>>> =
 	| Rs[number]["package"]
 	| { readonly package: Rs[number]["package"] };
@@ -181,9 +163,8 @@ type Checked<
 	: Selection<M, RegistrationFor<Rs, PackageOf<E>>, Shared, E>;
 
 /**
- * A plan's `packages`: every registered package, each bare or as a selection checked
- * against its registration. A bare Package stands for a member with no changes and no
- * overrides, descending from the single head of its history.
+ * Must list every registered package. A bare `Package` stands for a member with no
+ * changes and no overrides, descending from the single head of its history.
  *
  * @since 0.0.1
  */
@@ -199,7 +180,8 @@ export type Packages<
 };
 
 /**
- * The plan options besides `packages` and `requirements`.
+ * `input` goes to the shared strategy (such as SemVer's `{ pre }`), validated by its
+ * schema.
  *
  * @since 0.0.1
  */
@@ -211,15 +193,11 @@ export type Options<M extends object, V, I, D> = {
 	readonly version?: string | VersionStrategy.VersionStrategy<M, V, I, D>;
 	readonly dependents?: Policy;
 	readonly replacements?: ReadonlyArray<Replacement>;
-	/**
-	 * Input for the shared strategy, such as SemVer's `{ pre }`, validated by its schema.
-	 * Required when the strategy's input type does not accept `undefined`.
-	 */
 } & InputField<I>;
 
 /**
- * Plan input. Options replace the configured value at the same level; arrays replace,
- * and an empty array disables.
+ * Options replace the configured value at the same level; arrays replace rather than
+ * merge, and an empty array disables.
  *
  * @since 0.0.1
  */
@@ -235,35 +213,21 @@ export type Input<
 	readonly requirements?: ReadonlyArray<Requirement>;
 };
 
-/**
- * A version this plan creates.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type PlannedVersion<D = unknown> = {
 	readonly package: string;
 	/** Its `previous` is the package's own previous version, never a shared baseline. */
 	readonly version: Version.Version;
 	/** What the strategy reported about this version, such as SemVer's prerelease line. */
 	readonly details: D | undefined;
-	/** The version came from a shared calculation or the package's own setting. */
 	readonly source: "shared" | "override";
-	/**
-	 * Why the package releases: its changes, a literal target, dependency updates, or
-	 * alignment with the shared version.
-	 */
 	readonly reason: "changes" | "target" | "dependencies" | "alignment";
 	/** Range edits in this package's manifest. */
 	readonly dependencies: ReadonlyArray<DependencyUpdate>;
-	/** Whether `previous` was stated, or taken from the single head of the history. */
 	readonly previousFrom: PreviousFrom;
 };
 
-/**
- * Where a member's previous version came from.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type PreviousFrom = "stated" | "history-head";
 
 /**
@@ -309,12 +273,7 @@ export type Plan<M extends object = any, D = unknown> = {
 	readonly explanations: ReadonlyArray<string>;
 };
 
-/**
- * The details a plan's versions can carry: the shared strategy's and every registered
- * strategy's.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type PlanDetails<D, Rs extends ReadonlyArray<Registration<any>>> =
 	| D
 	| VersionStrategy.DetailsOf<NonNullable<Rs[number]["version"]>>;
@@ -330,7 +289,7 @@ export type Release<
 	readonly _tag: "Release";
 	readonly group: string;
 	readonly config: Config<M, V, I, D, Rs>;
-	/** Calculates a plan. It reads and writes nothing. */
+	/** Reads and writes nothing. */
 	readonly plan: <const Ps extends ReadonlyArray<Entry<Rs>>>(
 		input: Input<M, V, I, D, Rs, Ps>,
 	) => Result.Result<Plan<M, PlanDetails<D, Rs>>, PlanError>;
@@ -427,7 +386,7 @@ const statedPrevious = (member: Member, id: string, index: string | undefined): 
 		[member.package.name, id],
 	);
 
-/** Resolves every member's previous version, reporting all ambiguous members at once. */
+/** Reports all empty or ambiguous members at once. */
 const previousVersions = (
 	members: ReadonlyArray<Member>,
 	indexOf: (name: string) => string | undefined,
@@ -484,7 +443,6 @@ const decodeWith = (strategy: LooseStrategy, id: string, subject: string): unkno
 		fail("InvalidVersion", `${subject}: ${message}`, [subject, id]),
 	);
 
-/** `version`, then its own previous, and so on, decoded by the strategy's scheme. */
 const ancestryOf = (strategy: LooseStrategy, version: Version.Version, name: string) => {
 	const ancestry: Array<unknown> = [];
 	for (let current: Version.Version | undefined = version; current; current = current.previous) {
@@ -513,10 +471,6 @@ const ignoreAsync = (result: unknown): boolean => {
 	return true;
 };
 
-/**
- * Validates strategy input with its schema, synchronously, and returns the schema's
- * output. A strategy without a schema takes no input.
- */
 const validateInput = (strategy: LooseStrategy, value: unknown, where: string): unknown => {
 	const schema = strategy.input;
 	if (schema === undefined) {
@@ -558,7 +512,6 @@ const validateInput = (strategy: LooseStrategy, value: unknown, where: string): 
 	return outcome.value;
 };
 
-/** Runs a strategy, turning refusals and foreign throws into plan errors. */
 const run = (
 	strategy: LooseStrategy,
 	context: VersionStrategy.Context<object, unknown, unknown>,
@@ -641,7 +594,6 @@ const buildPlan = (release: LooseRelease, input: LooseInput, owner: Release): Pl
 		}
 		const chosen = strategyOrLiteral(selection.version, `${name}'s version`);
 		const registered = strategyOrLiteral(registration?.version, `${name}'s registered version`);
-		// A package with its own strategy, or a literal of its own, leaves the shared calculation.
 		const ownStrategy =
 			typeof chosen === "object" || typeof chosen === "function"
 				? chosen
@@ -716,7 +668,6 @@ const buildPlan = (release: LooseRelease, input: LooseInput, owner: Release): Pl
 				const ancestry = ancestryOf(strategy, entry.previous, entry.selection.package.name);
 				return { entry, previous: ancestry[0], ancestry };
 			});
-			// A literal is the exact version, decoded by the scheme; no strategy runs.
 			const calculation: VersionStrategy.Calculation<unknown, unknown> =
 				literal !== undefined
 					? { version: decodeWith(strategy, literal, literal), unchanged: "align" }
@@ -769,7 +720,6 @@ const buildPlan = (release: LooseRelease, input: LooseInput, owner: Release): Pl
 					});
 					continue;
 				}
-				// One identity, one definition: a planned id must be new to the whole history.
 				if (selection.package.history.versions.some((known) => known.id === placement)) {
 					fail(
 						"ExistingVersion",

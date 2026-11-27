@@ -12,20 +12,12 @@ import type { Version } from "./version.ts";
 export { instruction };
 export type { Instruction, Prose, ProseValue, Text } from "./instruction.ts";
 
-/**
- * Prose, mentions, and occurrence-declaring steps in template order.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Content<A extends Action.Any = Action.Any> = ReadonlyArray<
 	Text | Action.Ref | Action.Step<A>
 >;
 
-/**
- * Values accepted in migration templates.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Interpolation = Scalar | Action.Ref | Action.Step;
 
 /** @since 0.0.1 */
@@ -34,38 +26,24 @@ export type Migration<A extends Action.Any = Action.Any, C extends Change.Any = 
 	readonly id: string;
 	readonly from: Version;
 	readonly to: Version;
-	/** The logical changes this transition handles. */
 	readonly addresses: ReadonlyArray<C>;
-	/** Whether this is an explicit zero-work transition. */
 	readonly noop: boolean;
-	/** Author-declared cost, used only by the `lowest-cost` route policy. */
+	/** Used only by the `lowest-cost` route policy. */
 	readonly cost: number | undefined;
 	readonly content: Content;
-	/** The reverse transition, from `to` back to `from`. Absent means no reverse edge. */
+	/** Absent means no reverse edge. */
 	readonly revert: Content | undefined;
 	/** Type-level record of the action instances in `content` and `revert`. */
 	readonly "~actions"?: A;
 };
 
-/**
- * Any migration.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Any = Migration<any>;
 
-/**
- * The action instances a migration can contribute to a plan.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type ActionsOf<M> = M extends Migration<infer A> ? A : never;
 
-/**
- * The changes a migration addresses.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type ChangesOf<M> = M extends Migration<any, infer C> ? C : never;
 
 /** @since 0.0.1 */
@@ -211,9 +189,9 @@ export const noop = <C extends Change.Any = never>(
 });
 
 /**
- * Adds a reverse transition. Register the returned migration in place of the original:
- * both share the same identifier. On a `Migration.noop`, the reverse is real work: only
- * the forward side stays zero-work.
+ * Register the returned migration in place of the original: both share the same
+ * identifier. On a `Migration.noop`, the reverse is real work: only the forward side
+ * stays zero-work.
  *
  * @example
  * ```ts

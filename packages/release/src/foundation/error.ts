@@ -47,11 +47,7 @@ export type Reason =
 	| "OutsideWorkspace"
 	| "ReplacementConflict";
 
-/**
- * A structured planning or preparation problem.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Issue = {
 	readonly reason: Reason;
 	readonly message: string;
@@ -67,14 +63,14 @@ export const issue = (reason: Reason, message: string, subjects: ReadonlyArray<s
 });
 
 /**
- * Planning refused the input. Nothing was read or written.
+ * Nothing was read or written.
  *
  * @since 0.0.1
  */
 export class PlanError extends Data.TaggedError(`${PackageConfig.name}/PlanError`)<Issue> {}
 
 /**
- * Preparation found problems. Every independent problem is listed, and nothing was
+ * Lists every independent problem found during resolution or preparation. Nothing was
  * written.
  *
  * @since 0.0.1

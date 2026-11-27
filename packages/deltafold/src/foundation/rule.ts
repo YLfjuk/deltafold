@@ -3,8 +3,8 @@ import { Predicate } from "effect";
 import type * as Action from "./action.ts";
 
 /**
- * What a rule matches: an action instance, or a parallel group matched by its branch
- * structure. Matching a parallel group is an explicit structural rule.
+ * `Action.Parallel` matches a parallel group structurally by its branches (an explicit
+ * structural rule).
  *
  * @since 0.0.1
  */
@@ -15,26 +15,18 @@ export type Rule<A extends Action.Any = Action.Any> = {
 	readonly _tag: "Rule";
 	readonly id: string;
 	readonly match: ReadonlyArray<Pattern>;
-	/** Steps that take the place of the match. An empty replacement cancels it. */
+	/** An empty replacement cancels the match. */
 	readonly replacement: ReadonlyArray<Action.Step<A>>;
 };
 
-/**
- * Any rule.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Any = Rule<any>;
 
-/**
- * The action instances a rule can contribute to a plan.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type ActionsOf<R> = R extends Rule<infer A> ? A : never;
 
 /**
- * Declares a replacement. Cancellation, composition, and supersession all use it.
+ * Used for cancellation, composition, and supersession.
  *
  * The author asserts that the replacement is equivalent to the matched occurrences.
  * deltafold checks the rule's structure and where it applies, but it cannot prove the

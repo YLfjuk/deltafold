@@ -93,7 +93,6 @@ export const prepare = (
 			globs.push({ pattern: glob.pattern, exclude: [], except: [], matched: glob.matched });
 		}
 
-		// Pending modules.
 		const pendingPatterns = allFromBase(options.pending);
 		const pendingPaths = yield* globAll(fs, location, pendingPatterns, []);
 		globs.push({ pattern: pendingPatterns, exclude: [], except: [], matched: pendingPaths });
@@ -146,7 +145,6 @@ export const prepare = (
 			const files = plan.files.get(entry.package);
 			return files === undefined ? undefined : { files };
 		};
-		// Each version index belongs to one package.
 		const indexed = new Map<string, Array<string>>();
 		for (const [name, files] of plan.files) {
 			if (files.index === false) continue;
@@ -170,7 +168,6 @@ export const prepare = (
 			const versionsDir =
 				configured === undefined ? undefined : fromBase(configured.versions);
 			if (versionsDir === undefined) continue;
-			// The file name is the version id, verbatim, so an id must be a plain file name.
 			const previousId = entry.version.previous?.id ?? "";
 			const unusable = [entry.version.id, previousId].filter((id) => !plainFileName.test(id));
 			if (unusable.length > 0) {
@@ -275,7 +272,6 @@ export const prepare = (
 			stage(indexPath, renderIndex([...listed, { id: entry.version.id, exportName }]));
 		}
 
-		// Manifests.
 		for (const entry of plan.versions) {
 			const configured = registration(entry)?.files.manifest;
 			const path = configured === undefined ? undefined : fromBase(configured);
@@ -299,7 +295,6 @@ export const prepare = (
 			);
 		}
 
-		// Dependency ranges. Every edge the plan used must still match its manifest.
 		const checked = new Set<string>();
 		for (const proposal of plan.dependents) {
 			const path = fromRoot(proposal.manifest);
@@ -341,7 +336,6 @@ export const prepare = (
 			);
 		}
 
-		// Literal replacements.
 		const reports: Array<ReplacementReport> = [];
 		const claimed = new Map<
 			string,

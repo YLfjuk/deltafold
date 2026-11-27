@@ -20,11 +20,7 @@ export type Strong = { readonly _tag: "Strong"; readonly children: ReadonlyArray
 /** @since 0.0.1 */
 export type Emphasis = { readonly _tag: "Emphasis"; readonly children: ReadonlyArray<Inline> };
 
-/**
- * Phrasing content.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Inline = Text | Code | Link | Strong | Emphasis;
 
 /** @since 0.0.1 */
@@ -33,7 +29,6 @@ export type Paragraph = { readonly _tag: "Paragraph"; readonly children: Readonl
 export type List = {
 	readonly _tag: "List";
 	readonly ordered: boolean;
-	/** One entry per item. */
 	readonly items: ReadonlyArray<ReadonlyArray<Block>>;
 };
 /** @since 0.0.1 */
@@ -52,8 +47,8 @@ export type Title = Pipeable.Pipeable & {
 };
 
 /**
- * A titled part of a document. Its `id` must be unique within the containing release,
- * or within the document outside releases.
+ * `id` must be unique within the containing release, or within the document outside
+ * releases.
  *
  * @since 0.0.1
  */
@@ -73,22 +68,14 @@ export type Section = Pipeable.Pipeable & {
 /** @since 0.0.1 */
 export type Block = Paragraph | List | CodeBlock | Section;
 
-/**
- * A complete document returned by changelog builders.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type Document = {
 	readonly _tag: "Document";
 	readonly kind: "change" | "release" | "history" | "upgrade" | "downgrade";
 	readonly children: ReadonlyArray<Block>;
 };
 
-/**
- * Text, or inline nodes.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type InlineInput = string | Inline | ReadonlyArray<string | Inline>;
 
 const isInline = (value: unknown): value is Inline =>
@@ -181,15 +168,14 @@ const anchor = (part: Anchor["part"], position: Anchor["position"]): Anchor => (
 
 class TitleValue extends Data.TaggedClass("Title")<Omit<Title, "_tag" | "pipe">> {}
 
-/** Builds section values. Like titles, they are immutable and have Effect's `pipe`. */
 export class SectionValue extends Data.TaggedClass("Section")<Omit<Section, "_tag" | "pipe">> {}
 
 const makeTitle = (text: InlineInput, options: { readonly level?: number } = {}): Title =>
 	new TitleValue({ children: inlines(text), level: options.level });
 
 /**
- * Builds a title. `Document.Title.pre` and `Document.Title.post` are the insertion points
- * around a scoped section's title.
+ * `Document.Title.pre` and `Document.Title.post` are the insertion points around a
+ * scoped section's title.
  *
  * @since 0.0.1
  */
@@ -225,7 +211,6 @@ type SectionOptions = {
 	readonly children?: ReadonlyArray<Block>;
 };
 
-/** Section identifiers that deltafold generates start with this prefix. */
 const reservedPrefix = `${PackageConfig.name}/`;
 
 /** Builds a section without the reserved-prefix check, for sections deltafold generates. */
@@ -240,7 +225,7 @@ export const generatedSection = (id: string, options: SectionOptions = {}): Sect
 	});
 
 /**
- * Sets an absolute heading level on a title. Levels outside 1 to 6 fail at render time.
+ * Absolute heading level; values outside 1 to 6 fail at render time.
  *
  * @since 0.0.1
  */
@@ -249,31 +234,19 @@ export const withLevel =
 	(title: Title): Title =>
 		new TitleValue({ ...title, level });
 
-/**
- * Sets the title of a section.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export const withTitle =
 	(title: Title | string) =>
 	(section: Section): Section =>
 		new SectionValue({ ...section, title: titleOf(title) });
 
-/**
- * Appends blocks to a section's body.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export const append =
 	(...blocks: ReadonlyArray<Block>) =>
 	(section: Section): Section =>
 		new SectionValue({ ...section, children: [...section.children, ...blocks] });
 
-/**
- * A document structure that cannot be rendered.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export class DocumentError extends Data.TaggedError(`${PackageConfig.name}/DocumentError`)<{
 	readonly reason: "duplicate-section" | "heading-level" | "reserved-id";
 	readonly message: string;
@@ -305,19 +278,13 @@ export type HistoryContext<M> = {
 	readonly releases: ReadonlyArray<ReleaseContext<M>>;
 };
 
-/**
- * Plugin output: blocks to insert, or `null` for nothing.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type PluginOutput = Block | ReadonlyArray<Block> | null;
 
 /**
- * Where a plugin's content goes. `scope` is `Document.Release`, once per included
- * release, or `Document.History`, once per history document. `at` is
- * `Document.Title.pre`, `Document.Title.post`, `Document.Body.pre`, or
- * `Document.Body.post` of that scope's section. Each insertion point receives every
- * plugin's content in configuration order.
+ * `at` accepts `Document.Title.pre`, `Document.Title.post`, `Document.Body.pre`, or
+ * `Document.Body.post`. Each insertion point receives matching plugins' output in
+ * configuration order.
  *
  * @since 0.0.1
  */
@@ -334,9 +301,8 @@ export type PluginOptions<M> =
 	  };
 
 /**
- * Contributes content at an insertion point. Plugins work on format-neutral content:
- * they must not fetch metadata or execute migrations. Output is inserted once and is not
- * processed by other plugins.
+ * Plugins work on format-neutral content: they must not fetch metadata or execute
+ * migrations. Output is inserted once and is not processed by other plugins.
  *
  * @since 0.0.1
  */

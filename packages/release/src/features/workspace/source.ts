@@ -6,7 +6,7 @@ import type { Release } from "../planning/index.ts";
 import * as paths from "./paths.ts";
 
 /**
- * A pending change module: its workspace-relative path, and its text.
+ * `path` is workspace-relative.
  *
  * @since 0.0.1
  */
@@ -206,14 +206,14 @@ export const scan = (source: PendingSource): Declaration | Issue => {
 };
 
 /**
- * The directory part of a path. Absolute POSIX and Windows drive paths keep their prefix.
+ * Uses `/` separators; absolute POSIX and Windows drive paths keep their prefix.
  *
  * @since 0.0.1
  */
 export const dirname: (path: string) => string = paths.dirname;
 
 /**
- * Joins and normalizes path parts with "/". An absolute part restarts the path.
+ * Normalizes with `/`; an absolute part restarts the path.
  *
  * @since 0.0.1
  */
@@ -228,7 +228,6 @@ export const relative: (fromDirectory: string, to: string) => string = paths.rel
 
 /** The files a relative import may resolve to, with or without an extension. */
 const resolutions = (target: string): ReadonlyArray<string> => {
-	// An emitted extension names its source: .js is .ts or .tsx, .jsx is .tsx, .mjs is .mts.
 	const emitted = /\.(js|jsx|mjs|cjs)$/.exec(target);
 	const stem = emitted === null ? target : target.slice(0, -emitted[0].length);
 	const sources: Record<string, ReadonlyArray<string>> = {
@@ -263,8 +262,8 @@ export type RenderInput = {
 };
 
 /**
- * Renders a generated version module from copied declarations. Relative imports are
- * re-pointed from the new location; nothing is evaluated.
+ * Re-points relative imports from the generated module's location without evaluating any
+ * code.
  *
  * @since 0.0.1
  */

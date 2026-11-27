@@ -25,11 +25,7 @@ export type Snapshot = {
 	}>;
 };
 
-/**
- * A plan entry after resolution: its previous version is the manifest's version.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type WithPrevious<E> =
 	E extends Package.Package<any>
 		? { readonly package: E; readonly previous: string; readonly changes: ReadonlyArray<never> }
@@ -52,12 +48,7 @@ export type Resolved<
 	readonly snapshot: Snapshot;
 };
 
-/**
- * Resolution options: plan input whose previous versions and requirements come from
- * manifests.
- *
- * @since 0.0.1
- */
+/** @since 0.0.1 */
 export type ResolveOptions<
 	M extends object,
 	V,
@@ -76,9 +67,9 @@ export type ResolveOptions<
 	};
 
 /**
- * Resolves plan input from manifests. Each member's previous version is its manifest's
- * `version`, and dependency fields become requirements: `devDependencies` can get range
- * edits but never require a release. Nothing is written.
+ * Sets each member's `previous` from its manifest's `version` and collects manifest
+ * dependency fields as requirements (`devDependencies` can get range edits but never
+ * require a release). Nothing is written.
  *
  * @since 0.0.1
  */

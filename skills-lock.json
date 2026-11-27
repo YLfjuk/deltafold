@@ -28,9 +28,9 @@
       "source": "YLfjuk/skills",
       "sourceType": "github",
       "skillPath": "skills/writing/documentation/SKILL.md",
-      "computedHash": "812b5fb53744a64925ad9adb1e1d651126cb333dbda2a2080c81ff26d4af16ee",
+      "computedHash": "58bc904dca4392ae84537b666daf3c3634b6f4c33662f046d1209e2bbf6c5696",
       "installMode": "copy",
-      "commit": "790849b8f337fd217bbbcc8a89cfe082ea5fe7c9"
+      "commit": "07e1e1086bc944e841d3c0f62015ec75386c405e"
     },
     "orwell-clear-writing": {
       "source": "YLfjuk/skills",

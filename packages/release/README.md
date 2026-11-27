@@ -74,9 +74,8 @@ export const release = Release.make("widgets", {
 - `ReleaseChange.define` creates a headless `deltafold` `Change` factory whose
   metadata carries `bump` as `"major"`, `"minor"`, or `"patch"`. Any
   `Change.define` factory also works.
-- `ReleaseFiles.at` configures each package's manifest path and versions
-  directory. That directory defaults to `.deltafold/versions` and keeps an
-  `index.ts` module unless `index: false` is set.
+- `ReleaseFiles.at` defaults the versions directory to `.deltafold/versions` and
+  keeps an `index.ts` module unless `index: false` is set.
 - `SemVerStrategy.make` calculates stable and prerelease SemVer versions across
   the shared group or per-package overrides.
 - `DependentsPolicy.propose()` rewrites internal dependency ranges when a new
