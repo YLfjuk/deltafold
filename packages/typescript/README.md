@@ -138,9 +138,9 @@ library.
 
 - Globs never match inside `node_modules`. Transforms can still read installed
   type declarations through the compiler, but they edit only your files.
-- The handler refuses absolute patterns, patterns with a `..` segment (inside
-  braces too), symbolic links, and junctions, and never matches a file outside the
-  root.
+- The handler refuses absolute patterns and patterns with a `..` segment, even
+  inside braces. It also refuses symbolic links and junctions, and never matches a
+  file outside the root.
 - A handler locks every matched file before reading it and keeps the locks until
   its action ends. A custom handler can take the same locks with
   `workspace.lock(paths)`.

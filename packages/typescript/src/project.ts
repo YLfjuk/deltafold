@@ -22,9 +22,9 @@ import { EditRejected } from "./errors.ts";
 import type { Workspace } from "./workspace.ts";
 
 /**
- * The compiler project a transform runs for: a configured project with the path of its
- * tsconfig file, relative to the root when the file is under it, or an inferred project
- * for files outside every tsconfig file.
+ * The compiler project a transform runs for. A configured project has the path of its
+ * tsconfig file, relative to the root when the file is under it. An inferred project
+ * holds files outside every tsconfig file.
  *
  * @since @next
  */

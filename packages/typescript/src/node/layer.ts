@@ -12,11 +12,10 @@ const jsoncSuffix = ".deltafold.json";
  * process starts on the first snapshot and stops when the layer's scope closes. It is
  * never restarted after a failure.
  *
- * TypeScript 7.1.0-beta finds no project for a `.jsonc` file, so each snapshot opens
- * such a file under a hidden `.json` name next to it, whose text the snapshot's
- * file-system layer supplies. Nothing is written under that name. The name is chosen
- * per snapshot so that it is free on disk and differs, ignoring case, from every
- * opened file.
+ * TypeScript 7.1.0-beta finds no project for a `.jsonc` file. Each snapshot therefore
+ * opens such a file under a hidden `.json` name beside it and serves its text from
+ * memory, so nothing is written under that name. Each snapshot picks a name that is free
+ * on disk and differs, ignoring case, from every opened file.
  */
 const compiler = (
 	cwd: string,
@@ -94,8 +93,8 @@ const compiler = (
 
 /**
  * Provides `TypeScript.Workspace` for a root directory, with Node's file system and
- * the TypeScript compiler. Payload globs are matched under `root`. A relative `root` is
- * resolved against the current working directory.
+ * the TypeScript compiler. Payload globs match under `root`, and a relative `root`
+ * resolves against the current working directory.
  *
  * @example
  * ```ts

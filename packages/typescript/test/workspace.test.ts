@@ -239,6 +239,17 @@ layer(NodeFileSystem.layer)("TypeScript.Workspace", (it) => {
 		}),
 	);
 
+	it.effect("matches files under directories whose names look like brace patterns", () =>
+		Effect.gen(function* () {
+			const root = yield* fixture({ "src/{..}/x.ts": "", "src/{a,..}/y.ts": "" });
+			const matched = yield* withWorkspace(root, (workspace) =>
+				internals(workspace).match("test", ["src/**/*.ts"]),
+			);
+
+			expect(matched).toEqual(["src/{..}/x.ts", "src/{a,..}/y.ts"]);
+		}),
+	);
+
 	it.effect("refuses glob results outside the root, whatever the pattern", () =>
 		Effect.gen(function* () {
 			const root = yield* fixture({ "src/a.ts": "" });
@@ -472,7 +483,7 @@ layer(NodeFileSystem.layer)("TypeScript.Workspace", (it) => {
 					yield* Fiber.interrupt(waiter);
 					expect(yield* stillWaiting(workspace.lock(["a.ts"]))).toBe(true);
 
-					// The interrupted waiter took no permit: the lock is free once released.
+					// The interrupted waiter took no permit, so the lock is free once released.
 					yield* release;
 					expect(yield* stillWaiting(workspace.lock(["a.ts"]))).toBe(false);
 				}),

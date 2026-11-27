@@ -201,10 +201,10 @@ const sameEdit = (a: TextEdit, b: TextEdit) =>
 	a.pos === b.pos && a.end === b.end && a.newText === b.newText;
 
 /**
- * Applies a batch of edits that all refer to `text`. Identical edits that replace or
- * remove text are kept once; insertions are all kept. At one offset, insertions come
- * before a replacement, in the order returned. An edit outside the text, or two
- * overlapping edits, rejects the batch.
+ * Applies a batch of edits that all refer to `text`. It keeps one copy of identical
+ * replacements and removals, and every insertion. At one offset, insertions come before
+ * a replacement, in the order returned. An edit outside the text, or two overlapping
+ * edits, rejects the batch.
  */
 export const applyEdits = (
 	path: string,

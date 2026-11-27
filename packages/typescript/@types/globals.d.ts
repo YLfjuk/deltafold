@@ -1,8 +1,7 @@
 // The package compiles without DOM or Node.js types, so it declares the two globals it
-// uses: the AbortSignal that Promise transforms receive, and TextDecoder, which reads
-// files without dropping a byte order mark the way Effect's readFileString does. These
-// declarations merge with the full DOM or Node.js ones in consumer projects and are not
-// published.
+// uses. Promise transforms receive an AbortSignal. TextDecoder decodes files and keeps a
+// byte order mark, which Effect's readFileString drops. These declarations merge with the
+// DOM or Node.js ones in consumer projects, and the package does not publish them.
 
 interface AbortSignal {
 	readonly aborted: boolean;

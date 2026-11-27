@@ -5,7 +5,7 @@ import * as PackageConfig from "./configs/package.ts";
 import type { Info } from "./project.ts";
 
 /**
- * The adapter refused the edits for a file: an edit outside the text, overlapping
+ * The handler refused the edits for a file: an edit outside the text, overlapping
  * edits, an edit to a file the transform may not change, a name position that
  * `edit.rename` does not support, or edited JSON that no longer parses.
  *
@@ -106,8 +106,8 @@ export type GuardedError<G> = G extends Schema.Top
 		: never;
 
 /**
- * Whether a file was written when the write step failed: `"not-written"` when its
- * original is unchanged, `"unknown"` when the failure left that unclear.
+ * Whether the failed file was written. `"not-written"` means its original is unchanged.
+ * `"unknown"` means the failure left that unclear.
  *
  * @since @next
  */
@@ -115,8 +115,8 @@ export type WriteStatus = "not-written" | "unknown";
 
 /**
  * Writing the action's files failed. `writtenPaths` were replaced, `failed` names the
- * file that failed, and `pendingPaths` were not attempted. A file found changed since
- * it was read fails here before any file is replaced. Nothing is rolled back.
+ * file that failed, and `pendingPaths` were not attempted. If a file changed since it
+ * was read, writing fails here before it replaces any file. Nothing is rolled back.
  *
  * @since @next
  */
@@ -138,9 +138,13 @@ export class WriteFailed extends Data.TaggedError(`${PackageConfig.name}/WriteFa
 }
 
 /**
- * Why a target could not be read: a pattern that is absolute, contains a `..` segment,
- * or resolves outside the root, a symbolic link or junction, a file that cannot be read,
- * or a file that changed while the compiler loaded it.
+ * Why a target could not be read:
+ *
+ * - `"pattern"`: the pattern is absolute, has a `..` segment, or matched a file outside
+ *   the root.
+ * - `"link"`: the path is a symbolic link or junction.
+ * - `"unreadable"`: the file cannot be read.
+ * - `"changed"`: the file changed while the compiler loaded it.
  *
  * @since @next
  */
@@ -172,7 +176,7 @@ export type CompilerStage = "snapshot" | "request";
 
 /**
  * The TypeScript compiler failed: it could not start, its native package is missing,
- * a request failed, or it crashed. The adapter never restarts it.
+ * a request failed, or it crashed. Nothing restarts it.
  *
  * @since @next
  */
