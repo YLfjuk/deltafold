@@ -56,7 +56,7 @@
 	"devDependencies": {
 		"@arethetypeswrong/core": "catalog:",
 		"@effect/vitest": "catalog:",
-		"@types/node": "22.18.0",
+		"@types/node": "26.6.6",
 		"deltafold": "workspace:*",
 		"effect": "catalog:",
 		"publint": "catalog:",
