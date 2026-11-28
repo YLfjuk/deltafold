@@ -181,7 +181,7 @@ catalogs:
       version: 4.1.4
     effect:
       specifier: ^4.1.2
-      version: 4.1.2
+      version: 4.1.5
     publint:
       specifier: 0.3.25
       version: 0.3.25
@@ -248,10 +248,10 @@ importers:
         version: 0.18.5
       '@effect/vitest':
         specifier: 'catalog:'
-        version: 4.1.4(effect@4.1.2)(vitest@5.1.0)
+        version: 4.1.4(effect@4.1.5)(vitest@5.1.0)
       effect:
         specifier: 'catalog:'
-        version: 4.1.2
+        version: 4.1.5
       publint:
         specifier: 'catalog:'
         version: 0.3.25
@@ -269,7 +269,7 @@ importers:
         version: 0.18.5
       '@effect/vitest':
         specifier: 'catalog:'
-        version: 4.1.4(effect@4.1.2)(vitest@5.1.0)
+        version: 4.1.4(effect@4.1.5)(vitest@5.1.0)
       '@types/node':
         specifier: 22.18.0
         version: 22.18.0
@@ -278,7 +278,7 @@ importers:
         version: link:../deltafold
       effect:
         specifier: 'catalog:'
-        version: 4.1.2
+        version: 4.1.5
       publint:
         specifier: 'catalog:'
         version: 0.3.25
@@ -293,7 +293,7 @@ importers:
     dependencies:
       '@effect/platform-node-shared':
         specifier: 'catalog:'
-        version: 4.1.2(effect@4.1.2)
+        version: 4.1.2(effect@4.1.5)
       typescript-7.1:
         specifier: npm:typescript@7.1.0-beta
         version: typescript@7.1.0-beta
@@ -303,13 +303,13 @@ importers:
         version: 0.18.5
       '@effect/vitest':
         specifier: 'catalog:'
-        version: 4.1.4(effect@4.1.2)(vitest@5.1.0)
+        version: 4.1.4(effect@4.1.5)(vitest@5.1.0)
       deltafold:
         specifier: workspace:^
         version: link:../deltafold
       effect:
         specifier: 'catalog:'
-        version: 4.1.2
+        version: 4.1.5
       publint:
         specifier: 'catalog:'
         version: 0.3.25
@@ -1401,8 +1401,8 @@ packages:
   dom-accessibility-api@0.5.16:
     resolution: {integrity: sha512-X7BJ2yElsnOJ30pZF4uIIDfBEVgF4XEBxL9Bxhy6dnrm5hkzqmsWHGTiHqRiITNhMyFLyAiWndIJP7Z1NTteDg==}
 
-  effect@4.1.2:
-    resolution: {integrity: sha512-d3Oah1WyKxFLFh19yWheS5IXIVaITzxZ71JkE1rkUozq/6EcJSU5nPk5bF2QrSygZ3SQoiNQB8TsxFriyMeMaQ==}
+  effect@4.1.5:
+    resolution: {integrity: sha512-xyR20KhQI0vg2gD8ILUSQRTTESEYJ0JKdP+QD8J37xbwPTqXRxFM/l0+vUVD9fuSvoYruoTqyt33C4FZv1s4TQ==}
 
   es-module-lexer@2.3.2:
     resolution: {integrity: sha512-poHGpORABojJJucnV9KbOavETW8lBVnphkW77ER5/BQ5Fz7oXSoCNek7IH3vR5nRjdsEz926ibFYX8KtLQmdyw==}
@@ -1873,10 +1873,12 @@ packages:
   yuku-core@0.19.0:
     resolution: {integrity: sha512-kYK9e1XdfirNhkipzW0wmMcSWcVF/CWnuugodfVYRCUwvoBefweL9HzB96OiKEhsx78V5WbUxbJqlizMX869Qg==}
     engines: {node: '>=14.18.0'}
+    deprecated: 'Yuku is now one package with one core. Use "yuku" instead: https://yuku.fyi/javascript/. Existing installs keep working but get no more fixes.'
 
   yuku-parser@0.19.0:
     resolution: {integrity: sha512-XrBh9ZiQK5mJVRxZBAvD6LwRyAYrK3MFtH3+onyuxFL5hFD44EC3QOmIC1FjTj6H2MMwq46/NAI+NZxLZPZgxg==}
     engines: {node: '>=14.18.0'}
+    deprecated: 'Yuku is now one package with one core. Use "yuku" instead: https://yuku.fyi/javascript/. Existing installs keep working but get no more fixes.'
 
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
@@ -2026,10 +2028,10 @@ snapshots:
       fast-wrap-ansi: 0.2.2
       sisteransi: 1.0.5
 
-  '@effect/platform-node-shared@4.1.2(effect@4.1.2)':
+  '@effect/platform-node-shared@4.1.2(effect@4.1.5)':
     dependencies:
       '@types/ws': 8.18.2
-      effect: 4.1.2
+      effect: 4.1.5
       ws: 8.22.1
     transitivePeerDependencies:
       - bufferutil
@@ -2066,9 +2068,9 @@ snapshots:
       '@effect/tsgo-win32-arm64': 0.69.0
       '@effect/tsgo-win32-x64': 0.69.0
 
-  '@effect/vitest@4.1.4(effect@4.1.2)(vitest@5.1.0)':
+  '@effect/vitest@4.1.4(effect@4.1.5)(vitest@5.1.0)':
     dependencies:
-      effect: 4.1.2
+      effect: 4.1.5
       vitest: 5.1.0(@types/node@22.18.0)(@vitest/browser-preview@5.1.0)(@vitest/ui@5.1.0)(@voidzero-dev/vite-plus-core@1.5.0(@arethetypeswrong/core@0.18.5)(@types/node@22.18.0)(publint@0.3.25)(typescript@7.0.2)(yaml@2.9.1))
 
   '@jridgewell/resolve-uri@3.1.2': {}
@@ -2629,7 +2631,7 @@ snapshots:
 
   dom-accessibility-api@0.5.16: {}
 
-  effect@4.1.2: {}
+  effect@4.1.5: {}
 
   es-module-lexer@2.3.2: {}
 
